@@ -177,18 +177,16 @@ export const MONTHLY_CLOSE_FIXTURE = monthlyCloseSchema.parse({
   ]
 });
 
-export const CHALLANS_FIXTURE = z
-  .array(challanRowSchema)
-  .parse([
-    {
-      id: 'chl_1',
-      receiverId: RECEIVER_IN,
-      month: '2026-10',
-      tdsPaise: '4512',
-      recordedAt: '2026-11-05T09:00:00Z',
-      hcsSequence: 58
-    }
-  ]);
+export const CHALLANS_FIXTURE = z.array(challanRowSchema).parse([
+  {
+    id: 'chl_1',
+    receiverId: RECEIVER_IN,
+    month: '2026-10',
+    tdsPaise: '4512',
+    recordedAt: '2026-11-05T09:00:00Z',
+    hcsSequence: 58
+  }
+]);
 
 export const RELEASES_FIXTURE = z.array(releaseRowSchema).parse([
   {
@@ -247,18 +245,16 @@ export const POLICY_FIXTURE = policySchema.parse({
   acceptRulepacks: ['in-2026.*']
 });
 
-export const PAYER_REPORT_FIXTURE = z
-  .array(payerReportRowSchema)
-  .parse([
-    {
-      paymentId: 'pay_1762424460',
-      spentAt: '2026-11-06T10:21:00Z',
-      micro: '101019',
-      inrValuePaise: '894',
-      costPaise: '880',
-      gainPaise: '14'
-    }
-  ]);
+export const PAYER_REPORT_FIXTURE = z.array(payerReportRowSchema).parse([
+  {
+    paymentId: 'pay_1762424460',
+    spentAt: '2026-11-06T10:21:00Z',
+    micro: '101019',
+    inrValuePaise: '894',
+    costPaise: '880',
+    gainPaise: '14'
+  }
+]);
 
 export const SUPPORTED_FIXTURE = supportedResponseSchema.parse({
   kinds: ['kosha-split', 'exact'].map((scheme) => ({
