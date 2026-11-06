@@ -1,12 +1,15 @@
 import { CodeBlock } from '@/components/elements/CodeBlock';
+import { ConsoleWindow } from '@/components/elements/ConsoleWindow';
+import { DecisionLog } from '@/components/elements/DecisionLog';
+import { Loop } from '@/components/elements/Loop';
 import { Section, SectionHead } from '@/components/elements/Section';
-import { TdsTable } from '@/components/elements/TdsTable';
 import { LINKS } from '@/content/links';
 import { SECTION_IDS } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import type { ReactNode } from 'react';
 
-type Tool = { name: string; icon: string; ink?: boolean; wide?: boolean };
+/** A tool the product runs on; a wordmark (Express) has no glyph, so it shows its name only */
+type Tool = { name: string; icon?: string };
 
 type Product = {
   name: string;
@@ -15,6 +18,8 @@ type Product = {
   href: string;
   tools: Tool[];
   visual: ReactNode;
+  /** The card that hosts the section's one loop */
+  loop?: boolean;
 };
 
 // Real snippets from the package READMEs, cut to what fits the panel
@@ -37,7 +42,7 @@ const GATE_LINES = [
 const PAY_LINES = [
   'const pay = createKoshaPay({',
   "  network: 'testnet',",
-  '  reserveAccountId: AGENT_RESERVE_ID, // the TDS leg must land here',
+  '  reserveAccountId: AGENT_RESERVE_ID, // the TDS leg lands here',
   '  trustedFacilitators: [CORE_ACCOUNT_ID],',
   '  policy: {',
   "    perPaymentUsdc: '0.50',",
@@ -51,41 +56,22 @@ const PAY_LINES = [
   "const res = await pay.fetch(API + '/v1/gst-lookup?gstin=29AAKCK4821M1ZQ');"
 ];
 
-const CORE_LINES = [
-  '// HCS topic 0.0.11342856, message #6',
-  '{',
-  '  "quoteId": "q_w7813xvnr9jqkt8w140p5nsd",',
-  '  "payer": "0.0.11342842",',
-  '  "receiver": "0.0.11342839",',
-  '  "priceMicro": 100000,',
-  '  "tdsMicro": 1019,',
-  '  "rate": "1%",',
-  '  "reason": "threshold_crossed",',
-  '  "rulePack": "in-2026.2",',
-  '  "rulePackHash": "sha256:3f9c…b2e1",',
-  '  "agg": { "fyTotalPaise": 1011300 }',
-  '}'
-];
-
 const PRODUCTS: Product[] = [
   {
     name: 'Kosha Gate',
     title: 'Prices your routes, net',
     body: 'Express or Hono middleware. Unpaid requests get a 402 quote; paid ones pass once Core has settled them on Hedera.',
     href: LINKS.gateDocs,
-    tools: [
-      { name: 'Express', icon: 'express', ink: true, wide: true },
-      { name: 'Hono', icon: 'hono' }
-    ],
-    visual: <CodeBlock title="server.ts" lines={GATE_LINES} />
+    tools: [{ name: 'Express' }, { name: 'Hono', icon: 'hono' }],
+    visual: <CodeBlock title="server.ts" lines={GATE_LINES} mark={9} />
   },
   {
     name: 'Kosha Pay',
     title: 'Pays within the owner’s rules',
     body: 'A drop-in fetch for agents: caps, an allowlist, and the TDS leg checked before signing. Also a Hedera Agent Kit tool.',
     href: LINKS.payDocs,
-    tools: [{ name: 'LangChain', icon: 'langchain', ink: true }],
-    visual: <CodeBlock title="agent.ts" lines={PAY_LINES} />
+    tools: [{ name: 'LangChain', icon: 'langchain' }],
+    visual: <CodeBlock title="agent.ts" lines={PAY_LINES} mark={3} />
   },
   {
     name: 'Kosha Core',
@@ -93,51 +79,74 @@ const PRODUCTS: Product[] = [
     body: 'The facilitator: a verifier that protects the fee payer, the tax engine on versioned rule packs, every decision logged to HCS.',
     href: LINKS.coreDocs,
     tools: [
-      { name: 'Hedera', icon: 'hedera', ink: true },
+      { name: 'Hedera', icon: 'hedera' },
       { name: 'PostgreSQL', icon: 'postgres' }
     ],
-    visual: <CodeBlock title="hcs-message.json" lines={CORE_LINES} />
+    visual: <DecisionLog />,
+    loop: true
   },
   {
     name: 'Kosha Console',
     title: 'Shows owners and CAs the ledger',
     body: 'Live payments, each payer’s progress towards the threshold, and the quarter’s TDS file to download.',
     href: LINKS.consoleDocs,
-    tools: [{ name: 'Next.js', icon: 'nextjs', ink: true }],
-    visual: <TdsTable />
+    tools: [{ name: 'Next.js', icon: 'nextjs' }],
+    visual: <ConsoleWindow />
   }
 ];
 
-const ProductCard = ({ name, title, body, href, tools, visual }: Product) => (
-  <a
-    href={href}
-    target="_blank"
-    rel="noreferrer"
-    className="card card-link flex flex-col overflow-hidden p-6 lg:p-8"
+const ToolChip = ({ name, icon }: Tool) => (
+  <li
+    className={cn(
+      'chip flex items-center gap-2 rounded-sm border border-line py-1 pr-2.5 text-label text-muted',
+      icon ? 'pl-1' : 'pl-2.5'
+    )}
   >
+    {icon ? (
+      // Every mark on a light tile in its own colours: one treatment, no inverted logos
+      <span className="flex size-5 items-center justify-center rounded-[4px] bg-paper">
+        <img src={`/icons/${icon}.svg`} alt="" className="size-3.5 object-contain" />
+      </span>
+    ) : null}
+    {name}
+  </li>
+);
+
+/* The panel runs flush to the card's sides and bottom (x.ai's cards): the window sits 32px in,
+   cut by the right and bottom edges, a glimpse of something bigger */
+const PANEL = 'lit relative -mx-6 -mb-6 mt-6 h-[240px] lg:-mx-8 lg:-mb-8 lg:h-[332px] xl:h-[368px]';
+const WINDOW = 'lit-ui absolute top-8 left-8 w-[calc(100%+8px)] min-w-[440px]';
+
+const ProductCard = ({ name, title, body, href, tools, visual, loop }: Product) => (
+  <article className="card card-link relative flex flex-col overflow-hidden p-6 lg:p-8">
     <span className="text-label font-medium text-accent">{name}</span>
-    <h3 className="mt-2 text-lead leading-tight font-medium">{title}</h3>
+    <h3 className="mt-2 text-lead leading-tight font-medium">
+      {/* The title is the link; its ::after covers the card, so the whole card is the target */}
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="after:absolute after:inset-0 after:content-['']"
+      >
+        {title}
+      </a>
+    </h3>
     <p className="mt-2 max-w-[46ch] text-body text-ink/85">{body}</p>
     <ul className="mt-4 flex flex-wrap gap-2">
       {tools.map((tool) => (
-        <li
-          key={tool.name}
-          className="chip flex items-center gap-2 rounded-sm border border-line px-2 py-1 text-label text-muted"
-        >
-          <img
-            src={`/icons/${tool.icon}.svg`}
-            alt=""
-            className={cn('h-4 object-contain', tool.wide ? 'w-10' : 'w-4', tool.ink && 'ic-ink')}
-          />
-          {tool.name}
-        </li>
+        <ToolChip key={tool.name} {...tool} />
       ))}
     </ul>
-    {/* The panel: one soft light, the window cut by its right and bottom edges */}
-    <div className="lit relative mt-6 h-[300px] overflow-hidden rounded-md xl:h-[336px]">
-      <div className="absolute top-7 left-7 w-[calc(100%-28px+40px)] min-w-[420px]">{visual}</div>
-    </div>
-  </a>
+    {loop ? (
+      <Loop label={`${name} log`} className={PANEL}>
+        <div className={WINDOW}>{visual}</div>
+      </Loop>
+    ) : (
+      <div className={PANEL}>
+        <div className={WINDOW}>{visual}</div>
+      </div>
+    )}
+  </article>
 );
 
 export const ProductsSection = () => (

@@ -294,7 +294,9 @@ function place(W, H, prm, seed) {
   }
   const gx = W / 2 + (0.5 - cx) * W * 0.2;
   if (cy < 0.5) {
-    const R = Math.min(prm.size * S * 0.7, W / 2 - m * 0.5);
+    // the floor keeps R positive while the host is still a few pixels wide (a resize mid-layout):
+    // createRadialGradient throws on a negative radius
+    const R = Math.max(S * 0.16, Math.min(prm.size * S * 0.7, W / 2 - m * 0.5));
     let top = Math.max((cy + 0.2) * H, 0.3 * H);
     top = Math.max(top, H - 1.65 * R);             // at least 0.35 R hides: a clear cut, never a near-tangent
     top = Math.min(top, H - 0.6 * R);              // at least 0.6 R shows

@@ -21,7 +21,7 @@ export const HeroSection = () => (
     />
 
     <div className="wrap flex flex-col items-center gap-6 text-center sm:gap-7">
-      <a
+      {/* <a
         href={LINKS.paymentsTopic}
         target="_blank"
         rel="noreferrer"
@@ -34,7 +34,7 @@ export const HeroSection = () => (
         Live on Hedera testnet
         <span className="text-line-strong">·</span>
         <span className="font-mono text-ui-meta">x402 v2</span>
-      </a>
+      </a> */}
 
       <h1 id={`${SECTION_IDS.top}-h`} className="text-hero">
         {TAGLINE_LINES[0]}
