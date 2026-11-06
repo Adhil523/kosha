@@ -15,6 +15,8 @@ import { z } from 'zod';
 // Core scheduled the transfer (reserve → deductor) and signed it; this script signs a
 // ScheduleSignTransaction with the demo agent's key and hands it to Core, which relays it. With
 // both keys of the 2-of-2 reserve the transfer runs at once. Stands in for HashPack in the demo.
+// The pooled reserve of compatibility payments is Core + compliance, so the compliance account
+// signs its releases instead of an agent.
 
 // The three settlement nodes Core quotes; a ScheduleSign may go to any of them
 const NODE_ACCOUNT_IDS = ['0.0.3', '0.0.4', '0.0.5'];
@@ -30,9 +32,15 @@ const envSchema = z.object({
   AGENT_NONRESIDENT_ACCOUNT_ID: accountIdSchema,
   AGENT_NONRESIDENT_PRIVATE_KEY: z.string().min(1),
   AGENT_UNKNOWN_ACCOUNT_ID: accountIdSchema,
-  AGENT_UNKNOWN_PRIVATE_KEY: z.string().min(1)
+  AGENT_UNKNOWN_PRIVATE_KEY: z.string().min(1),
+  POOL_RESERVE_ACCOUNT_ID: accountIdSchema,
+  COMPLIANCE_ACCOUNT_ID: accountIdSchema,
+  COMPLIANCE_PRIVATE_KEY: z.string().min(1)
 });
 type SignerEnv = Record<
+  | 'POOL_RESERVE_ACCOUNT_ID'
+  | 'COMPLIANCE_ACCOUNT_ID'
+  | 'COMPLIANCE_PRIVATE_KEY'
   | 'AGENT_RESIDENT_ACCOUNT_ID'
   | 'AGENT_RESIDENT_PRIVATE_KEY'
   | 'AGENT_NONRESIDENT_ACCOUNT_ID'
@@ -62,6 +70,18 @@ export const demoSigner = (
     { accountId: env.AGENT_UNKNOWN_ACCOUNT_ID, privateKey: env.AGENT_UNKNOWN_PRIVATE_KEY }
   ];
   return signers.find((signer) => signer.accountId === account) ?? null;
+};
+
+// The key that completes a release: compliance for the pooled reserve, else the agent's own
+export const releaseSigner = (
+  env: SignerEnv,
+  reserveAccountId: string,
+  agentIdentity: string | null
+): { accountId: string; privateKey: string } | null => {
+  if (reserveAccountId === env.POOL_RESERVE_ACCOUNT_ID) {
+    return { accountId: env.COMPLIANCE_ACCOUNT_ID, privateKey: env.COMPLIANCE_PRIVATE_KEY };
+  }
+  return agentIdentity ? demoSigner(env, agentIdentity) : null;
 };
 
 // Frozen with the agent as payer and signed by its key, so Core relays it unchanged
@@ -107,8 +127,8 @@ const main = async (): Promise<void> => {
 
   const agents = z.array(agentRowSchema).parse((await core('GET', '/v1/agents')).body);
   const agent = agents.find((row) => row.agentId === release.agentId);
-  const signer = agent ? demoSigner(env, agent.identity) : null;
-  if (!agent || !signer) {
+  const signer = releaseSigner(env, release.reserveAccountId, agent?.identity ?? null);
+  if (!signer) {
     throw new Error(`no demo key for the agent behind ${releaseId}; it is not a seeded agent`);
   }
 
