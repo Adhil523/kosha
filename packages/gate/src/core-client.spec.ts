@@ -49,6 +49,28 @@ describe('createCoreClient', () => {
     });
   });
 
+  it("reports a 403 with a policy code as Core's refusal", async () => {
+    const body = { error: 'policy_daily', message: 'daily cap of 5 USDC reached' };
+    const { client } = clientWith(async () => jsonResponse(403, body));
+
+    expect(await client.quote(QUOTE_REQUEST)).toEqual({
+      ok: false,
+      data: { reason: 'policy_refused', status: 403, ...body }
+    });
+  });
+
+  it.each([{ error: 'not_found' }, { message: 'no code' }, 'not json'])(
+    'keeps a 403 without a policy code as unauthorized (%j)',
+    async (body) => {
+      const { client } = clientWith(async () => jsonResponse(403, body));
+
+      expect(await client.quote(QUOTE_REQUEST)).toEqual({
+        ok: false,
+        data: { reason: 'unauthorized', status: 403 }
+      });
+    }
+  );
+
   it('reports a 5xx as core_unavailable', async () => {
     const { client } = clientWith(async () => jsonResponse(503, {}));
 
