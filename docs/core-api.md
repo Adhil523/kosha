@@ -35,6 +35,22 @@ The quote's `kosha-split` entry must pass `split-quote` `checkSplitQuote()`; Kos
 | `GET` / `PUT /v1/agents/:id/policy` | admin | `registry` `policySchema` | `registry` `policySchema` | A12 |
 | `POST /v1/terms` | receiver | `registry` `termsProposalSchema` | `registry` `termsAnswerSchema` | A21 (optional) |
 
+### Spending policies (A12)
+
+`GET` returns `404 not_found` until a policy is set. `PUT` replaces every rule and returns `404` for an unknown agent. An agent with no policy has no caps.
+
+Core applies the policy at `POST /v1/quote` and again at verify (and so at settle). The rules and codes match Kosha Pay's `checkPolicy` and run in the same order:
+
+1. `policy_allowlist`: the resource's host must be on `allowlist`. `*.example.com` matches any subdomain. An empty allowlist leaves hosts unrestricted.
+2. `policy_per_payment`: the all-in total (price plus TDS) is at most `perPaymentMicro`.
+3. `policy_daily`: what the agent has committed since midnight IST, plus this total, is at most `dailyMicro`.
+4. `policy_budget`: the same for the financial year against `fyBudgetMicro`.
+5. `policy_threshold_block`: when `thresholdAction` is `block` and the quote's reason is `threshold_crossed` or `tolerance_exceeded`. `warn` logs and quotes; `allow` quotes.
+
+"Committed" counts settled and in-flight payments plus the agent's open quotes, so two concurrent quotes can't both fit under one cap. A quote takes a per-agent lock while it checks. `acceptRulepacks` is stored for Pay; Core does not enforce it.
+
+A refused quote returns `403` with `{ error: "policy_…", message }` and stores nothing. At verify, the code goes in `extra.kosha.errorCode`; at settle, in `errorReason`.
+
 ## Console reads
 
 | Method and path | Auth | Request | Response | Task |
