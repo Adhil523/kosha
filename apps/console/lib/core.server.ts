@@ -209,6 +209,7 @@ export const openCoreStream = async (
 };
 
 export const getActiveRulePack = async (): Promise<RulePackStatus> => {
+  if (isMockMode()) return FALLBACK_RULE_PACK;
   const base = coreBase();
   if (!base) {
     return FALLBACK_RULE_PACK;
