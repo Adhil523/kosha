@@ -1,6 +1,6 @@
 # Kosha: Execution Plan
 
-Nov 6, 2026 · @Adhil
+Nov 6, 2026 · @Adhil · **v2**: updated with [findings and design updates](docs/agents/kosha-findings-and-design-updates.md) (called "findings" below), the B00 research in `docs/research/`, and a review against the Hedera skills (`hedera-dev/hedera-skills`). Work that can't be fixed in the plan (validation, business model, network impact) is in [docs/hackathon-readiness.md](docs/hackathon-readiness.md).
 
 ## Product overview
 
@@ -17,26 +17,32 @@ Nov 6, 2026 · @Adhil
 | **Kosha Pay** | Agent client library: pays Kosha-protected endpoints, carries the tax profile, enforces spending rules | Agent developers | npm `@kosha/pay` (+ Hedera Agent Kit plugin) |
 | **Kosha Console** | Web dashboard: earnings, TDS ledger, escrow, filing export, agent spend and policies | API owners, agent owners, their CA | Next.js app (`apps/console`) |
 
-**Legal basis (unsettled; confirm with a CA):** USDC is a virtual digital asset (VDA). Section 393(1) of the Income-tax Act 2025 (formerly 194S) requires 1% TDS (20% with no PAN) on VDA transfers above ₹10,000 a year, or ₹50,000 for specified persons. Kosha treats the API receiving USDC as the buyer of the VDA and therefore the deductor.
+**Legal basis (unsettled; confirm with a CA):** USDC is a virtual digital asset (VDA). Section 393(1) of the Income-tax Act 2025 (formerly 194S) requires 1% TDS (20% with no PAN) on VDA transfers. The agent hands over USDC, so it is the **seller of the VDA and the deductee**. The API receives USDC for a service, so it is the **buyer and the deductor**. The yearly threshold is keyed to the **buyer**: ₹50,000 when the API owner is a specified person, ₹10,000 otherwise (findings §2.1, §3.1).
 
 ## Design decisions that fix the drawbacks
 
-Kosha's guarantee is narrow and honest: **an API owner using Kosha never under-deducts.** Every decision below serves that, and every tax rule is configurable, because the law is unsettled.
+Kosha's guarantee is narrow and honest: **an API owner using Kosha never under-deducts on the payments Kosha can see, under the policy the owner chose.** The `strict` policy gives the strongest form of this guarantee. Every decision below serves it, and every tax rule is configurable, because the law is unsettled.
 
 | Drawback | Decision | How it's built |
 | --- | --- | --- |
-| The blockchain can't tell who is Indian | Residency comes from verified profiles, never from wallets or IP addresses | Receiver: onboarded API owner with PAN, TAN, GSTIN. Payer: credential (KYC issuer, Tax Residency Certificate, or signed declaration) referenced from its HCS-14 agent identity |
-| Unverified payers | Treat as a resident with no PAN: **20% from the first rupee** | Default rule in the tax engine; any credential lowers it to the correct rate |
-| Payments made outside Kosha break the yearly threshold | Count everything visible; let receivers switch thresholds off | Mirror Node watcher on every declared receiver wallet; payers declare all their wallets; **first-rupee mode** (over-deduction is a refundable credit, under-deduction costs interest) |
-| Who funds the 1%? | **Payer-funded by default:** the API receives its full price and the payer adds 1% on top, credited to the payer's PAN | Matches CBDT's in-kind guidance, where the seller of the VDA ensures the tax is paid. Price-inclusive mode (API receives 99%) is the alternative. The agents agree which before paying |
-| The law may be read differently | Rules live in versioned, signed **rule packs**, not in code | `rulepack-in-2026.1.json` holds thresholds, rates, who deducts, crossing behaviour. Each decision records the rule-pack version |
+| The blockchain can't tell who is Indian | Residency comes from verified profiles, never from wallets or IP addresses | Receiver: onboarded API owner with PAN (plus TAN and GSTIN for larger businesses). Payer: credential (KYC issuer, Tax Residency Certificate, or signed declaration) referenced from its HCS-14 agent identity |
+| Verification is a burden for people who owe nothing | **Step-by-step verification** (findings §4.4) | Level 0: none, works at once. Level 1: PAN name-matched (1%) or non-resident declaration (0%), prompted by `threshold.near`. Level 2: full KYC for large payers. Small API owners (specified persons) need PAN and a wallet signature only |
+| Unverified payers | **The API owner chooses the policy** | `strict`: 20% from the first rupee. `threshold_tolerant` (default): no tax while the pair stays within a tolerance (₹5,000, half the lowest threshold), then 20% until the payer reaches Level 1 |
+| Payments made outside Kosha break the yearly threshold | Count everything visible; flag, never withhold; let receivers switch thresholds off | Mirror Node watcher **flags** USDC reaching receiver wallets outside Kosha. The owner can mark one "not consideration: gift from a relative". Payers declare all their wallets. **First-rupee mode** for owners who want no risk |
+| Who bears the 1%? | **Mode C: payer-funded into the agent's own reserve** (findings §2) | The API receives exactly its net price. The TDS goes to a **reserve account owned by the agent**, with a 2-of-2 key (agent operator + Kosha). The seller funds its own tax and the buyer gets proof, which is the closest fit to CBDT's in-kind guidance. Price-inclusive mode is **dropped**: it makes the API bear the tax, which brings back tax on tax |
+| One listed price can't fit 0%, 1% and 20% buyers | **All-in price per quote** | The API sets its net price once. Core computes the all-in total for each quote after `decide()`: "₹101 total: ₹100 to the API, ₹1 TDS reserved in your name" |
+| The law may be read differently | Rules live in versioned, signed **rule packs**, not in code | `rulepacks/in-2026.2.json` holds thresholds, rates, the tax base, crossing behaviour and the unverified-payer policy. Each decision records the rule-pack version, and the pack's hash is published to HCS |
 | Threshold crossing is ambiguous (whole payment or excess) | Withhold on the **whole crossing payment** | Rule-pack flag `crossing: "full"`; switchable to `"excess"` |
-| PAN and business relationships are private | No PAN or counterparty names on-chain | Salted PAN commitments; HCS logs carry payment ID, amounts, rule version and an HMAC pair ID only; yearly totals stay in Core's database |
-| Fractions of a paisa | Compute in paise, round **up**, settle in USDC micro-units (6 decimals) | Never under-deduct by rounding; escrow accumulates and is swept monthly |
-| HTS custom fees can't be added to existing USDC | Use a native multi-party transfer | One `TransferTransaction` moves payer → API (price) and payer → escrow (TDS) atomically |
-| Facilitator is the fee payer, so a malicious client could slip in a debit from it | Verify the transfer list strictly before signing | Exactly the quoted transfers, only debits from the payer, no HBAR movement, correct token, quote ID in the memo |
+| PAN and business relationships are private | No PAN or counterparty names on-chain | Salted PAN commitments; HCS logs carry payment ID, amounts, rule version, the pair's running total and an HMAC pair ID only |
+| Fractions of a paisa | Compute in paise, round **up**, settle in USDC micro-units (6 decimals) | Never under-deduct by rounding; the reserve accumulates and is released monthly |
+| HTS custom fees can't be added to existing USDC | Use a native multi-party transfer | One `TransferTransaction` moves payer → API (price) and payer → **its own reserve** (TDS) atomically |
+| Facilitator is the fee payer, so a malicious client could slip in a debit from it | Verify the transfer list strictly before signing | Exactly the quoted transfers, only debits from the payer, the reserve leg goes to the payer's own reserve, no HBAR movement, correct token, quote ID in the memo, quoted nodes, fee cap |
 | Replay of a payment | One quote, one settlement | Quote IDs with a 120-second expiry; Hedera transaction IDs and quote IDs stored as used |
-| On-chain logs aren't filings | Generate filing data, keep logs as evidence | Quarterly CSV export in the statement's field layout; HCS sequence numbers referenced per row |
+| Standard x402 clients can't sign Kosha's split | **Two entries in `accepts[]`** | `kosha-split` (atomic, for Kosha Pay) and a plain `exact` **compatibility** entry that pays Kosha's settlement account; Core forwards the price and holds the TDS in a pooled reserve in the payer's name (brief custody, two transactions) |
+| Other facilitators and chains can't use Kosha | **Standalone tax engine** | `POST /v1/decide` returns a decision for any settlement rail, and every decision is logged to HCS, whatever chain the payment settles on |
+| "Isn't this web2?" | Make the edges verifiable on-chain (findings §6) | Rule-pack hash and running totals on HCS (recompute every decision); Gate checks on-chain that the reserve leg settled before serving data; the reserve releases only by co-signed scheduled transaction |
+| On-chain logs aren't filings | Generate filing data, keep logs as evidence | Quarterly CSV export in the statement's field layout; HCS sequence numbers referenced per row; each row states "consideration, TDS, funded by the deductee" |
+| Paying the tax in rupees | **Reimbursement**, not conversion (findings §1.2) | The deductor pays the challan in INR on the portal and records the reference in Console; then a co-signed scheduled transaction releases the reserve to them. Converting the reserve to INR would trigger another 1% TDS |
 | Payments to foreign APIs | Out of scope for TDS; flagged | Non-resident path records the payment with a "FEMA review" flag. GST under reverse charge is a stretch goal (Phase 3) |
 
 ## Architecture and payment flow
@@ -47,14 +53,16 @@ One paid request takes two HTTP round trips and one Hedera transaction; the tax 
 
 The agent only talks to the API; the API's Gate talks to Core; only Core touches Hedera as fee payer.
 
-1. The agent (Kosha Pay) calls the API with its HCS-14 ID in `X-KOSHA-AGENT`.
-2. Kosha Gate asks Core for a quote. Core loads both profiles, converts the price to ₹, reads the pair's yearly total, and runs the tax engine.
-3. Gate returns **402** with the transfer split: price to the API, TDS to escrow, with Core as fee payer.
-4. Pay checks the quote against the owner's spending rules, signs exactly those transfers, and retries with `X-PAYMENT`.
+Header and field names follow **x402 v2** (`docs/research/x402.md`): `PAYMENT-REQUIRED`, `PAYMENT-SIGNATURE`, `PAYMENT-RESPONSE`, network `hedera:testnet`.
+
+1. The agent (Kosha Pay) calls the API with its identity in `X-KOSHA-AGENT`: its HCS-14 UAID, or for a Level 0 agent its CAIP-10 account (`hedera:testnet:0.0.x`).
+2. Kosha Gate asks Core for a quote. Core loads both profiles, converts the price to ₹, reads the pair's yearly total, runs the tax engine and computes the all-in price.
+3. Gate returns **402** with a `PAYMENT-REQUIRED` header listing two options: `kosha-split` (price to the API, TDS to the agent's own reserve, Core as fee payer) and the `exact` compatibility entry.
+4. Pay checks the quote against the owner's spending rules, signs exactly those transfers, and retries with `PAYMENT-SIGNATURE`.
 5. Gate calls Core's verify, then settle. Core checks every transfer, adds its fee-payer signature, and executes one atomic `TransferTransaction`.
-6. On `SUCCESS`, Core writes the ledger, adds the payment to the pair's total, and logs a privacy-safe message to the HCS payments topic.
-7. Gate returns the data with `X-PAYMENT-RESPONSE` (transaction ID, HashScan link, tax withheld).
-8. In the background, the watcher counts USDC that reached the API outside Kosha, and the monthly sweep moves escrow under a 2-of-2 scheduled transaction.
+6. On `SUCCESS`, Core writes the ledger, adds the payment to the pair's total, and logs a privacy-safe message (with the pair's new running total) to the HCS payments topic, which only Core can write to.
+7. Gate confirms on the Mirror Node that the reserve leg settled, then returns the data with `PAYMENT-RESPONSE` (transaction ID, HashScan link, tax reserved).
+8. In the background, the watcher flags USDC that reached the API outside Kosha. Monthly, after the deductor records the INR challan, a co-signed scheduled transaction releases the reserve to them as reimbursement.
 
 ## Tech stack and repo layout
 
