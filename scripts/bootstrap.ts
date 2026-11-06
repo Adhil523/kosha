@@ -13,8 +13,10 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const DEFAULT_MIRROR_URL = 'https://testnet.mirrornode.hedera.com';
-// Token creation costs about 15 HBAR on testnet; the SDK's default cap is too low for it
-const BOOTSTRAP_MAX_FEE_HBAR = 30;
+// Token creation costs about 15 HBAR on testnet; the SDK's default cap is too low for it. Keep
+// this under 21.47 HBAR: SDK 2.90.1 checks the cap with a 32-bit toInt() of the tinybars, so a
+// larger value wraps negative and is rejected.
+const BOOTSTRAP_MAX_FEE_HBAR = 20;
 
 // Creates every testnet resource the demo needs and writes the IDs and keys into the shared env
 // file (.env, a symlink to ../kosha.env). Idempotent: anything already in the file is skipped.
@@ -29,8 +31,6 @@ const main = async () => {
   const built = coreClientFromEnv(env);
   if (!built.ok) throw new Error(`Core operator not usable: ${built.data.reason} (step H2)`);
   const { client, operatorId, operatorKey } = built.data;
-  client.setDefaultMaxTransactionFee(new Hbar(BOOTSTRAP_MAX_FEE_HBAR));
-
   const context: BootstrapContext = {
     run: clientRunner(client),
     coreId: operatorId,
@@ -41,7 +41,10 @@ const main = async () => {
   };
 
   bootstrapLog(`operator ${operatorId.toString()}, env file ${envFile.data.path}`);
+  // An open client keeps gRPC channels alive, so every path after this point must close it or
+  // a failed run hangs instead of exiting
   try {
+    client.setDefaultMaxTransactionFee(new Hbar(BOOTSTRAP_MAX_FEE_HBAR));
     const tokenId = await ensureSettlementToken(context);
     const holders = await ensureDemoAccounts(context);
     await ensureTokenHoldings(context, holders, tokenId);
