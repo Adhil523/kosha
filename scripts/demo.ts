@@ -140,8 +140,11 @@ export const buildContext = (env: DemoEnv, fetchImpl: typeof fetch = fetch): Dem
   const urls = demoUrls(env);
   const hosts = [...new Set(Object.values(urls).map((url) => new URL(url).hostname))];
   const network = `hedera:${env.HEDERA_NETWORK}` as const;
-  const identityOf = (agent: DemoAgent) =>
-    agentIdentitySchema.parse(`hedera:${env.HEDERA_NETWORK}:${agentKeys(env, agent).accountId}`);
+  // The UAID once register-agents has run (Core then lists the agent under it), else the account
+  const identityOf = (agent: DemoAgent) => {
+    const keys = agentKeys(env, agent);
+    return keys.uaid ?? agentIdentitySchema.parse(`hedera:${env.HEDERA_NETWORK}:${keys.accountId}`);
+  };
   return {
     core,
     urls,
