@@ -13,7 +13,8 @@ import {
   type LedgerPage,
   ledgerPageSchema
 } from '@kosha/shared/console-api';
-import { AGGREGATES_FIXTURE, LEDGER_PAGE_FIXTURE } from '@kosha/shared/fixtures';
+import { AGENTS_FIXTURE, AGGREGATES_FIXTURE, LEDGER_PAGE_FIXTURE } from '@kosha/shared/fixtures';
+import { type AgentRow, agentRowSchema } from '@kosha/shared/registry';
 import { z } from 'zod';
 
 // The receiver the API-owner workspace shows. The fixtures use rcv_in; live Core uses the ID
@@ -103,6 +104,14 @@ export const getAggregates = async (): Promise<CoreResult<AggregateRow[]>> => {
   const base = coreBase();
   if (!base) return notConfigured;
   return getParsed(URLS.core.aggregates(base, consoleReceiverId()), z.array(aggregateRowSchema));
+};
+
+// Every registered agent (GET /v1/agents, requested from Agent A in issue #47)
+export const getAgents = async (): Promise<CoreResult<AgentRow[]>> => {
+  if (isMockMode()) return { ok: true, status: 200, data: AGENTS_FIXTURE };
+  const base = coreBase();
+  if (!base) return notConfigured;
+  return getParsed(URLS.core.agents(base), z.array(agentRowSchema));
 };
 
 export const openCoreStream = async (

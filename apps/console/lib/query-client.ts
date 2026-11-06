@@ -16,5 +16,6 @@ export const getQueryClient = (): QueryClient => {
 export const QUERY_KEYS = {
   ledger: ['ledger'],
   aggregates: ['aggregates'],
-  overview: ['overview']
+  overview: ['overview'],
+  agents: ['agents']
 } as const;

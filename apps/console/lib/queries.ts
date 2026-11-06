@@ -1,3 +1,4 @@
+import { agentViewsSchema } from '@/lib/agents';
 import { api } from '@/lib/api';
 import { overviewSchema } from '@/lib/overview';
 import { QUERY_KEYS } from '@/lib/query-client';
@@ -27,4 +28,9 @@ export const getAggregatesQueryParams = () => ({
 export const getOverviewQueryParams = () => ({
   queryKey: QUERY_KEYS.overview,
   queryFn: () => getValidated(URLS.console.overview, overviewSchema)
+});
+
+export const getAgentsQueryParams = () => ({
+  queryKey: QUERY_KEYS.agents,
+  queryFn: () => getValidated(URLS.console.agents, agentViewsSchema)
 });
