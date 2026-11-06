@@ -1,5 +1,5 @@
 import { decide, type DecideInput } from './decide';
-import { IN_2026_1 } from './decide.fixture';
+import { IN_2026_2 } from './decide.fixture';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
@@ -28,13 +28,13 @@ const inputArb = (crossing: 'full' | 'excess') =>
     inrPerUsdMicro: fxArb,
     aggregatePaise: aggregateArb,
     mode: fc.constantFrom('threshold', 'first_rupee'),
-    pack: fc.constant({ ...IN_2026_1, crossing })
+    pack: fc.constant({ ...IN_2026_2, crossing })
   }) satisfies fc.Arbitrary<DecideInput>;
 
 const thresholdOf = (input: DecideInput): bigint =>
   input.payer.specifiedPerson
-    ? input.pack.thresholds.specifiedPersonPaise
-    : input.pack.thresholds.otherPaise;
+    ? input.pack.thresholds.specifiedBuyerPaise
+    : input.pack.thresholds.otherBuyerPaise;
 
 describe('decide: rounding never under-deducts', () => {
   it('withholds at least the exact rate × price, in USDC, whenever the whole payment is taxed', () => {
@@ -122,7 +122,7 @@ describe('decide: tiny prices', () => {
       inrPerUsdMicro: 88_400_000n,
       aggregatePaise: 0n,
       mode: 'threshold',
-      pack: IN_2026_1
+      pack: IN_2026_2
     });
 
     // 1 micro is worth 0.00884 paise → 1 paisa; 20% → 1 paisa → 114 micro-USDC

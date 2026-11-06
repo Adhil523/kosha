@@ -81,8 +81,8 @@ export const decide = (input: DecideInput): Decision => {
   const rateBps = unknown || !payer.panOnFile ? pack.rates.noPanBps : pack.rates.standardBps;
   const firstRupee = unknown || input.mode === 'first_rupee';
   const threshold = payer.specifiedPerson
-    ? pack.thresholds.specifiedPersonPaise
-    : pack.thresholds.otherPaise;
+    ? pack.thresholds.specifiedBuyerPaise
+    : pack.thresholds.otherBuyerPaise;
   const after = input.aggregatePaise + valuePaise;
 
   // "Above" the threshold: a year total exactly at it is still under.

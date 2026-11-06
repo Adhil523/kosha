@@ -1,8 +1,8 @@
-import in2026v1 from '../../../rulepacks/in-2026.1.json' with { type: 'json' };
+import in2026v2 from '../../../rulepacks/in-2026.2.json' with { type: 'json' };
 import { type RulePack, rulePackSchema } from './rule-pack';
 
 const BUILT_IN_RULE_PACKS: Readonly<Record<string, unknown>> = {
-  'in-2026.1': in2026v1
+  'in-2026.2': in2026v2
 };
 
 export type LoadRulePackResult =
@@ -20,7 +20,7 @@ export const loadRulePack = (raw: unknown): LoadRulePackResult => {
   return { ok: true, data: parsed.data };
 };
 
-// Loads a pack shipped in rulepacks/ by its id, e.g. "in-2026.1".
+// Loads a pack shipped in rulepacks/ by its id, e.g. "in-2026.2".
 export const loadBuiltInRulePack = (id: string): LoadRulePackResult => {
   const raw = BUILT_IN_RULE_PACKS[id];
   if (raw === undefined) {

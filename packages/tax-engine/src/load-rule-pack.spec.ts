@@ -2,17 +2,24 @@ import { loadBuiltInRulePack, loadRulePack } from './load-rule-pack';
 import { describe, expect, it } from 'vitest';
 
 describe('loadBuiltInRulePack', () => {
-  it('loads and validates in-2026.1', () => {
-    const result = loadBuiltInRulePack('in-2026.1');
+  it('loads and validates in-2026.2', () => {
+    const result = loadBuiltInRulePack('in-2026.2');
 
     expect(result).toMatchObject({
       ok: true,
       data: {
-        id: 'in-2026.1',
+        id: 'in-2026.2',
         rates: { standardBps: 100, noPanBps: 2000 },
-        thresholds: { specifiedPersonPaise: 5_000_000n, otherPaise: 1_000_000n },
+        supersedes: 'in-2026.1',
+        taxBase: 'price',
+        thresholds: {
+          keyedTo: 'buyer',
+          specifiedBuyerPaise: 5_000_000n,
+          otherBuyerPaise: 1_000_000n
+        },
         crossing: 'full',
-        receiverNonResident: 'no_tds_flag_fema',
+        unverifiedPayer: { defaultPolicy: 'threshold_tolerant', toleranceLimitPaise: 500_000n },
+        funding: 'payer_reserve',
         reviewedBy: null
       }
     });
@@ -28,7 +35,7 @@ describe('loadBuiltInRulePack', () => {
 
 describe('loadRulePack', () => {
   it('lists the path of every invalid field', () => {
-    const result = loadRulePack({ id: 'in-2026.1', crossing: 'partial' });
+    const result = loadRulePack({ id: 'in-2026.2', crossing: 'partial' });
 
     expect(result.ok).toBe(false);
     if (result.ok || result.data.reason !== 'invalid_rule_pack') {

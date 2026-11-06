@@ -1,59 +1,29 @@
-import { type Funding } from './rule-pack';
-
 export type FundingSplit = {
-  // credited to the API's account
+  // credited to the API's account: exactly its net price
   receiverMicro: bigint;
-  // credited to the TDS escrow account
-  escrowMicro: bigint;
-  // debited from the payer: always receiverMicro + escrowMicro
+  // credited to the payer's own 2-of-2 reserve account, held in the payer's name
+  reserveMicro: bigint;
+  // debited from the payer: always receiverMicro + reserveMicro
   payerTotalMicro: bigint;
 };
 
-export type ApplyFundingResult =
-  | { ok: true; data: FundingSplit }
-  | {
-      ok: false;
-      data: { reason: 'tds_not_below_price'; priceMicroUsdc: bigint; tdsMicroUsdc: bigint };
-    };
-
-// Splits one payment between the API and escrow.
-// - "payer": the API gets its full price; the payer pays price + TDS (credited to the payer's PAN).
-// - "price_inclusive": the API absorbs the TDS and gets price − TDS; the payer pays the price.
+// Splits one payment the way the rule pack's `funding: "payer_reserve"` (mode C) says: the API
+// gets exactly its price and the payer funds its own TDS into its own reserve. The API never
+// absorbs the tax, so the tax base stays the price and there is no tax on tax.
 export const applyFunding = ({
-  funding,
   priceMicroUsdc,
   tdsMicroUsdc
 }: {
-  funding: Funding;
   priceMicroUsdc: bigint;
   tdsMicroUsdc: bigint;
-}): ApplyFundingResult => {
+}): FundingSplit => {
   if (priceMicroUsdc < 0n || tdsMicroUsdc < 0n) {
     throw new RangeError('[apply-funding]: amounts must not be negative');
   }
 
-  if (funding === 'payer') {
-    return {
-      ok: true,
-      data: {
-        receiverMicro: priceMicroUsdc,
-        escrowMicro: tdsMicroUsdc,
-        payerTotalMicro: priceMicroUsdc + tdsMicroUsdc
-      }
-    };
-  }
-
-  // Rounding up can make the TDS on a tiny price exceed the price itself. Shrinking the TDS
-  // would under-deduct, so refuse instead; the quote can fall back to payer funding.
-  if (tdsMicroUsdc > 0n && tdsMicroUsdc >= priceMicroUsdc) {
-    return { ok: false, data: { reason: 'tds_not_below_price', priceMicroUsdc, tdsMicroUsdc } };
-  }
   return {
-    ok: true,
-    data: {
-      receiverMicro: priceMicroUsdc - tdsMicroUsdc,
-      escrowMicro: tdsMicroUsdc,
-      payerTotalMicro: priceMicroUsdc
-    }
+    receiverMicro: priceMicroUsdc,
+    reserveMicro: tdsMicroUsdc,
+    payerTotalMicro: priceMicroUsdc + tdsMicroUsdc
   };
 };

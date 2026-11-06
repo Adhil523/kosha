@@ -7,7 +7,7 @@ describe('decide', () => {
     const decision = decide(decideInput({ aggregatePaise: OTHER_THRESHOLD - 100n }));
 
     expect(decision).toEqual({
-      rulepack: 'in-2026.1',
+      rulepack: 'in-2026.2',
       applies: true,
       valuePaise: 884n,
       tdsPaise: 9n,

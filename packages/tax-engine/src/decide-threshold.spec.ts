@@ -1,7 +1,7 @@
 import { decide } from './decide';
 import {
   decideInput,
-  IN_2026_1,
+  IN_2026_2,
   OTHER_THRESHOLD,
   SPECIFIED_THRESHOLD,
   TEN_CENTS
@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 // Each 0.10 USDC payment is worth 884 paise at ₹88.40.
 const VALUE = 884n;
-const EXCESS_PACK = { ...IN_2026_1, crossing: 'excess' as const };
+const EXCESS_PACK = { ...IN_2026_2, crossing: 'excess' as const };
 
 describe('decide: thresholds (₹10,000 other, ₹50,000 specified person)', () => {
   it.each([
@@ -64,7 +64,7 @@ describe('decide: crossing rule', () => {
     ['excess', 100n, 1n],
     ['excess', 884n, 9n]
   ] as const)('%s crossing by %s paise withholds %s paise', (crossing, overBy, tdsPaise) => {
-    const pack = { ...IN_2026_1, crossing };
+    const pack = { ...IN_2026_2, crossing };
     const decision = decide(
       decideInput({ pack, aggregatePaise: OTHER_THRESHOLD - VALUE + overBy })
     );
