@@ -2,7 +2,7 @@ import { checkPolicy, type PolicyBlockReason, type PolicyWarning } from './check
 import { checkTarget, type TargetRefusal } from './fetch-target';
 import { signSplitPayment, type SplitRefusal } from './kosha-split-scheme';
 import { type PayConfig } from './pay-config';
-import { type SpendStore } from './spend-store';
+import { type SpendStore, withSpendLock } from './spend-store';
 import { decodeHeader, encodeHeader, HEADERS, SCHEMES, X402_VERSION } from '@kosha/shared/headers';
 import {
   type KoshaSplitRequirements,
@@ -38,6 +38,8 @@ export type PreparedPayment = {
   // The PAYMENT-SIGNATURE header value
   signature: string;
   totalMicro: bigint;
+  // When `totalMicro` was recorded against the caps; a release must name the same day
+  reservedAt: Date;
   warnings: PolicyWarning[];
 };
 
@@ -85,7 +87,8 @@ const readPaymentRequired = async (response: Response): Promise<PaymentRequired 
 };
 
 // Step 1 of a paid call: check the host, fetch; on a 402, take the kosha-split entry, check it
-// against the owner's policy, and sign exactly the quoted transfer. Nothing is sent yet.
+// against the owner's policy, record it against the caps, and sign exactly the quoted transfer.
+// Nothing is sent yet: a caller that won't send it must release it.
 export const preparePayment = async (
   deps: PrepareDeps,
   url: string,
@@ -118,12 +121,23 @@ export const preparePayment = async (
   const quote = parsedQuote.data;
 
   const now = deps.now();
-  const policy = checkPolicy({ policy: config.policy, url, quote, spent: await store.totals(now) });
+  // Checked and recorded as one step, so payments in flight together each see the others
+  const policy = await withSpendLock(store, async () => {
+    const checked = checkPolicy({
+      policy: config.policy,
+      url,
+      quote,
+      spent: await store.totals(now)
+    });
+    if (checked.ok) await store.record(now, checked.data.totalMicro);
+    return checked;
+  });
   if (!policy.ok) {
     return fail(policy.data.reason, policy.data.message, response);
   }
   const signed = await signSplitPayment(quote, config, now);
   if (!signed.ok) {
+    await store.release(now, policy.data.totalMicro);
     return fail(signed.data.reason, `refused to sign the quote: ${signed.data.reason}`, response);
   }
 
@@ -143,6 +157,7 @@ export const preparePayment = async (
         quote,
         signature: encodeHeader(payload),
         totalMicro: policy.data.totalMicro,
+        reservedAt: now,
         warnings: policy.data.warnings
       }
     }

@@ -32,13 +32,16 @@ const payment = (totalMicro: bigint): PreparedPayment => ({
   quote: QUOTE,
   signature: 'signed',
   totalMicro,
+  reservedAt: new Date(),
   warnings: []
 });
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
 // A KoshaPay whose prepare() quotes `totalMicro` and whose complete() settles it
-const fakePay = (totalMicro = 101_019n): KoshaPay & { complete: ReturnType<typeof vi.fn> } => {
+const fakePay = (
+  totalMicro = 101_019n
+): KoshaPay & { complete: ReturnType<typeof vi.fn>; release: ReturnType<typeof vi.fn> } => {
   const complete = vi.fn<KoshaPay['complete']>(async () => ({
     ok: true,
     data: {
@@ -56,6 +59,7 @@ const fakePay = (totalMicro = 101_019n): KoshaPay & { complete: ReturnType<typeo
   return {
     prepare: async () => ({ ok: true, data: { kind: 'payment', payment: payment(totalMicro) } }),
     complete,
+    release: vi.fn<KoshaPay['release']>(async () => {}),
     fetch: async () => json(BODY),
     register: () => Promise.reject(new Error('register is not part of this test')),
     lastReceipt: null,
@@ -142,6 +146,8 @@ describe('KoshaBudgetPolicy', () => {
     });
     expect(second.raw.error).toContain('blocked by policy: Kosha budget');
     expect(pay.complete).toHaveBeenCalledOnce();
+    // The blocked payment is never sent, so Pay's own caps get it back
+    expect(pay.release).toHaveBeenCalledOnce();
     expect(audit.seen.map((output) => output.raw.status)).toEqual(['SUCCESS', 'ERROR']);
   });
 

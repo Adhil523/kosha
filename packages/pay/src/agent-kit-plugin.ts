@@ -98,6 +98,17 @@ export class KoshaPaidFetchTool extends BaseTool<Params, Params> {
     };
   }
 
+  // A policy that blocks here throws, and the payment Pay prepared won't be sent: free its caps
+  override async postCoreActionHook(params: PostCoreActionParams<Params, Params>): Promise<void> {
+    try {
+      await super.postCoreActionHook(params);
+    } catch (error) {
+      const result: unknown = params.coreActionResult;
+      if (isQuoted(result)) await this.pay.release(result.payment);
+      throw error;
+    }
+  }
+
   override async shouldSecondaryAction(coreActionResult: CoreResult): Promise<boolean> {
     return isQuoted(coreActionResult);
   }
