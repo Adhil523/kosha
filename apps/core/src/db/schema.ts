@@ -203,6 +203,45 @@ export const aggregate = pgTable(
   (table) => [primaryKey({ columns: [table.agentID, table.receiverID, table.fy] })]
 );
 
+export const OUTSIDE_CLASSIFICATIONS = [
+  'pending',
+  'consideration',
+  'not_consideration_gift'
+] as const;
+
+// A credit to a receiver wallet from a declared payer wallet that did not go through Kosha (A19).
+// Core flags it and never withholds: until the owner classifies it, its value counts toward the
+// pair's total (as outside value), and the TDS it should have carried is recorded as a shortfall.
+export const outsidePayment = pgTable('OutsidePayment', {
+  ...base,
+  receiverID: text('receiverID')
+    .notNull()
+    .references(() => receiver.id),
+  agentID: text('agentID')
+    .notNull()
+    .references(() => agent.id),
+  fromWallet: text('fromWallet').notNull(),
+  toWallet: text('toWallet').notNull(),
+  transactionID: text('transactionID').notNull().unique(),
+  consensusAt: utc('consensusAt').notNull(),
+  amountMicro: money('amountMicro').notNull(),
+  valuePaise: money('valuePaise').notNull(),
+  shortfallPaise: money('shortfallPaise').notNull(),
+  fy: text('fy').notNull(),
+  classification: text('classification', { enum: OUTSIDE_CLASSIFICATIONS })
+    .notNull()
+    .default('pending'),
+  note: text('note'),
+  classifiedAt: utc('classifiedAt')
+});
+
+// Where the watcher got to in each receiver wallet's Mirror Node history (a consensus timestamp)
+export const watcherCursor = pgTable('WatcherCursor', {
+  accountID: text('accountID').primaryKey(),
+  cursor: text('cursor').notNull(),
+  updatedAt: base.updatedAt
+});
+
 export const HCS_MESSAGE_KINDS = [
   'pay',
   'rulepack',
