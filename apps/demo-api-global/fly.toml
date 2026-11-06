@@ -1,0 +1,27 @@
+# Fly.io config for the foreign demo API. Deploy from the repo root (README, "Deploy"):
+#   fly deploy . --config apps/demo-api-global/fly.toml --dockerfile apps/demo-api-global/Dockerfile \
+#     --ignorefile apps/demo-api-global/Dockerfile.dockerignore
+# Secrets: fly secrets set --config apps/demo-api-global/fly.toml CORE_URL=... DEMO_API_GLOBAL_KEY=... CONSOLE_URL=...
+
+app = "kosha-demo-api-global"
+# Mumbai, near the Indian API owners the demo stands for
+primary_region = "bom"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  # Keep one machine up so a judge's first call doesn't wait for a cold start
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/.well-known/kosha"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
