@@ -50,8 +50,9 @@ export const errorResponseSchema = z.object({
 });
 export type ErrorResponse = z.output<typeof errorResponseSchema>;
 
-// Standard x402 reasons (docs/research/x402.md) for codes that have a direct equivalent. The
-// facilitator puts these in invalidReason/errorReason and the Kosha code in extra/extensions.
+// Standard x402 reasons (docs/research/x402.md) for codes that have a direct equivalent. Verify
+// puts these in invalidReason and the Kosha code in extra.kosha.errorCode; a failed settle puts
+// the Kosha code itself in errorReason (docs/core-api.md).
 const HEDERA_REASON_PREFIX = 'invalid_exact_hedera_payload_';
 const X402_REASON_BY_CODE = new Map<ErrorCode, string>([
   ['not_transfer', `${HEDERA_REASON_PREFIX}contains_non_transfer_ops`],
