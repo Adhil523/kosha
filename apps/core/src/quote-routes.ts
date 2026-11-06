@@ -45,7 +45,6 @@ export type QuoteRouteDeps = {
   now?: () => Date;
 };
 
-
 export const quoteRoutes =
   (deps: QuoteRouteDeps): RegisterRoutes =>
   (app) => {
