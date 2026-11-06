@@ -6,17 +6,48 @@
   "exports": {
     "./*": "./src/*.ts"
   },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "import": {
+          "types": "./dist/kosha-pay.d.ts",
+          "default": "./dist/kosha-pay.js"
+        },
+        "require": {
+          "types": "./dist/kosha-pay.d.cts",
+          "default": "./dist/kosha-pay.cjs"
+        }
+      },
+      "./*": {
+        "import": {
+          "types": "./dist/*.d.ts",
+          "default": "./dist/*.js"
+        },
+        "require": {
+          "types": "./dist/*.d.cts",
+          "default": "./dist/*.cjs"
+        }
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
+    "build": "tsup",
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@hiero-ledger/sdk": "2.90.1",
+    "@x402/core": "2.30.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
     "@kosha/hedera": "workspace:*",
     "@kosha/shared": "workspace:*",
     "@kosha/tax-engine": "workspace:*",
-    "@x402/core": "2.30.0",
-    "zod": "4.6.7"
+    "tsup": "8.5.1"
   }
 }
