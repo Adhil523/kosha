@@ -7,6 +7,7 @@ import type { KoshaDb } from './db/client';
 import { facilitatorRoutes } from './facilitator-routes';
 import { demoFixedFx } from './fx';
 import type { OutboxDeps } from './hcs-outbox';
+import { ledgerRoutes } from './ledger-routes';
 import { quoteRoutes } from './quote-routes';
 import { receiverRoutes } from './receiver-routes';
 import { mirrorReconciler } from './reconcile';
@@ -96,6 +97,7 @@ export const wireCore = (
       network: config.network,
       nodeAccountIds: SETTLEMENT_NODE_ACCOUNT_IDS
     }),
+    ledgerRoutes({ db, adminToken: config.adminToken, network: config.network }),
     facilitatorRoutes({
       ...settlement,
       payerKey,
