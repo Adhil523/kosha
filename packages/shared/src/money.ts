@@ -15,6 +15,12 @@ export const amountSchema = z
 
 export type Amount = z.output<typeof amountSchema>;
 
+// A gain or loss, which can be negative; only for reports, never for a transfer amount
+export const signedAmountSchema = z
+  .string()
+  .regex(/^(0|-?[1-9]\d*)$/, 'expected an integer count of minor units')
+  .brand<'SignedAmount'>();
+
 export const amountToBigint = (amount: Amount): bigint => BigInt(amount);
 
 export const bigintToAmount = (value: bigint): Amount => {
