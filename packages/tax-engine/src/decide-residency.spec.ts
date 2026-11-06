@@ -34,14 +34,20 @@ describe('decide: rates', () => {
   });
 });
 
-describe('decide: unknown payer (20% from the first rupee)', () => {
+describe('decide: unverified payer, strict receiver (20% from the first rupee)', () => {
+  const UNVERIFIED = { residency: 'unknown' } as const;
+  const STRICT = { unverifiedPolicy: 'strict' } as const;
+
   it.each([
-    ['at the start of the year', { payer: { residency: 'unknown' } }],
-    ['even with a PAN claimed', { payer: { residency: 'unknown', panOnFile: true } }],
-    ['even as a specified person', { payer: { residency: 'unknown', specifiedPerson: true } }],
+    ['at the start of the year', { payer: UNVERIFIED, receiver: STRICT }],
+    ['even with a PAN claimed', { payer: { ...UNVERIFIED, panOnFile: true }, receiver: STRICT }],
+    [
+      'even for a specified-person receiver',
+      { payer: UNVERIFIED, receiver: { ...STRICT, specifiedPerson: true } }
+    ],
     [
       'ignoring an "excess" crossing rule',
-      { pack: EXCESS_PACK, aggregatePaise: 999_500n, payer: { residency: 'unknown' } }
+      { pack: EXCESS_PACK, aggregatePaise: 999_500n, payer: UNVERIFIED, receiver: STRICT }
     ]
   ] as const)('withholds 20%% of the whole payment %s', (_label, overrides) => {
     const decision = decide(decideInput(overrides));
@@ -64,7 +70,7 @@ describe('decide: non-resident payer', () => {
     ['for a first-rupee receiver', 0n, 'first_rupee']
   ] as const)('withholds nothing and flags FEMA review %s', (_label, aggregatePaise, mode) => {
     const decision = decide(
-      decideInput({ aggregatePaise, mode, payer: { residency: 'non_resident' } })
+      decideInput({ aggregatePaise, payer: { residency: 'non_resident' }, receiver: { mode } })
     );
 
     expect(decision).toMatchObject({
@@ -104,17 +110,22 @@ describe('decide: non-resident receiver (a foreign API)', () => {
 
 describe('decide: first-rupee receiver mode', () => {
   it.each([
-    ['a resident with a PAN', { panOnFile: true }, 100, 9n],
-    ['a resident without a PAN', { panOnFile: false }, 2000, 177n],
-    ['a specified person', { specifiedPerson: true }, 100, 9n]
-  ] as const)('withholds from the first payment of %s', (_label, payer, rateBps, tdsPaise) => {
-    const decision = decide(decideInput({ mode: 'first_rupee', payer }));
+    ['a resident with a PAN', { panOnFile: true }, false, 100, 9n],
+    ['a resident without a PAN', { panOnFile: false }, false, 2000, 177n],
+    ['a specified-person receiver', { panOnFile: true }, true, 100, 9n]
+  ] as const)(
+    'withholds from the first payment for %s',
+    (_label, payer, specifiedPerson, rateBps, tdsPaise) => {
+      const decision = decide(
+        decideInput({ payer, receiver: { mode: 'first_rupee', specifiedPerson } })
+      );
 
-    expect(decision).toMatchObject({ applies: true, rateBps, tdsPaise, reason: 'first_rupee' });
-  });
+      expect(decision).toMatchObject({ applies: true, rateBps, tdsPaise, reason: 'first_rupee' });
+    }
+  );
 
   it('taxes the whole value even when the pack crosses on the excess', () => {
-    const decision = decide(decideInput({ mode: 'first_rupee', pack: EXCESS_PACK }));
+    const decision = decide(decideInput({ receiver: { mode: 'first_rupee' }, pack: EXCESS_PACK }));
 
     expect(decision.tdsPaise).toBe(9n);
   });

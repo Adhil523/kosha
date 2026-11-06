@@ -17,24 +17,38 @@ const fxArb = fc.bigInt({ min: 1_000_000n, max: 1_000_000_000n });
 const aggregateArb = fc.bigInt({ min: 0n, max: 100_000_000n });
 const payerArb = fc.record({
   residency: fc.constantFrom('resident', 'unknown', 'non_resident'),
-  panOnFile: fc.boolean(),
-  specifiedPerson: fc.boolean()
+  panOnFile: fc.boolean()
+});
+const receiverArb = fc.record({
+  residency: fc.constant('resident' as const),
+  specifiedPerson: fc.boolean(),
+  mode: fc.constantFrom('threshold', 'first_rupee'),
+  unverifiedPolicy: fc.constantFrom('strict', 'threshold_tolerant')
 });
 const inputArb = (crossing: 'full' | 'excess') =>
   fc.record({
     payer: payerArb,
-    receiver: fc.constant({ residency: 'resident' as const }),
+    receiver: receiverArb,
     priceMicroUsdc: priceArb,
     inrPerUsdMicro: fxArb,
     aggregatePaise: aggregateArb,
-    mode: fc.constantFrom('threshold', 'first_rupee'),
     pack: fc.constant({ ...IN_2026_2, crossing })
   }) satisfies fc.Arbitrary<DecideInput>;
 
-const thresholdOf = (input: DecideInput): bigint =>
-  input.payer.specifiedPerson
-    ? input.pack.thresholds.specifiedBuyerPaise
-    : input.pack.thresholds.otherBuyerPaise;
+// The threshold decide() should apply: the buyer's legal one, or the unverified-payer limit.
+const thresholdOf = ({ payer, receiver, pack }: DecideInput): bigint => {
+  const legal = receiver.specifiedPerson
+    ? pack.thresholds.specifiedBuyerPaise
+    : pack.thresholds.otherBuyerPaise;
+  if (payer.residency !== 'unknown') {
+    return legal;
+  }
+  if (receiver.unverifiedPolicy === 'strict') {
+    return 0n;
+  }
+  const tolerance = pack.unverifiedPayer.toleranceLimitPaise;
+  return tolerance < legal ? tolerance : legal;
+};
 
 describe('decide: rounding never under-deducts', () => {
   it('withholds at least the exact rate × price, in USDC, whenever the whole payment is taxed', () => {
@@ -64,7 +78,8 @@ describe('decide: rounding never under-deducts', () => {
         const exactAfter = input.aggregatePaise * MICRO_RATE_SCALE + exactValue;
         const thresholdScaled = thresholdOf(input) * MICRO_RATE_SCALE;
         const exactTaxable =
-          decision.reason === 'threshold_crossed' && input.aggregatePaise < thresholdOf(input)
+          (decision.reason === 'threshold_crossed' || decision.reason === 'tolerance_exceeded') &&
+          input.aggregatePaise < thresholdOf(input)
             ? exactAfter - thresholdScaled
             : exactValue;
         const withheld = decision.tdsMicroUsdc * input.inrPerUsdMicro * 100n * BPS;
@@ -114,14 +129,18 @@ describe('decide: TDS never decreases as value rises', () => {
 });
 
 describe('decide: tiny prices', () => {
-  it('withholds from a 1-micro payment by an unknown payer', () => {
+  it('withholds from a 1-micro payment by an unverified payer to a strict receiver', () => {
     const decision = decide({
-      payer: { residency: 'unknown', panOnFile: false, specifiedPerson: false },
-      receiver: { residency: 'resident' },
+      payer: { residency: 'unknown', panOnFile: false },
+      receiver: {
+        residency: 'resident',
+        specifiedPerson: false,
+        mode: 'threshold',
+        unverifiedPolicy: 'strict'
+      },
       priceMicroUsdc: 1n,
       inrPerUsdMicro: 88_400_000n,
       aggregatePaise: 0n,
-      mode: 'threshold',
       pack: IN_2026_2
     });
 
