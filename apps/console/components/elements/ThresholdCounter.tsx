@@ -31,7 +31,7 @@ const Money = ({ paise, fxInrPerUsd }: MoneyProps) => {
   );
 };
 
-const PayerCounter = ({ row, fxInrPerUsd }: { row: AggregateRow; fxInrPerUsd: string }) => {
+export const PayerCounter = ({ row, fxInrPerUsd }: { row: AggregateRow; fxInrPerUsd: string }) => {
   const state = counterState(row);
   const value = amountToBigint(row.valuePaise) + amountToBigint(row.outsideValuePaise);
   return (

@@ -15,5 +15,6 @@ export const getQueryClient = (): QueryClient => {
 // Shared keys: the live stream writes into these caches, so they live in one place
 export const QUERY_KEYS = {
   ledger: ['ledger'],
-  aggregates: ['aggregates']
+  aggregates: ['aggregates'],
+  overview: ['overview']
 } as const;

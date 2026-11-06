@@ -35,8 +35,9 @@ export const useLiveStream = (): boolean => {
           prependLedgerRow(page, event.row)
         );
       }
-      // Every event can move a payer's yearly total; refetch the counter's data
+      // Every event can move a payer's yearly total and the overview; refetch both
       void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.aggregates });
+      void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.overview });
     };
     return () => source.close();
   }, [queryClient]);
