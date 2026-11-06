@@ -3,6 +3,7 @@ import {
   PrecheckStatusError,
   type PrivateKey,
   ReceiptStatusError,
+  Status,
   type Transaction
 } from '@hiero-ledger/sdk';
 
@@ -24,6 +25,7 @@ export type Executed =
 // scheduled release
 export type Executor = (transaction: Transaction, signers?: PrivateKey[]) => Promise<Executed>;
 
+// The network may or may not have run the transaction; callers ask the Mirror Node, never resubmit
 export const UNKNOWN_EXECUTION_STATUS = 'EXECUTION_ERROR';
 
 // Executes with the client's operator as payer and waits for the receipt
@@ -42,7 +44,9 @@ export const clientExecutor =
           data: { status: error.status.toString(), receipt: error.transactionReceipt }
         };
       }
-      if (error instanceof PrecheckStatusError) {
+      // The SDK resends the same transaction ID to another node when one is unreachable, so a
+      // duplicate may mean the first submission reached consensus: the outcome is unknown
+      if (error instanceof PrecheckStatusError && error.status !== Status.DuplicateTransaction) {
         return { ok: false, data: { status: error.status.toString(), receipt: null } };
       }
       return { ok: false, data: { status: UNKNOWN_EXECUTION_STATUS, receipt: null } };
