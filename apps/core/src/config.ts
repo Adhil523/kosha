@@ -26,6 +26,9 @@ const envSchema = z.object({
   MIRROR_URL: z.url(),
   SETTLEMENT_TOKEN_ID: tokenIdSchema,
   HCS_PAYMENTS_TOPIC: topicIdSchema,
+  // Compatibility mode (A23): payTo of the exact entry (Core's key), and the 2-of-2 pooled TDS
+  COMPAT_SETTLEMENT_ACCOUNT_ID: accountIdSchema,
+  POOL_RESERVE_ACCOUNT_ID: accountIdSchema,
   MAX_TX_FEE_HBAR: z.string().regex(DECIMAL),
   FX_DEMO_INR_PER_USD: z.string().regex(DECIMAL),
   PAIR_HMAC_SECRET: secret,
@@ -45,6 +48,8 @@ export type CoreConfig = {
   mirrorUrl: string;
   settlementTokenId: z.output<typeof tokenIdSchema>;
   paymentsTopicId: z.output<typeof topicIdSchema>;
+  compatSettlementAccountId: z.output<typeof accountIdSchema>;
+  poolReserveAccountId: z.output<typeof accountIdSchema>;
   maxTxFeeHbar: string;
   fxInrPerUsd: string;
   pairHmacSecret: string;
@@ -91,6 +96,8 @@ export const loadConfig = (env: NodeJS.ProcessEnv): LoadedConfig => {
       mirrorUrl: values.MIRROR_URL,
       settlementTokenId: values.SETTLEMENT_TOKEN_ID,
       paymentsTopicId: values.HCS_PAYMENTS_TOPIC,
+      compatSettlementAccountId: values.COMPAT_SETTLEMENT_ACCOUNT_ID,
+      poolReserveAccountId: values.POOL_RESERVE_ACCOUNT_ID,
       maxTxFeeHbar: values.MAX_TX_FEE_HBAR,
       fxInrPerUsd: values.FX_DEMO_INR_PER_USD,
       pairHmacSecret: values.PAIR_HMAC_SECRET,
