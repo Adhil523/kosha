@@ -25,6 +25,8 @@ export type SettledPayment = {
   payer: AccountId;
   transactionId: string;
   paymentId: string;
+  // The pair's total for the year right after this payment, read under the pair's lock
+  aggregatePaise: bigint;
 };
 export type SettleFailure = PaymentFailure & { transactionId?: string; status?: string };
 export type SettleResult = { ok: true; data: SettledPayment } | { ok: false; data: SettleFailure };
@@ -90,5 +92,14 @@ export const settlePayment = async (
   const recorded = await recordSettlement(deps.db, deps.ledger, row, transactionId, outcome);
   if (outcome === 'failed') return fail('settlement_failed', status);
   if (outcome === 'pending') return fail('settlement_pending', status);
-  return { ok: true, data: { quote: row, payer, transactionId, paymentId: recorded.paymentId } };
+  return {
+    ok: true,
+    data: {
+      quote: row,
+      payer,
+      transactionId,
+      paymentId: recorded.paymentId,
+      aggregatePaise: recorded.aggregatePaise
+    }
+  };
 };

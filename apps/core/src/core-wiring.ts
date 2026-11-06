@@ -4,14 +4,18 @@ import type { RegisterRoutes } from './app';
 import { createChallengeStore } from './challenges';
 import { type CoreConfig, SETTLEMENT_NODE_ACCOUNT_IDS } from './config';
 import type { KoshaDb } from './db/client';
+import { createEventBus } from './event-bus';
 import { facilitatorRoutes } from './facilitator-routes';
 import { demoFixedFx } from './fx';
 import type { OutboxDeps } from './hcs-outbox';
+import { ledgerRoutes } from './ledger-routes';
 import { policyRoutes } from './policy-routes';
 import { quoteRoutes } from './quote-routes';
 import { receiverRoutes } from './receiver-routes';
 import { mirrorReconciler } from './reconcile';
 import { createPayerResolver } from './resolve-payer';
+import { announceSettlement } from './settlement-events';
+import { streamRoutes } from './stream-routes';
 import { supportedRoutes } from './supported-routes';
 import type { Client, PrivateKey, TransferTransaction } from '@hiero-ledger/sdk';
 import { parsePrivateKey } from '@kosha/hedera/client';
@@ -63,6 +67,9 @@ export const wireCore = (
     return execute(transaction);
   };
 
+  // Settlements publish here; each open /v1/stream subscribes to its receiver
+  const bus = createEventBus();
+
   const settlement = {
     db,
     feePayer: config.coreAccountId,
@@ -98,6 +105,13 @@ export const wireCore = (
       network: config.network,
       nodeAccountIds: SETTLEMENT_NODE_ACCOUNT_IDS
     }),
+    ledgerRoutes({
+      db,
+      adminToken: config.adminToken,
+      network: config.network,
+      pack: rulePack.pack
+    }),
+    streamRoutes({ db, adminToken: config.adminToken, bus }),
     facilitatorRoutes({
       ...settlement,
       payerKey,
@@ -108,6 +122,8 @@ export const wireCore = (
         paymentsTopicId: config.paymentsTopicId
       },
       execute: executeSettlement,
+      announce: (settled) =>
+        announceSettlement({ db, bus, pack: rulePack.pack, network: config.network }, settled),
       reconcile: mirrorReconciler(mirror, RECONCILE)
     })
   ];

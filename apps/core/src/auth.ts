@@ -56,3 +56,30 @@ export const authenticateReceiver = async (
     .where(eq(receiver.apiKeyHash, hashApiKey(apiKey)));
   return row ? { ok: true, data: row } : { ok: false, data: UNAUTHORIZED };
 };
+
+// Who may read a receiver's ledger: the admin (any receiver, `receiverId: null`) or the receiver
+// itself (only its own rows)
+export type ReaderScope =
+  { ok: true; data: { receiverId: string | null } } | { ok: false; data: ErrorResponse };
+
+export const authenticateReader = async (
+  db: KoshaDb,
+  adminToken: string,
+  request: Pick<FastifyRequest, 'headers'>
+): Promise<ReaderScope> => {
+  const token = bearerToken(request);
+  if (token && sameSecret(token, adminToken)) return { ok: true, data: { receiverId: null } };
+  const receiverAuth = await authenticateReceiver(db, request);
+  return receiverAuth.ok ? { ok: true, data: { receiverId: receiverAuth.data.id } } : receiverAuth;
+};
+
+// The receiver a read is for: a receiver key reads only its own; the admin names one, or none.
+// Null means the scope and the request disagree.
+export const scopedReceiver = (
+  scope: { receiverId: string | null },
+  requested: string | undefined
+): { receiverId: string | undefined } | null => {
+  if (scope.receiverId === null) return { receiverId: requested };
+  if (requested && requested !== scope.receiverId) return null;
+  return { receiverId: scope.receiverId };
+};
