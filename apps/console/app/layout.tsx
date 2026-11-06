@@ -1,6 +1,7 @@
 import './globals.css';
 import { AppFooter } from '@/components/elements/AppFooter';
 import { QueryProvider } from '@/components/elements/QueryProvider';
+import { Toaster } from '@/components/ui/sonner';
 import { cn } from '@/lib/utils';
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
@@ -19,6 +20,7 @@ const RootLayout = ({ children }: LayoutProps<'/'>) => (
     <body className="flex min-h-full flex-col">
       <QueryProvider>{children}</QueryProvider>
       <AppFooter />
+      <Toaster />
     </body>
   </html>
 );

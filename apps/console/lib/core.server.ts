@@ -13,12 +13,19 @@ import {
   type LedgerPage,
   ledgerPageSchema
 } from '@kosha/shared/console-api';
-import { AGGREGATES_FIXTURE, LEDGER_PAGE_FIXTURE } from '@kosha/shared/fixtures';
+import {
+  AGENTS_FIXTURE,
+  AGGREGATES_FIXTURE,
+  LEDGER_PAGE_FIXTURE,
+  POLICY_FIXTURE
+} from '@kosha/shared/fixtures';
+import { type AgentRow, agentRowSchema, type Policy, policySchema } from '@kosha/shared/registry';
 import { z } from 'zod';
 
 // The receiver the API-owner workspace shows. The fixtures use rcv_in; live Core uses the ID
 // that seed gives receiver-in.
 const DEFAULT_RECEIVER_ID = 'rcv_in';
+const NOT_FOUND = 404;
 const BAD_GATEWAY = 502;
 const NOT_CONFIGURED = 503;
 const LEDGER_PAGE_LIMIT = '200';
@@ -62,16 +69,17 @@ export const getLedger = async (): Promise<CoreResult<LedgerPage>> => {
   return getParsed(URLS.core.ledger(base, query), ledgerPageSchema);
 };
 
-// This month's payments, newest first, following Core's cursor
+// Payments since `from` for one receiver or one agent, newest first, following Core's cursor
 const getLedgerSince = async (
   base: string,
-  from: Date
+  from: Date,
+  scope: { receiverId: string } | { agentId: string }
 ): Promise<CoreResult<LedgerPage['rows']>> => {
   const rows: LedgerPage['rows'] = [];
   let cursor: string | null = null;
   for (let page = 0; page < MAX_LEDGER_PAGES; page += 1) {
     const query: Record<string, string> = {
-      receiverId: consoleReceiverId(),
+      ...scope,
       from: from.toISOString(),
       limit: LEDGER_PAGE_LIMIT,
       ...(cursor ? { cursor } : {})
@@ -94,7 +102,7 @@ export const getOverview = async (now: Date): Promise<CoreResult<Overview>> => {
   }
   const base = coreBase();
   if (!base) return notConfigured;
-  const rows = await getLedgerSince(base, istMonthStart(now));
+  const rows = await getLedgerSince(base, istMonthStart(now), { receiverId: consoleReceiverId() });
   return rows.ok ? { ok: true, status: 200, data: overviewStats(rows.data, now) } : rows;
 };
 
@@ -103,6 +111,62 @@ export const getAggregates = async (): Promise<CoreResult<AggregateRow[]>> => {
   const base = coreBase();
   if (!base) return notConfigured;
   return getParsed(URLS.core.aggregates(base, consoleReceiverId()), z.array(aggregateRowSchema));
+};
+
+// Every registered agent (GET /v1/agents, requested from Agent A in issue #47)
+export const getAgents = async (): Promise<CoreResult<AgentRow[]>> => {
+  if (isMockMode()) return { ok: true, status: 200, data: AGENTS_FIXTURE };
+  const base = coreBase();
+  if (!base) return notConfigured;
+  return getParsed(URLS.core.agents(base), z.array(agentRowSchema));
+};
+
+// One agent's payments since `from`. Mock mode: the sample payments, measured from the newest.
+export const getAgentLedger = async (
+  agentId: string,
+  from: Date
+): Promise<CoreResult<LedgerPage['rows']>> => {
+  if (isMockMode()) {
+    const rows = LEDGER_PAGE_FIXTURE.rows.filter((row) => row.agentId === agentId);
+    return { ok: true, status: 200, data: rows };
+  }
+  const base = coreBase();
+  if (!base) return notConfigured;
+  return getLedgerSince(base, from, { agentId });
+};
+
+// The agent's spending policy; null when none is set (Core answers 404, and there are no caps)
+// Mock mode keeps edits in memory, so the editor round-trips until the server restarts
+const mockPolicies = new Map<string, Policy>();
+
+export const getPolicy = async (agentId: string): Promise<CoreResult<Policy | null>> => {
+  if (isMockMode())
+    return { ok: true, status: 200, data: mockPolicies.get(agentId) ?? POLICY_FIXTURE };
+  const base = coreBase();
+  if (!base) return notConfigured;
+  const policy = await getParsed(URLS.core.agentPolicy(base, agentId), policySchema);
+  if (!policy.ok && policy.status === NOT_FOUND) return { ok: true, status: 200, data: null };
+  return policy;
+};
+
+// Replaces every rule of the agent's policy (PUT /v1/agents/:id/policy)
+export const putPolicy = async (agentId: string, policy: Policy): Promise<CoreResult<Policy>> => {
+  if (isMockMode()) {
+    mockPolicies.set(agentId, policy);
+    return { ok: true, status: 200, data: policy };
+  }
+  const base = coreBase();
+  if (!base) return notConfigured;
+  const response = await api.put<unknown>(
+    URLS.core.agentPolicy(base, agentId),
+    policy,
+    coreOptions()
+  );
+  if (!response.ok) return response;
+  const parsed = policySchema.safeParse(response.data);
+  if (parsed.success) return { ok: true, status: response.status, data: parsed.data };
+  console.error(`[core]: PUT policy broke its schema: ${parsed.error.message}`);
+  return { ok: false, status: BAD_GATEWAY, data: { message: 'Core answered in an unknown shape' } };
 };
 
 export const openCoreStream = async (

@@ -11,16 +11,27 @@ export const URLS = {
     ledger: (base: string, query: Record<string, string>) => coreUrl(base, '/v1/ledger', query),
     aggregates: (base: string, receiverId: string) =>
       coreUrl(base, '/v1/aggregates', { receiverId }),
-    stream: (base: string, receiverId: string) => coreUrl(base, '/v1/stream', { receiverId })
+    stream: (base: string, receiverId: string) => coreUrl(base, '/v1/stream', { receiverId }),
+    agents: (base: string) => coreUrl(base, '/v1/agents'),
+    agentPolicy: (base: string, agentId: string) =>
+      coreUrl(base, `/v1/agents/${encodeURIComponent(agentId)}/policy`)
+  },
+  mirror: {
+    accountTokens: (base: string, accountId: string, tokenId: string) =>
+      coreUrl(base, `/api/v1/accounts/${accountId}/tokens`, { 'token.id': tokenId })
   },
   // Browser-facing: the route handlers that call Core with the admin token
   console: {
     ledger: '/api/ledger',
     aggregates: '/api/aggregates',
     overview: '/api/overview',
-    stream: '/api/stream'
+    stream: '/api/stream',
+    agents: '/api/agents',
+    agentSpend: (agentId: string) => `/api/agents/${encodeURIComponent(agentId)}/spend`,
+    agentPolicy: (agentId: string) => `/api/agents/${encodeURIComponent(agentId)}/policy`
   },
   hashscan: {
-    transaction: (txId: string) => `https://hashscan.io/testnet/transaction/${txId}`
+    transaction: (txId: string) => `https://hashscan.io/testnet/transaction/${txId}`,
+    account: (accountId: string) => `https://hashscan.io/testnet/account/${accountId}`
   }
 } as const;

@@ -14,5 +14,11 @@ export const TEST_IDS = {
   thresholdCounter: (agentId: string) => `threshold-counter-${agentId}`,
   thresholdStatus: (agentId: string) => `threshold-status-${agentId}`,
   overviewStat: (id: string) => `overview-stat-${id}`,
-  counterparty: (agentId: string) => `counterparty-${agentId}`
+  counterparty: (agentId: string) => `counterparty-${agentId}`,
+  agentCard: (agentId: string) => `agent-card-${agentId}`,
+  verifyPrompt: (agentId: string) => `verify-prompt-${agentId}`,
+  agentTab: (agentId: string) => `agent-tab-${agentId}`,
+  spendStat: (id: string) => `spend-stat-${id}`,
+  policyField: (field: string) => `policy-field-${field}`,
+  policySave: 'policy-save'
 } as const;
