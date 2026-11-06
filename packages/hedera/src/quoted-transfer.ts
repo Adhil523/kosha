@@ -1,0 +1,70 @@
+import {
+  AccountId,
+  Hbar,
+  Timestamp,
+  TokenId,
+  TransactionId,
+  TransferTransaction
+} from '@hiero-ledger/sdk';
+import type { AccountId as AccountIdString } from '@kosha/shared/ids';
+import { amountToBigint } from '@kosha/shared/money';
+import { checkSplitQuote, type SplitQuoteProblem } from '@kosha/shared/split-quote';
+import type { KoshaSplitRequirements } from '@kosha/shared/x402-payment';
+
+const HBAR_AMOUNT_PATTERN = /^\d+(\.\d{1,8})?$/;
+
+export type QuotedTransferOptions = {
+  // MAX_TX_FEE_HBAR: the most Core, as fee payer, will pay for this transaction
+  maxTransactionFeeHbar: string;
+  // Tests pin this; in use it is the moment the payer signs
+  validStart?: Date;
+};
+
+export type QuotedTransferProblem = SplitQuoteProblem | 'payer_is_recipient' | 'invalid_fee_cap';
+
+export type QuotedTransfer =
+  { ok: true; data: TransferTransaction } | { ok: false; data: { reason: QuotedTransferProblem } };
+
+// Builds, and freezes, the one transaction a kosha-split quote describes: the payer is debited the
+// total and each leg is credited, Core is the fee payer (its account is in the transaction ID),
+// and the body is frozen for every quoted node. Kosha Pay signs exactly this; the verifier checks
+// a signed transaction against the same quote.
+export const buildQuotedTransfer = (
+  requirements: KoshaSplitRequirements,
+  payerAccountId: AccountIdString,
+  { maxTransactionFeeHbar, validStart = new Date() }: QuotedTransferOptions
+): QuotedTransfer => {
+  const split = checkSplitQuote(requirements);
+  if (!split.ok) return split;
+
+  const { memo, nodeAccountIds, transfers } = requirements.extra.kosha;
+  if (transfers.some((leg) => leg.account === payerAccountId)) {
+    return { ok: false, data: { reason: 'payer_is_recipient' } };
+  }
+  if (!HBAR_AMOUNT_PATTERN.test(maxTransactionFeeHbar) || Number(maxTransactionFeeHbar) <= 0) {
+    return { ok: false, data: { reason: 'invalid_fee_cap' } };
+  }
+
+  const token = TokenId.fromString(requirements.asset);
+  const transaction = new TransferTransaction()
+    .setTransactionId(
+      TransactionId.withValidStart(
+        AccountId.fromString(requirements.extra.feePayer),
+        Timestamp.fromDate(validStart)
+      )
+    )
+    .setNodeAccountIds(nodeAccountIds.map((node) => AccountId.fromString(node)))
+    .setTransactionMemo(memo)
+    .setMaxTransactionFee(new Hbar(maxTransactionFeeHbar))
+    .addTokenTransfer(token, AccountId.fromString(payerAccountId), -split.data.totalMicro);
+
+  for (const leg of transfers) {
+    transaction.addTokenTransfer(
+      token,
+      AccountId.fromString(leg.account),
+      amountToBigint(leg.amount)
+    );
+  }
+
+  return { ok: true, data: transaction.freeze() };
+};
