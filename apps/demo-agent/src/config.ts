@@ -37,9 +37,12 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
   HEDERA_NETWORK: hederaNetworkSchema,
+  // Public: the only facilitator Pay trusts
   CORE_ACCOUNT_ID: accountIdSchema,
-  // Signs the audit hook's HCS messages: every Kosha topic's submit key is Core's
-  CORE_PRIVATE_KEY: z.string().min(1),
+  // Signs and pays for the audit hook's HCS messages: its key is the audit topic's submit key, so
+  // the agent never holds Core's key (pnpm bootstrap creates it)
+  AUDIT_ACCOUNT_ID: accountIdSchema,
+  AUDIT_PRIVATE_KEY: z.string().min(1),
   HCS_AUDIT_TOPIC: topicIdSchema,
   SETTLEMENT_TOKEN_ID: tokenIdSchema,
   MAX_TX_FEE_HBAR: z.string().min(1),

@@ -8,7 +8,8 @@ const ENV = {
   ANTHROPIC_API_KEY: 'sk-ant-test',
   HEDERA_NETWORK: 'testnet',
   CORE_ACCOUNT_ID: '0.0.4000',
-  CORE_PRIVATE_KEY: PrivateKey.generateED25519().toStringDer(),
+  AUDIT_ACCOUNT_ID: '0.0.4900',
+  AUDIT_PRIVATE_KEY: PrivateKey.generateED25519().toStringDer(),
   HCS_AUDIT_TOPIC: '0.0.7003',
   SETTLEMENT_TOKEN_ID: '0.0.429274',
   MAX_TX_FEE_HBAR: '2',
@@ -19,11 +20,11 @@ const ENV = {
 
 describe('readAgentEnv', () => {
   it("needs the chosen provider's key, and names keys without their values", () => {
-    const result = readAgentEnv({ ...ENV, ANTHROPIC_API_KEY: '', CORE_PRIVATE_KEY: ' ' });
+    const result = readAgentEnv({ ...ENV, ANTHROPIC_API_KEY: '', AUDIT_PRIVATE_KEY: ' ' });
 
     expect(result).toEqual({
       ok: false,
-      data: { keys: expect.arrayContaining(['ANTHROPIC_API_KEY', 'CORE_PRIVATE_KEY']) }
+      data: { keys: expect.arrayContaining(['ANTHROPIC_API_KEY', 'AUDIT_PRIVATE_KEY']) }
     });
     expect(JSON.stringify(result)).not.toContain(ENV.AGENT_RESIDENT_PRIVATE_KEY);
     expect(readAgentEnv({ ...ENV, LLM_PROVIDER: 'openai' })).toMatchObject({

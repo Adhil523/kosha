@@ -52,8 +52,8 @@ const main = async (): Promise<void> => {
   const pay = createKoshaPay(payOptions(env));
   // The kit's client: read-only queries for the agent's own account
   const client = operatorClient(env, env.AGENT_RESIDENT_ACCOUNT_ID, env.AGENT_RESIDENT_PRIVATE_KEY);
-  // The audit topic's submit key is Core's, so Core signs (and pays for) the audit messages
-  const auditClient = operatorClient(env, env.CORE_ACCOUNT_ID, env.CORE_PRIVATE_KEY);
+  // The audit account's key is the audit topic's submit key; it signs and pays for the messages
+  const auditClient = operatorClient(env, env.AUDIT_ACCOUNT_ID, env.AUDIT_PRIVATE_KEY);
 
   const toolkit = new HederaLangchainToolkit({
     client,
