@@ -24,6 +24,15 @@ Errors are `errorResponseSchema` (`{ error: ErrorCode }`, from `error-codes`). T
 
 The quote's `kosha-split` entry must pass `split-quote` `checkSplitQuote()`; Kosha Pay runs the same check before signing.
 
+Besides the transaction checks, verify and settle refuse a payment when:
+- the echoed `accepted` entry's `amount`, `payTo` or `asset` differs from what Core issued for that quote (`amount_mismatch`). Gate prices the route from `accepted.amount`, so this stops a quote for a cheaper route paying for a dearer one.
+- the transaction is past its valid duration, or its valid start is still in the future (`valid_start_out_of_window`). This is checked before the quote is claimed, so the payer can sign again.
+- the payer's balance of the settlement token, read from the Mirror Node, is below the debit, or the payer isn't associated with the token (`insufficient_funds`; x402 reason `invalid_exact_hedera_payload_preflight_failed`). Core pays the network fee even for a failed transfer.
+
+**Retried settle.** A settle sent again with the same signed transaction, for example after Gate timed out while the transfer landed, gets the earlier result instead of `replay`. That is the same success body, or `settlement_pending` or `settlement_failed`. The payer's signature is checked again, because transaction IDs are public. Any other transaction on a used quote is still `replay`. A resent success is not announced on the live stream a second time.
+
+Clients reading a 402 that may also offer entries Kosha doesn't model (another network, or a scheme like `upto`) should parse it with `x402-payment` `offeredPaymentRequiredSchema`. That schema drops those entries instead of failing.
+
 ### Compatibility mode (A23)
 
 Any x402 v2 client can pay a Kosha endpoint through the plain `exact` entry. Kosha Pay keeps the atomic `kosha-split` path.
@@ -216,9 +225,9 @@ The TDS Kosha withholds sits in each payer's 2-of-2 reserve (mode C). The deduct
 
 Then, for each release, Core creates a `ScheduleCreateTransaction` of a `TransferTransaction` reserve → deductor wallet, memo `kosha-release:<month>:<agentId>`, `waitForExpiry(false)`, Core as payer and admin key. Core's signature on the create is its half of the reserve's key list. A refused create leaves the release `pending`; the next `GET /v1/releases` retries it, and the stored expiry keeps the retry identical, so `IDENTICAL_SCHEDULE_ALREADY_CREATED` hands back the existing ID. A month with no TDS, or a receiver without a wallet, returns `400`. In the MVP the INR payment itself is mocked: any reference is accepted.
 
-**`GET /v1/releases`** refreshes before it answers: pending releases are scheduled, and each scheduled one is checked on the Mirror Node (`executed`, `deleted`, or `expired` once `expiresAt` has passed unsigned).
+**`GET /v1/releases`** refreshes before it answers: pending releases are scheduled, and each scheduled one is checked on the Mirror Node (`executed`, `failed`, `deleted`, or `expired` once `expiresAt` has passed unsigned). A schedule counts as executed even when the transfer inside it fails, for example when the deductor's wallet dropped the token. So Core reads that transfer's result, and a failed one leaves the release `failed`, with the TDS still in the reserve.
 
-**`POST /v1/releases/:id/cosign`** takes the agent operator's half: a `ScheduleSignTransaction` for the release's schedule, frozen with the agent's account as payer and signed by its key, serialized with `toBytes()` and sent as base64 in `transaction`. Core checks that it is a `ScheduleSignTransaction` for that schedule (`400` otherwise), that the release is `scheduled` (`409` otherwise), relays it as it is, and records the payer account in `cosignedBy`. A network refusal returns `502` with the status. With both signatures the transfer runs in that same transaction; the Mirror Node shows it a few seconds later, so the response may still say `scheduled` and the next read says `executed`. `pnpm cosign-release --release <rel_…>` does this with a seeded agent's key, standing in for HashPack, and prints the HashScan schedule link. Core never holds an agent key.
+**`POST /v1/releases/:id/cosign`** takes the agent operator's half: a `ScheduleSignTransaction` for the release's schedule, frozen with the agent's account as payer and signed by its key, serialized with `toBytes()` and sent as base64 in `transaction`. Core checks that it is a `ScheduleSignTransaction` for that schedule (`400` otherwise), that the release is `scheduled` (`409` otherwise), relays it as it is, and records the payer account in `cosignedBy`. A network refusal returns `502` with the status. With both signatures the transfer runs in that same transaction; the Mirror Node shows it a few seconds later, so the response may still say `scheduled` and the next read says `executed`. `pnpm cosign-release --release <rel_…>` does this with a seeded agent's key, standing in for HashPack, and prints the HashScan schedule link. A release from the pooled compatibility reserve (`POOL_RESERVE_ACCOUNT_ID`, Core + compliance) is signed with the compliance key instead. Core never holds an agent key.
 
 **Job.** `monthly-close` (`node-cron`, 01:00 UTC on the 1st, 06:30 IST, once the IST month has ended) logs each receiver that withheld TDS in the month just ended, so its challan is due, and settles the fate of earlier releases (retries pending schedules, refreshes scheduled ones).
 
@@ -249,7 +258,7 @@ Core runs on Fly.io from `apps/core/Dockerfile` and `apps/core/fly.toml` (Mumbai
 
 **One machine, always on.** Core must run as exactly one instance:
 - the live-event bus is in process;
-- the HCS outbox and the compatibility forwarder loops run inside it;
+- the HCS outbox and the compatibility forwarder loops run inside it. The outbox keeps each topic in order, assigns each message's transaction ID before submitting it, and after an unknown outcome asks the Mirror Node about that ID before posting again, so no message is posted twice. A message too large for one 1,024-byte chunk is set aside (`abandonedAt`) instead of blocking the queue;
 - compat funds wait in Kosha's settlement account until a forward goes out.
 
 So `fly.toml` keeps one machine up and never stops it.
