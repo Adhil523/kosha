@@ -120,6 +120,96 @@ government requires: paying the tax in rupees.
 
 Kosha uses no smart contracts, only native HTS, HCS and scheduled transactions.
 
+## Run it locally
+
+You need Node.js 24, pnpm 10, Docker (for Postgres) and a Hedera testnet account with some HBAR
+from [portal.hedera.com](https://portal.hedera.com). Kosha only runs on testnet.
+
+1. **Install.**
+
+   ```bash
+   pnpm install
+   cp .env.example .env
+   ```
+
+2. **Add your operator account.** In `.env`, set `CORE_ACCOUNT_ID` and `CORE_PRIVATE_KEY`. This
+   account becomes Kosha Core: the fee payer, and the treasury of the test token.
+
+3. **Start Postgres** and point `DATABASE_URL` in `.env` at it:
+
+   ```bash
+   docker run -d --name kosha-pg -e POSTGRES_PASSWORD=kosha -p 5432:5432 postgres:16
+   docker exec kosha-pg createdb -U postgres kosha
+   # .env: DATABASE_URL=postgres://postgres:kosha@localhost:5432/kosha
+   ```
+
+4. **Create the testnet resources.** `pnpm bootstrap` creates a 6-decimal test USDC (`tUSDC`), the
+   demo API owners and agents, a 2-of-2 reserve for each agent, and the three HCS topics (each with
+   Core as submit key), and generates the secrets. It writes everything into `.env` and is safe to
+   run again. `pnpm check-env` lists anything still empty.
+
+   ```bash
+   pnpm bootstrap
+   ```
+
+5. **Start Core** (port 4000), then register the demo profiles through its admin API:
+
+   ```bash
+   pnpm --filter @kosha/core db:migrate
+   pnpm --filter @kosha/core dev
+   pnpm seed --profiles        # in another terminal
+   ```
+
+6. **Start the Indian demo API** (port 4101), a mock GSTIN lookup at 0.10 USDC a call:
+
+   ```bash
+   pnpm --filter @kosha/demo-api-in dev
+   ```
+
+7. **Pay once.** An agent pays the API through Kosha Pay and prints the receipt and HashScan link:
+
+   ```bash
+   pnpm pay-once
+   ```
+
+   Below the ₹10,000 threshold the payment has one leg and no TDS. To see the split, cross the
+   threshold for the pair first with one large payment, then pay once more:
+
+   ```bash
+   pnpm smoke-settle --price 120
+   pnpm pay-once
+   ```
+
+8. **Open the Console** at <http://localhost:3000>. Pick a workspace on the demo sign-in screen.
+   Set `KOSHA_MOCK=1` to browse it on sample data without Core.
+
+   ```bash
+   pnpm --filter @kosha/console dev
+   ```
+
+### The full demo
+
+`pnpm demo` will run the whole story and assert each result (in progress):
+
+1. An agent pays the Indian API under the threshold: price only, no TDS.
+2. More calls cross ₹10,000: the Console counter turns amber, then "1% reserved".
+3. An unverified agent pays within the API owner's tolerance with no tax, then crosses it and pays
+   20% until it presents a PAN credential, after which the next quote is 1%.
+4. A non-resident agent pays a foreign API: no TDS, flagged for FEMA review.
+5. An agent hits its daily cap, and the Agent Kit budget policy blocks the call.
+6. A stock x402 client pays through compatibility mode.
+7. An outside transfer is flagged and marked as a gift.
+8. Download the TDS file, record a mock challan, and co-sign the reserve release.
+
+### Testnet evidence
+
+| What                                                | Link                                                                                                           |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| A payment under the threshold (one leg, no TDS)     | [0.0.11341449@1793987958.456000000](https://hashscan.io/testnet/transaction/0.0.11341449-1793987958-456000000) |
+| A payment with 1% TDS reserved (two legs)           | [0.0.11341449@1793987971.680000000](https://hashscan.io/testnet/transaction/0.0.11341449-1793987971-680000000) |
+| A reserve release (co-signed scheduled transaction) | Added once the monthly close is built                                                                          |
+| Every account and topic                             | [docs/testnet-accounts.md](docs/testnet-accounts.md)                                                           |
+
 ## First settled payment (testnet)
 
 On 6 November 2026 an agent paid the Indian demo API through Kosha Pay (`pnpm pay-once`). The pair
