@@ -9,6 +9,7 @@ import { getAggregatesQueryParams } from '@/lib/queries';
 import { TEST_IDS } from '@/lib/test-ids';
 import { counterState, paiseToMicro, parseFxPaisePerUsd } from '@/lib/threshold';
 import { POLL_FALLBACK_MS } from '@/lib/use-live-stream';
+import { usePayerLabel } from '@/lib/use-payer-labels';
 import { Progress as ProgressPrimitive } from '@base-ui/react/progress';
 import type { AggregateRow } from '@kosha/shared/console-api';
 import { amountToBigint, formatInr, formatUsdc } from '@kosha/shared/money';
@@ -31,13 +32,21 @@ const Money = ({ paise, fxInrPerUsd }: MoneyProps) => {
   );
 };
 
-export const PayerCounter = ({ row, fxInrPerUsd }: { row: AggregateRow; fxInrPerUsd: string }) => {
+export const PayerCounter = ({
+  row,
+  label,
+  fxInrPerUsd
+}: {
+  row: AggregateRow;
+  label: string;
+  fxInrPerUsd: string;
+}) => {
   const state = counterState(row);
   const value = amountToBigint(row.valuePaise) + amountToBigint(row.outsideValuePaise);
   return (
     <div className="flex flex-col gap-2" data-testid={TEST_IDS.thresholdCounter(row.agentId)}>
       <div className="flex items-center justify-between gap-4 text-sm">
-        <span className="font-medium">{row.agentId}</span>
+        <span className="font-medium break-all">{label}</span>
         <Badge
           variant={state.crossed ? 'default' : 'outline'}
           className={cn(state.near && !state.crossed && 'border-warning text-warning')}
@@ -46,10 +55,7 @@ export const PayerCounter = ({ row, fxInrPerUsd }: { row: AggregateRow; fxInrPer
           {state.status}
         </Badge>
       </div>
-      <ProgressPrimitive.Root
-        value={state.fillPct}
-        aria-label={`${row.agentId} towards the threshold`}
-      >
+      <ProgressPrimitive.Root value={state.fillPct} aria-label={`${label} towards the threshold`}>
         <ProgressTrack className="relative h-2.5 overflow-visible">
           <ProgressIndicator className={cn(state.near ? 'bg-warning' : 'bg-primary')} />
           {state.tolerancePct !== null && (
@@ -89,6 +95,7 @@ export const ThresholdCounter = ({
     ...getAggregatesQueryParams(),
     refetchInterval: streaming ? false : POLL_FALLBACK_MS
   });
+  const labelFor = usePayerLabel();
 
   return (
     <Card.Card>
@@ -104,7 +111,12 @@ export const ThresholdCounter = ({
           <QueryError error={aggregates.error} onRetry={() => void aggregates.refetch()} />
         )}
         {aggregates.data?.map((row) => (
-          <PayerCounter key={row.agentId} row={row} fxInrPerUsd={fxInrPerUsd} />
+          <PayerCounter
+            key={row.agentId}
+            row={row}
+            label={labelFor(row.agentId)}
+            fxInrPerUsd={fxInrPerUsd}
+          />
         ))}
       </Card.CardContent>
     </Card.Card>
