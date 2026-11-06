@@ -9,9 +9,7 @@
     },
     "typecheck": {},
     "lint": {},
-    "test": {
-      "outputs": ["coverage/**"]
-    },
+    "test": {},
     "dev": {
       "cache": false,
       "persistent": true
