@@ -9,7 +9,7 @@ export type RulePackStatus = {
 
 // The pack the Console assumes when Core can't be asked.
 export const FALLBACK_RULE_PACK: RulePackStatus = {
-  id: 'in-2026.1',
+  id: 'in-2026.2',
   reviewed: false,
   source: 'fixture'
 };
