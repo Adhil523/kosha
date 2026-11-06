@@ -24,6 +24,8 @@ const params = {
   calm:    { default: 0.5,  min: 0,   max: 1,   step: 0.01 }, // fade the globe where text sits
   calmX:   { default: 0.25, min: 0,   max: 1,   step: 0.01 },
   calmY:   { default: 0.7,  min: 0,   max: 1,   step: 0.01 },
+  // Kosha: 1 parks the globe facing India, and every arc lands in Mumbai (payments into an Indian API)
+  focus:   { default: 0,    min: 0,   max: 1,   step: 1 },
 };
 
 const MAX_DPR = 2, MAX_DPR_2D = 1.5;
@@ -114,6 +116,14 @@ const CITIES = [
   [-122.4, 37.8], [-74, 40.7], [-87.6, 41.9], [-99.1, 19.4], [-74.1, 4.7], [-46.6, -23.5], [-58.4, -34.6],
   [-0.1, 51.5], [8.7, 50.1], [-3.7, 40.4], [18, 59.3], [3.4, 6.5], [31.2, 30], [36.8, -1.3], [28, -26.2],
   [55.3, 25.2], [72.9, 19.1], [103.8, 1.35], [114.2, 22.3], [127, 37.6], [139.7, 35.7], [151.2, -33.9], [106.8, -6.2],
+];
+// Kosha's focus: Mumbai, the hub every arc lands on
+const INDIA = [72.9, 19.1];
+// With the globe rising from the bottom edge only its northern cap shows, so the arcs into Mumbai
+// start from cities on that cap, 22 to 74 degrees away: the Gulf, Central and East Asia, Europe
+const INTO_INDIA = [
+  [51.4, 35.7], [46.7, 24.7], [29, 41], [37.6, 55.8], [76.9, 43.2], [69.2, 41.3], [116.4, 39.9],
+  [121.5, 31.2], [127, 37.6], [139.7, 35.7], [8.7, 50.1], [-0.1, 51.5], [114.2, 22.3], [31.2, 30],
 ];
 // front longitudes that show a well-filled hemisphere in the still frame
 const VIEWS = [-80, -38, 12, 30, 78, 112];
@@ -240,7 +250,7 @@ function lattice(N, seed, land) {
 function pickHubs(prm, seed, land) {
   const r = rng(`hubs:${seed}`);
   let pool;
-  if (prm.map >= 0.5 && earthSampler()) pool = CITIES.map(([lo, la]) => unit(lo, la));
+  if (prm.map >= 0.5 && earthSampler()) pool = (prm.focus >= 0.5 ? INTO_INDIA : CITIES).map(([lo, la]) => unit(lo, la));
   else {
     pool = [];
     for (let k = 0; k < 3000 && pool.length < 160; k++) {
@@ -249,7 +259,7 @@ function pickHubs(prm, seed, land) {
     }
     for (let k = 0; pool.length < HUBS * 2 && k < 400; k++) pool.push(unit(r() * 360 - 180, r() * 90 - 45));
   }
-  const hubs = [pool[Math.floor(r() * pool.length)]];
+  const hubs = prm.focus >= 0.5 && prm.map >= 0.5 ? [unit(INDIA[0], INDIA[1])] : [pool[Math.floor(r() * pool.length)]];
   while (hubs.length < HUBS && hubs.length < pool.length) {
     let best = null, bd = -1;
     for (const c of pool) {
@@ -458,7 +468,7 @@ function mountGlobe(el, { palette, params: given, seed }) {
   if (ownBg) { el.style.backgroundColor = P.bg; el.dataset.fxOwnBg = '1'; }
   let T = tones(P, prm);
   const r0 = rng(`globe:${sd}`);
-  const view = VIEWS[Math.floor(r0() * VIEWS.length)] + (r0() - 0.5) * 16;
+  const view = prm.focus >= 0.5 ? INDIA[0] : VIEWS[Math.floor(r0() * VIEWS.length)] + (r0() - 0.5) * 16;
   const roll = (r0() - 0.5) * 22 * DEG;
   const free0 = r0() * 360;
 
@@ -721,6 +731,7 @@ function mountGlobe(el, { palette, params: given, seed }) {
       if (!okA[i] || !okA[j] || !okB[i] || !okB[j]) continue;
       const a = hubs[i], b = hubs[j], c = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
       if (c < lo || c > hi) continue;
+      if (prm.focus >= 0.5) { if (i === 0) out.push([j, 0]); continue; }
       out.push(r() < 0.5 ? [i, j] : [j, i]);
     }
     return out;
