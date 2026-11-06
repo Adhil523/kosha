@@ -13,6 +13,7 @@ import { facilitatorRoutes } from './facilitator-routes';
 import { demoFixedFx } from './fx';
 import type { OutboxDeps } from './hcs-outbox';
 import { ledgerRoutes } from './ledger-routes';
+import { outsideRoutes } from './outside-routes';
 import { type WatcherDeps } from './outside-watcher';
 import { policyRoutes } from './policy-routes';
 import { quoteRoutes } from './quote-routes';
@@ -141,6 +142,12 @@ export const wireCore = (
       rulepackHash: rulePack.hash,
       fx,
       network: config.network,
+      pairSecret: config.pairHmacSecret,
+      paymentsTopicId: config.paymentsTopicId
+    }),
+    outsideRoutes({
+      db,
+      adminToken: config.adminToken,
       pairSecret: config.pairHmacSecret,
       paymentsTopicId: config.paymentsTopicId
     }),
