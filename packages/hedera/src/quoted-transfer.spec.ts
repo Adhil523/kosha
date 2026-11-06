@@ -23,6 +23,14 @@ const buildSigned = async (key: PrivateKey) => {
 };
 
 describe('buildQuotedTransfer', () => {
+  it('gives two payers signing in the same millisecond different transaction IDs', async () => {
+    const key = PrivateKey.generateED25519();
+    const ids = await Promise.all(
+      Array.from({ length: 5 }, async () => (await buildSigned(key)).transactionId?.toString())
+    );
+    expect(new Set(ids).size).toBe(5);
+  });
+
   it('survives a bytes round trip with every quoted field intact', async () => {
     const parsed = await buildSigned(PrivateKey.generateED25519());
 

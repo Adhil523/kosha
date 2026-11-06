@@ -12,6 +12,15 @@ import { checkSplitQuote, type SplitQuoteProblem } from '@kosha/shared/split-quo
 import type { KoshaSplitRequirements } from '@kosha/shared/x402-payment';
 
 const HBAR_AMOUNT_PATTERN = /^\d+(\.\d{1,8})?$/;
+const NANOS_PER_MILLISECOND = 1_000_000;
+
+// Every transaction ID shares Core's account, so two payers signing in the same millisecond would
+// collide. Random nanoseconds inside that millisecond keep IDs apart without moving the valid start.
+// Web Crypto, so the builder runs wherever Kosha Pay does (Node or a browser)
+const jittered = (validStart: Date): Timestamp => {
+  const [random = 0] = crypto.getRandomValues(new Uint32Array(1));
+  return Timestamp.fromDate(validStart).plusNanos(random % NANOS_PER_MILLISECOND);
+};
 
 export type QuotedTransferOptions = {
   // MAX_TX_FEE_HBAR: the most Core, as fee payer, will pay for this transaction
@@ -50,7 +59,7 @@ export const buildQuotedTransfer = (
     .setTransactionId(
       TransactionId.withValidStart(
         AccountId.fromString(requirements.extra.feePayer),
-        Timestamp.fromDate(validStart)
+        jittered(validStart)
       )
     )
     .setNodeAccountIds(nodeAccountIds.map((node) => AccountId.fromString(node)))
