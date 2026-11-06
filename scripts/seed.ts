@@ -1,5 +1,14 @@
-import { accountIdSchema, hederaNetworkSchema } from '@kosha/shared/ids';
-import type { ReceiverCreate } from '@kosha/shared/registry';
+import { parsePrivateKey } from '@kosha/hedera/client';
+import { issueCredential } from '@kosha/hedera/credentials';
+import { loadEnv } from '@kosha/shared/env';
+import { accountIdSchema, agentIdentitySchema, hederaNetworkSchema } from '@kosha/shared/ids';
+import {
+  type AgentRegister,
+  receiverChallengeSchema,
+  type ReceiverCreate
+} from '@kosha/shared/registry';
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
 // `pnpm seed --profiles`: the demo's receivers and agents (A11), registered through Core's admin
@@ -118,3 +127,126 @@ export const demoAgents = (env: SeedEnv): AgentProfile[] => [
     claims: null
   }
 ];
+
+export type CoreHttp = (
+  method: 'GET' | 'POST',
+  path: string,
+  body?: unknown
+) => Promise<{ status: number; body: unknown }>;
+
+// Core's admin API, authenticated with CONSOLE_ADMIN_TOKEN
+export const coreHttp =
+  (baseUrl: string, adminToken: string, fetchImpl: typeof fetch = fetch): CoreHttp =>
+  async (method, path, body) => {
+    const response = await fetchImpl(`${baseUrl.replace(/\/+$/, '')}${path}`, {
+      method,
+      headers: {
+        authorization: `Bearer ${adminToken}`,
+        ...(body === undefined ? {} : { 'content-type': 'application/json' })
+      },
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    const text = await response.text();
+    try {
+      return { status: response.status, body: text ? JSON.parse(text) : null };
+    } catch {
+      return { status: response.status, body: text };
+    }
+  };
+
+export type SeedOutcome = { name: string; result: 'created' | 'updated' | 'exists' };
+
+const errorSchema = z.object({ error: z.string(), message: z.string().optional() });
+const failure = (name: string, status: number, body: unknown): Error => {
+  const parsed = errorSchema.safeParse(body);
+  const detail = parsed.success ? `${parsed.data.error} ${parsed.data.message ?? ''}` : '';
+  return new Error(`[seed]: ${name} was refused: ${status} ${detail}`.trim());
+};
+
+const keyFrom = (text: string, name: string) => {
+  const key = parsePrivateKey(text);
+  if (!key.ok) throw new Error(`[seed]: the private key for ${name} is not usable`);
+  return key.data;
+};
+
+// Each receiver proves it owns its wallet by signing a fresh Core challenge with the wallet's key
+export const seedReceivers = async (core: CoreHttp, env: SeedEnv): Promise<SeedOutcome[]> => {
+  const outcomes: SeedOutcome[] = [];
+  for (const { name, wallet, ...fields } of demoReceivers(env)) {
+    const challenge = await core('GET', '/v1/receivers/challenge');
+    if (challenge.status !== 200) throw failure(name, challenge.status, challenge.body);
+    const { nonce } = receiverChallengeSchema.parse(challenge.body);
+    const signature = keyFrom(wallet.privateKey, name).sign(new TextEncoder().encode(nonce));
+
+    const response = await core('POST', '/v1/receivers', {
+      ...fields,
+      challengeNonce: nonce,
+      wallets: [{ accountId: wallet.accountId, signature: Buffer.from(signature).toString('hex') }]
+    });
+    if (response.status === 201) outcomes.push({ name, result: 'created' });
+    else if (response.status === 409) outcomes.push({ name, result: 'exists' });
+    else throw failure(name, response.status, response.body);
+  }
+  return outcomes;
+};
+
+// Level 1 agents carry a credential from Core's test issuer; each uses its bootstrap reserve
+export const seedAgents = async (core: CoreHttp, env: SeedEnv): Promise<SeedOutcome[]> => {
+  const issuer = keyFrom(env.ISSUER_PRIVATE_KEY, 'the test issuer');
+  const outcomes: SeedOutcome[] = [];
+  for (const { name, accountId, reserveAccountId, claims } of demoAgents(env)) {
+    const identity = agentIdentitySchema.parse(`hedera:${env.HEDERA_NETWORK}:${accountId}`);
+    const body: AgentRegister = {
+      identity,
+      wallets: [accountIdSchema.parse(accountId)],
+      reserveAccountId: accountIdSchema.parse(reserveAccountId),
+      ...(claims ? { credential: issueCredential(issuer, identity, claims) } : {})
+    };
+    const response = await core('POST', '/v1/agents', body);
+    if (response.status === 201) outcomes.push({ name, result: 'created' });
+    else if (response.status === 200) outcomes.push({ name, result: 'updated' });
+    else throw failure(name, response.status, response.body);
+  }
+  return outcomes;
+};
+
+const USAGE = 'usage: pnpm seed --profiles';
+
+const main = async (): Promise<void> => {
+  if (!process.argv.slice(2).includes('--profiles')) {
+    console.error(`[seed]: ${USAGE}`);
+    process.exitCode = 1;
+    return;
+  }
+  const loaded = loadEnv();
+  if (!loaded.ok) {
+    console.error(`[seed]: no pnpm workspace found above ${loaded.data.searchedFrom}`);
+    process.exitCode = 1;
+    return;
+  }
+  const env = readSeedEnv(process.env);
+  if (!env.ok) {
+    console.error(`[seed]: set these env keys (run pnpm bootstrap): ${env.data.keys.join(', ')}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const core = coreHttp(env.data.CORE_URL, env.data.CONSOLE_ADMIN_TOKEN);
+  const outcomes = [
+    ...(await seedReceivers(core, env.data)),
+    ...(await seedAgents(core, env.data))
+  ];
+  for (const { name, result } of outcomes) console.info(`[seed]: ${name} ${result}`);
+};
+
+const isEntryPoint = (): boolean => {
+  const entry = process.argv[1];
+  return entry !== undefined && realpathSync(entry) === fileURLToPath(import.meta.url);
+};
+
+if (isEntryPoint()) {
+  main().catch((error: unknown) => {
+    console.error('[seed]: failed', error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}
