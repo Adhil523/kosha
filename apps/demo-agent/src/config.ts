@@ -1,4 +1,4 @@
-import { type BudgetCaps } from '@kosha/pay/agent-kit-plugin';
+import { type BudgetCaps, KOSHA_PAID_FETCH_TOOL } from '@kosha/pay/agent-kit-plugin';
 import { type PayConfigInput } from '@kosha/pay/pay-config';
 import {
   accountIdSchema,
@@ -112,7 +112,7 @@ export const budgetCaps = (env: AgentEnv): BudgetCaps => ({
 export const demoPrompt = (env: AgentEnv): string =>
   [
     'Find GST details for these 5 companies and summarise.',
-    `Look each one up with kosha_paid_fetch at ${demoApiBase(env)}/v1/gst-lookup?gstin=<GSTIN>.`,
+    `Look each one up with ${KOSHA_PAID_FETCH_TOOL} at ${demoApiBase(env)}/v1/gst-lookup?gstin=<GSTIN>.`,
     `GSTINs: ${DEMO_GSTINS.join(', ')}.`,
     'For each company give its legal name, state and registration status, and say what you paid,',
     'including any TDS reserved.'

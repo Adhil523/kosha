@@ -1,18 +1,9 @@
-import { KOSHA_PAID_FETCH, type PaidFetchOutput } from '@kosha/pay/agent-kit-plugin';
+import {
+  KOSHA_PAID_FETCH_TOOL,
+  type PaidFetchOutput,
+  readPaidFetchOutput
+} from '@kosha/pay/agent-kit-plugin';
 import { AIMessage, type BaseMessage, ToolMessage } from '@langchain/core/messages';
-
-const isPaidFetchOutput = (value: unknown): value is PaidFetchOutput =>
-  typeof value === 'object' && value !== null && 'raw' in value && 'humanMessage' in value;
-
-const parseOutput = (content: unknown): PaidFetchOutput | null => {
-  if (typeof content !== 'string') return null;
-  try {
-    const parsed: unknown = JSON.parse(content);
-    return isPaidFetchOutput(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-};
 
 const describe = ({ raw }: PaidFetchOutput): string => {
   if (raw.status !== 'SUCCESS') return `not paid: ${raw.url}: ${raw.error ?? 'unknown error'}`;
@@ -23,12 +14,12 @@ const describe = ({ raw }: PaidFetchOutput): string => {
   );
 };
 
-// One line per kosha_paid_fetch call the agent made, in order: paid, free, or refused and why
+// One line per kosha_paid_fetch_tool call the agent made, in order: paid, free, or refused and why
 export const readReceipts = (messages: BaseMessage[]): string[] =>
   messages
-    .filter((message) => ToolMessage.isInstance(message) && message.name === KOSHA_PAID_FETCH)
+    .filter((message) => ToolMessage.isInstance(message) && message.name === KOSHA_PAID_FETCH_TOOL)
     .flatMap((message) => {
-      const output = parseOutput(message.content);
+      const output = readPaidFetchOutput(message.content);
       return output ? [describe(output)] : [];
     });
 

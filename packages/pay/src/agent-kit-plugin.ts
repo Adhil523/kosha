@@ -22,35 +22,59 @@ import { type Client } from '@hiero-ledger/sdk';
 import { formatUsdc } from '@kosha/shared/money';
 import { z } from 'zod';
 
-// The LangChain tool name; hooks and policies list it in relevantTools
-export const KOSHA_PAID_FETCH = 'kosha_paid_fetch';
+// The LangChain tool name; hooks and policies list it in relevantTools. The `_tool` suffix
+// matches the kit's own tools, so a name-based policy pattern covers it too.
+export const KOSHA_PAID_FETCH_TOOL = 'kosha_paid_fetch_tool';
 // The LLM reads the body; a long one would crowd out its context
 const MAX_BODY_CHARS = 4_000;
 
-const paramsSchema = z.object({ url: z.url() });
+const paramsSchema = z.object({
+  url: z.url().describe('The full http(s) URL of the paid API, query string included')
+});
 type Params = z.output<typeof paramsSchema>;
 
 // What the LLM (and the kit's HcsAuditTrailHook, through raw.status and raw.transactionId) sees.
 // Strings only: the kit runs JSON.stringify over it, which throws on bigint.
-export type PaidFetchOutput = {
-  raw: {
-    status: string;
-    url: string;
-    paid: boolean;
-    httpStatus?: number;
-    body?: unknown;
+const paidFetchOutputSchema = z.object({
+  raw: z.object({
+    status: z.string(),
+    url: z.string(),
+    paid: z.boolean(),
+    httpStatus: z.number().optional(),
+    body: z.unknown().optional(),
     // Set when the body couldn't be read; on a paid call the payment still stands
-    bodyError?: string;
-    transactionId?: string;
-    totalUsdc?: string;
-    tdsUsdc?: string;
-    hashscanUrl?: string;
-    error?: string;
+    bodyError: z.string().optional(),
+    transactionId: z.string().optional(),
+    totalUsdc: z.string().optional(),
+    tdsUsdc: z.string().optional(),
+    hashscanUrl: z.string().optional(),
+    error: z.string().optional(),
     // Set when something threw before the payment was sent, so the tool runs the audit hooks
-    aborted?: boolean;
-  };
-  humanMessage: string;
+    aborted: z.boolean().optional()
+  }),
+  humanMessage: z.string()
+});
+export type PaidFetchOutput = z.output<typeof paidFetchOutputSchema>;
+
+// A tool message's content read back as the tool's output, or null if it is something else
+export const readPaidFetchOutput = (content: unknown): PaidFetchOutput | null => {
+  if (typeof content !== 'string') return null;
+  let json: unknown;
+  try {
+    json = JSON.parse(content);
+  } catch {
+    return null;
+  }
+  const parsed = paidFetchOutputSchema.safeParse(json);
+  return parsed.success ? parsed.data : null;
 };
+
+// The toolkit's outputParser, in the kit's PARSE_ERROR shape when the content isn't the output
+const parseOutput = (rawOutput: string): { raw: unknown; humanMessage: string } =>
+  readPaidFetchOutput(rawOutput) ?? {
+    raw: { status: TOOL_STATUS.PARSE_ERROR, originalOutput: rawOutput },
+    humanMessage: 'Error: the Kosha paid fetch output could not be read.'
+  };
 
 // coreAction's result: a signed payment awaiting the policies, or an answer with nothing to pay
 type CoreResult = { payment: PreparedPayment } | PaidFetchOutput;
@@ -82,12 +106,18 @@ const readBody = async (
 // policies between the two steps: coreAction checks and signs the quote without sending it, and
 // secondaryAction sends the payment only if every policy let it through.
 export class KoshaPaidFetchTool extends BaseTool<Params, Params> {
-  method = KOSHA_PAID_FETCH;
+  method = KOSHA_PAID_FETCH_TOOL;
   name = 'Kosha paid fetch';
-  description =
-    'Fetch a paid API that answers HTTP 402. Pays in USDC on Hedera through Kosha, with any Indian ' +
-    'TDS reserved in your own reserve on top of the price. Returns the response body and a receipt.';
+  description = [
+    'This tool fetches a paid API that answers HTTP 402 and pays it in USDC on Hedera through',
+    "Kosha, with any Indian TDS reserved in your own reserve on top of the price. Within the owner's",
+    'budget only; hosts off the allowlist are refused. Returns the response body and a receipt.',
+    '',
+    'Parameters:',
+    '- url (string, required): the full http(s) URL of the paid API, query string included'
+  ].join('\n');
   parameters = paramsSchema;
+  override outputParser = parseOutput;
   // It moves funds, so kit policies that act on every transaction tool cover it too
   override toolType: ToolType = TOOL_TYPE.TRANSACTION;
 
@@ -279,7 +309,7 @@ const brokenCap = (
 export class KoshaBudgetPolicy extends AbstractPolicy {
   name = 'Kosha budget';
   description = 'Per-payment, daily and financial-year caps on the all-in total, tax included';
-  relevantTools = [KOSHA_PAID_FETCH];
+  relevantTools = [KOSHA_PAID_FETCH_TOOL];
 
   constructor(
     private readonly caps: BudgetCaps,

@@ -59,5 +59,6 @@ describe('payOptions and demoPrompt', () => {
       }
     });
     expect(demoPrompt(env.data)).toContain('http://localhost:4101/v1/gst-lookup?gstin=<GSTIN>');
+    expect(demoPrompt(env.data)).toContain('with kosha_paid_fetch_tool at');
   });
 });

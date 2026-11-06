@@ -1,5 +1,5 @@
 import {
-  KOSHA_PAID_FETCH,
+  KOSHA_PAID_FETCH_TOOL,
   KoshaBudgetPolicy,
   KoshaPaidFetchTool,
   koshaPayPlugin,
@@ -85,7 +85,7 @@ const fakePay = (
 class RecordingHook extends AbstractHook {
   name = 'recording';
   description = 'records audited calls';
-  relevantTools = [KOSHA_PAID_FETCH];
+  relevantTools = [KOSHA_PAID_FETCH_TOOL];
   seen: PaidFetchOutput[] = [];
 
   override async postToolExecutionHook(params: PostSecondaryActionParams, method: string) {
@@ -97,7 +97,7 @@ class RecordingHook extends AbstractHook {
 class ThrowingHook extends AbstractHook {
   name = 'throwing';
   description = 'fails after the call';
-  relevantTools = [KOSHA_PAID_FETCH];
+  relevantTools = [KOSHA_PAID_FETCH_TOOL];
   calls = 0;
 
   override async postToolExecutionHook() {
@@ -124,7 +124,7 @@ const run = (pay: KoshaPay, hooks: AbstractHook[] = [], mode?: AgentMode) =>
 class BlockAfterQuotePolicy extends AbstractPolicy {
   name = 'Block after quote';
   description = 'blocks every quote';
-  relevantTools = [KOSHA_PAID_FETCH];
+  relevantTools = [KOSHA_PAID_FETCH_TOOL];
 
   protected override shouldBlockPostCoreAction() {
     return true;
@@ -326,9 +326,23 @@ describe('KoshaBudgetPolicy', () => {
 });
 
 describe('koshaPayPlugin', () => {
-  it('offers exactly one tool, kosha_paid_fetch', () => {
+  it('offers exactly one tool, named like the kit tools, with its parameter described', () => {
     const tools = koshaPayPlugin(fakePay()).tools({});
 
-    expect(tools.map((tool) => tool.method)).toEqual([KOSHA_PAID_FETCH]);
+    expect(tools.map((tool) => tool.method)).toEqual(['kosha_paid_fetch_tool']);
+    expect(tools[0]?.description).toContain('Parameters:\n- url (string, required)');
+    expect(tools[0]?.parameters.shape.url.description).toContain('paid API');
+  });
+
+  it('parses its own output back, and anything else as a PARSE_ERROR', () => {
+    const [tool] = koshaPayPlugin(fakePay()).tools({});
+    const output: PaidFetchOutput = {
+      raw: { status: 'SUCCESS', url: URL_PAID, paid: true, transactionId: TX_ID },
+      humanMessage: 'Paid'
+    };
+
+    expect(tool?.outputParser?.(JSON.stringify(output))).toEqual(output);
+    expect(tool?.outputParser?.('not json').raw.status).toBe('PARSE_ERROR');
+    expect(tool?.outputParser?.('{"raw":{}}').raw.status).toBe('PARSE_ERROR');
   });
 });

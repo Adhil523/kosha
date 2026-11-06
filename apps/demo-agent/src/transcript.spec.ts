@@ -1,11 +1,11 @@
 import { finalText, readReceipts } from './transcript';
-import { KOSHA_PAID_FETCH, type PaidFetchOutput } from '@kosha/pay/agent-kit-plugin';
+import { KOSHA_PAID_FETCH_TOOL, type PaidFetchOutput } from '@kosha/pay/agent-kit-plugin';
 import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages';
 import { describe, expect, it } from 'vitest';
 
 const URL_PAID = 'http://localhost:4101/v1/gst-lookup?gstin=29AAKCK4821M1ZQ';
 
-const toolMessage = (output: PaidFetchOutput, name = KOSHA_PAID_FETCH) =>
+const toolMessage = (output: PaidFetchOutput, name = KOSHA_PAID_FETCH_TOOL) =>
   // eslint-disable-next-line @typescript-eslint/naming-convention -- LangChain's field name
   new ToolMessage({ content: JSON.stringify(output), tool_call_id: 'call_1', name });
 

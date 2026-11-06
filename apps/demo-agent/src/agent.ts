@@ -14,7 +14,11 @@ import { coreAccountQueryPlugin } from '@hashgraph/hedera-agent-kit/plugins';
 import { HederaLangchainToolkit } from '@hashgraph/hedera-agent-kit-langchain';
 import { Client } from '@hiero-ledger/sdk';
 import { parsePrivateKey } from '@kosha/hedera/client';
-import { KOSHA_PAID_FETCH, KoshaBudgetPolicy, koshaPayPlugin } from '@kosha/pay/agent-kit-plugin';
+import {
+  KOSHA_PAID_FETCH_TOOL,
+  KoshaBudgetPolicy,
+  koshaPayPlugin
+} from '@kosha/pay/agent-kit-plugin';
 import { createKoshaPay } from '@kosha/pay/kosha-pay';
 import { loadEnv } from '@kosha/shared/env';
 import { createAgent } from 'langchain';
@@ -26,7 +30,7 @@ import { createAgent } from 'langchain';
 
 const SYSTEM_PROMPT = [
   'You are a research agent for an Indian compliance team.',
-  'Paid data APIs answer HTTP 402; use kosha_paid_fetch for them, one call per lookup.',
+  `Paid data APIs answer HTTP 402; use ${KOSHA_PAID_FETCH_TOOL} for them, one call per lookup.`,
   'Kosha Pay pays in USDC on Hedera and reserves any Indian TDS on top of the price.',
   'If a payment is blocked by a policy, say so and carry on with what you have.',
   'Never try to move funds any other way.'
@@ -60,7 +64,7 @@ const main = async (): Promise<void> => {
         accountId: env.AGENT_RESIDENT_ACCOUNT_ID,
         hooks: [
           new KoshaBudgetPolicy(budgetCaps(env)),
-          new HcsAuditTrailHook([KOSHA_PAID_FETCH], env.HCS_AUDIT_TOPIC, auditClient)
+          new HcsAuditTrailHook([KOSHA_PAID_FETCH_TOOL], env.HCS_AUDIT_TOPIC, auditClient)
         ]
       }
     }
