@@ -10,7 +10,7 @@ describe('ensureSettlementToken', () => {
     expect(context.transactions).toHaveLength(0);
   });
 
-  it('creates 6-decimal tUSDC with Core as treasury and saves its ID', async () => {
+  it('creates 6-decimal tUSDC with Core as treasury and admin, and saves its ID', async () => {
     const context = fakeContext({ SETTLEMENT_TOKEN_ID: '' }, () =>
       receipt({ tokenId: '0.0.7007' })
     );
@@ -23,6 +23,7 @@ describe('ensureSettlementToken', () => {
     expect(create.tokenSymbol).toBe('tUSDC');
     expect(create.decimals?.toNumber()).toBe(TOKEN_DECIMALS);
     expect(create.treasuryAccountId?.toString()).toBe('0.0.1001');
+    expect(create.adminKey?.toString()).toBe(context.coreKey.publicKey.toString());
   });
 
   it('fails loudly when the network rejects the create', async () => {
