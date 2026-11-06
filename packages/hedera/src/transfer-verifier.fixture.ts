@@ -102,3 +102,14 @@ export const withDivergentSecondBody = (base64: string): string => {
   second.signedTransactionBytes = proto.SignedTransaction.encode(signed).finish();
   return Buffer.from(proto.TransactionList.encode(list).finish()).toString('base64');
 };
+
+// Drops the payer's signature from the second node's body only
+export const withoutSecondSignature = (base64: string): string => {
+  const list = proto.TransactionList.decode(Buffer.from(base64, 'base64'));
+  const second = list.transactionList[1];
+  if (!second?.signedTransactionBytes) throw new Error('[verifier-fixture]: needs two nodes');
+  const signed = proto.SignedTransaction.decode(second.signedTransactionBytes);
+  signed.sigMap = { sigPair: [] };
+  second.signedTransactionBytes = proto.SignedTransaction.encode(signed).finish();
+  return Buffer.from(proto.TransactionList.encode(list).finish()).toString('base64');
+};

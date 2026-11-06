@@ -1,6 +1,8 @@
 import { proto } from '@hiero-ledger/proto';
-import { Hbar, Transaction, TransferTransaction } from '@hiero-ledger/sdk';
+import { Hbar, type PublicKey, Transaction, TransferTransaction } from '@hiero-ledger/sdk';
 import type { ErrorCode } from '@kosha/shared/error-codes';
+import { type AccountId, accountIdSchema } from '@kosha/shared/ids';
+import { amountToBigint } from '@kosha/shared/money';
 import type { KoshaSplitRequirements } from '@kosha/shared/x402-payment';
 
 // The verifier protects Core, the fee payer: Core signs whatever body bytes it is handed, so every
@@ -101,3 +103,70 @@ export const checkTransferShape = (
   if (bodies.some(hasApproval)) return failure('approved_transfer');
   return { ok: true };
 };
+
+export type LegsCheckInput = {
+  requirements: KoshaSplitRequirements;
+  // The reserve registered to the agent the quote was issued to (mode C); null if it has none
+  expectedReserveAccount: AccountId | null;
+};
+
+// The token legs must be exactly the quote's: one token (the asset), one debit (the payer, for the
+// total), and each quoted credit, with the TDS going to the quoted agent's own reserve.
+export const checkTransferLegs = (
+  transaction: TransferTransaction,
+  { requirements, expectedReserveAccount }: LegsCheckInput
+): { ok: true; data: { payer: AccountId } } | VerifierFailure => {
+  const tokens = [...transaction.tokenTransfers];
+  const [onlyToken] = tokens;
+  if (tokens.length !== 1 || !onlyToken) return failure('token_count');
+  const [tokenId, moves] = onlyToken;
+  if (tokenId.toString() !== requirements.asset) return failure('wrong_token');
+
+  const entries = [...moves].map(
+    ([account, amount]) => [account.toString(), BigInt(amount.toString())] as const
+  );
+  const debits = entries.filter(([, amount]) => amount < 0n);
+  const [debit] = debits;
+  if (debits.length > 1) return failure('multiple_debits');
+  if (!debit) return failure('amount_mismatch');
+
+  const [payer] = debit;
+  const { transfers, totalMicro } = requirements.extra.kosha;
+  const expected = new Map<string, bigint>([[payer, -amountToBigint(totalMicro)]]);
+  for (const leg of transfers) expected.set(leg.account, amountToBigint(leg.amount));
+  if (entries.length !== expected.size) return failure('transfer_count');
+  if (entries.some(([account, amount]) => expected.get(account) !== amount)) {
+    return failure('amount_mismatch');
+  }
+
+  const reserveLeg = transfers.find((leg) => leg.leg === 'tds_reserve');
+  if (reserveLeg && reserveLeg.account !== expectedReserveAccount) {
+    return failure('reserve_not_payers');
+  }
+  return { ok: true, data: { payer: accountIdSchema.parse(payer) } };
+};
+
+export type VerifiedTransfer =
+  { ok: true; data: { transaction: TransferTransaction; payer: AccountId } } | VerifierFailure;
+
+// Everything except the payer's signature, which needs the payer's key from the Mirror Node, and
+// the payer is only known once the legs are checked.
+export const verifyTransfer = (
+  base64: string,
+  input: ShapeCheckInput & LegsCheckInput
+): VerifiedTransfer => {
+  const decoded = decodeSignedTransfer(base64);
+  if (!decoded.ok) return decoded;
+  const shape = checkTransferShape(decoded.data, input);
+  if (!shape.ok) return shape;
+  const legs = checkTransferLegs(decoded.data.transaction, input);
+  if (!legs.ok) return legs;
+  return { ok: true, data: { transaction: decoded.data.transaction, payer: legs.data.payer } };
+};
+
+// The payer's key must have signed the body for every node
+export const verifyPayerSignature = (
+  transaction: TransferTransaction,
+  payerKey: PublicKey
+): { ok: true } | VerifierFailure =>
+  payerKey.verifyTransaction(transaction) ? { ok: true } : failure('bad_signature');
