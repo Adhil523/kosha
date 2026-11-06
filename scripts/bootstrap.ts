@@ -2,6 +2,7 @@ import { ensureDemoAccounts } from './lib/bootstrap-accounts';
 import { ensureTokenHoldings } from './lib/bootstrap-association';
 import { type BootstrapContext, bootstrapLog, envSaver } from './lib/bootstrap-context';
 import { ensureSettlementToken } from './lib/bootstrap-token';
+import { ensureSecrets, ensureTopics } from './lib/bootstrap-topics';
 import { readEnvFile } from './lib/env-file';
 import { clientRunner } from './lib/hedera-run';
 import { Hbar } from '@hiero-ledger/sdk';
@@ -41,6 +42,8 @@ const main = async () => {
     const tokenId = await ensureSettlementToken(context);
     const holders = await ensureDemoAccounts(context);
     await ensureTokenHoldings(context, holders, tokenId);
+    await ensureTopics(context);
+    ensureSecrets(context);
   } finally {
     client.close();
   }
