@@ -29,7 +29,7 @@ The quote's `kosha-split` entry must pass `split-quote` `checkSplitQuote()`; Kos
 | Method and path | Auth | Request | Response | Task |
 | --- | --- | --- | --- | --- |
 | `GET /v1/receivers/challenge` | admin | — | `registry` `receiverChallengeSchema` | A07 |
-| `POST /v1/receivers` | admin | `registry` `receiverCreateSchema` | `registry` `receiverCreatedSchema` | A07 |
+| `POST /v1/receivers` | admin | `registry` `receiverCreateSchema` | `registry` `receiverCreatedSchema`; `409` if a wallet is already registered | A07 |
 | `POST /v1/agents` | admin | `registry` `agentRegisterSchema` | `registry` `agentRowSchema` | A07 |
 | `GET /v1/agents/:id` | admin | — | `registry` `agentRowSchema` | A07 |
 | `GET` / `PUT /v1/agents/:id/policy` | admin | `registry` `policySchema` | `registry` `policySchema` | A12 |

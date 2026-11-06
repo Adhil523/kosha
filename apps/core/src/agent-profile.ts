@@ -1,4 +1,4 @@
-import { credentialHash } from './credentials';
+import { credentialHash } from '@kosha/hedera/credentials';
 import type { ProfileFailureReason, ProfileReader } from '@kosha/hedera/hcs11-profile';
 import { type AgentIdentity, uaidSchema } from '@kosha/shared/ids';
 import type { Credential } from '@kosha/shared/registry';

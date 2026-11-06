@@ -1,20 +1,56 @@
-import { accountIdSchema, hederaNetworkSchema } from '@kosha/shared/ids';
+import {
+  accountIdSchema,
+  hederaNetworkSchema,
+  tokenIdSchema,
+  topicIdSchema
+} from '@kosha/shared/ids';
 import { z } from 'zod';
 
-// The env keys Core reads today. Later tasks add theirs (DATABASE_URL in A06, the topic and
-// token IDs in A10), so Core never refuses to start for a key it doesn't use yet.
+const DECIMAL = /^\d+(\.\d+)?$/;
+// Bootstrap generates these as 32 random bytes in hex; anything much shorter is a mistake
+const MIN_SECRET_LENGTH = 32;
+// Three nodes per quote, so one busy node can't block settlement (PROTOCOL §2)
+export const SETTLEMENT_NODE_ACCOUNT_IDS = ['0.0.3', '0.0.4', '0.0.5'];
+
+const secret = z.string().min(MIN_SECRET_LENGTH);
+
+// Every env key Core needs to serve quotes, registration, verify and settle. All come from the
+// shared env file; bootstrap (B03) writes the IDs and secrets.
 const envSchema = z.object({
   HEDERA_NETWORK: hederaNetworkSchema,
   CORE_PORT: z.coerce.number().int().min(1).max(65_535),
   CORE_ACCOUNT_ID: accountIdSchema,
-  RULEPACK_PATH: z.string().min(1)
+  CORE_PRIVATE_KEY: z.string().min(1),
+  RULEPACK_PATH: z.string().min(1),
+  DATABASE_URL: z.string().min(1),
+  MIRROR_URL: z.url(),
+  SETTLEMENT_TOKEN_ID: tokenIdSchema,
+  HCS_PAYMENTS_TOPIC: topicIdSchema,
+  MAX_TX_FEE_HBAR: z.string().regex(DECIMAL),
+  FX_DEMO_INR_PER_USD: z.string().regex(DECIMAL),
+  PAIR_HMAC_SECRET: secret,
+  PAN_COMMIT_SECRET: secret,
+  CONSOLE_ADMIN_TOKEN: secret,
+  ISSUER_PRIVATE_KEY: z.string().min(1)
 });
 
 export type CoreConfig = {
   network: z.output<typeof hederaNetworkSchema>;
   port: number;
   coreAccountId: z.output<typeof accountIdSchema>;
+  // Raw key text; @kosha/hedera/client parses it
+  corePrivateKey: string;
   rulePackPath: string;
+  databaseUrl: string;
+  mirrorUrl: string;
+  settlementTokenId: z.output<typeof tokenIdSchema>;
+  paymentsTopicId: z.output<typeof topicIdSchema>;
+  maxTxFeeHbar: string;
+  fxInrPerUsd: string;
+  pairHmacSecret: string;
+  panCommitSecret: string;
+  adminToken: string;
+  issuerPrivateKey: string;
 };
 
 export type ConfigProblem = { key: string; problem: 'missing' | 'invalid' };
@@ -42,14 +78,25 @@ export const loadConfig = (env: NodeJS.ProcessEnv): LoadedConfig => {
     return { ok: false, data: { problems } };
   }
 
-  const { HEDERA_NETWORK, CORE_PORT, CORE_ACCOUNT_ID, RULEPACK_PATH } = parsed.data;
+  const values = parsed.data;
   return {
     ok: true,
     data: {
-      network: HEDERA_NETWORK,
-      port: CORE_PORT,
-      coreAccountId: CORE_ACCOUNT_ID,
-      rulePackPath: RULEPACK_PATH
+      network: values.HEDERA_NETWORK,
+      port: values.CORE_PORT,
+      coreAccountId: values.CORE_ACCOUNT_ID,
+      corePrivateKey: values.CORE_PRIVATE_KEY,
+      rulePackPath: values.RULEPACK_PATH,
+      databaseUrl: values.DATABASE_URL,
+      mirrorUrl: values.MIRROR_URL,
+      settlementTokenId: values.SETTLEMENT_TOKEN_ID,
+      paymentsTopicId: values.HCS_PAYMENTS_TOPIC,
+      maxTxFeeHbar: values.MAX_TX_FEE_HBAR,
+      fxInrPerUsd: values.FX_DEMO_INR_PER_USD,
+      pairHmacSecret: values.PAIR_HMAC_SECRET,
+      panCommitSecret: values.PAN_COMMIT_SECRET,
+      adminToken: values.CONSOLE_ADMIN_TOKEN,
+      issuerPrivateKey: values.ISSUER_PRIVATE_KEY
     }
   };
 };

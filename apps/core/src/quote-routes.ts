@@ -5,6 +5,7 @@ import type { KoshaDb } from './db/client';
 import { quote, receiverWallet } from './db/schema';
 import type { FxSource } from './fx';
 import { pairTotalPaise, withPairLock } from './pair-total';
+import { quoteTransfers } from './quote-terms';
 import type { ResolvePayer } from './resolve-payer';
 import { type ErrorResponse, errorResponseSchema } from '@kosha/shared/error-codes';
 import { quoteRequestSchema } from '@kosha/shared/facilitator-api';
@@ -134,22 +135,7 @@ export const quoteRoutes =
         if (!saved.row) throw new Error('[quote]: the quote was not saved');
         const { decision, split, row } = saved;
 
-        const transfers = [
-          {
-            account: payTo.accountID,
-            amount: split.receiverMicro.toString(),
-            leg: 'consideration'
-          },
-          ...(split.reserveMicro > 0n
-            ? [
-                {
-                  account: payer.data.reserveAccountId,
-                  amount: split.reserveMicro.toString(),
-                  leg: 'tds_reserve'
-                }
-              ]
-            : [])
-        ];
+        const transfers = quoteTransfers(row);
         const body: PaymentRequired = paymentRequiredSchema.parse({
           x402Version: X402_VERSION,
           error: 'PAYMENT-SIGNATURE header is required',

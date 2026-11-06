@@ -1,5 +1,5 @@
 import type { DbHandle } from './db/client';
-import { agent, aggregate, quote, receiver } from './db/schema';
+import { agent, aggregate, payment, quote, receiver } from './db/schema';
 import { testDb } from './db/test-db';
 import { pairTotalPaise, withPairLock } from './pair-total';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -28,6 +28,19 @@ describe('pairTotalPaise', () => {
     fy: '2026-27',
     expiresAt: new Date(NOW.getTime() + 60_000),
     ...fields
+  });
+
+  // What the ledger writes once a settlement's outcome is known
+  const recordedPayment = (quoteID: string, transactionID: string) => ({
+    quoteID,
+    transactionID,
+    receiverID: pair.receiverId,
+    agentID: pair.agentId,
+    priceMicro: 100000n,
+    tdsMicro: 0n,
+    inrValuePaise: 884n,
+    fy: '2026-27',
+    status: 'settled' as const
   });
 
   beforeAll(async () => {
@@ -62,7 +75,7 @@ describe('pairTotalPaise', () => {
     expect(await pairTotalPaise(handle.db, pair, NOW)).toBe(0n);
   });
 
-  it('adds settled, outside and open-quote value, and ignores used, expired and other-year quotes', async () => {
+  it('adds settled, outside and open-quote value, and ignores recorded, expired and other-year quotes', async () => {
     await handle.db.insert(aggregate).values({
       agentID: pair.agentId,
       receiverID: pair.receiverId,
@@ -70,16 +83,37 @@ describe('pairTotalPaise', () => {
       valuePaise: 998_000n,
       outsideValuePaise: 1_000n
     });
-    await handle.db
+    const [, recorded] = await handle.db
       .insert(quote)
       .values([
         openQuote(884n),
         openQuote(884n, { usedTransactionID: '0.0.4000@1.1' }),
         openQuote(884n, { expiresAt: new Date(NOW.getTime() - 1) }),
         openQuote(884n, { fy: '2025-26' })
-      ]);
+      ])
+      .returning({ id: quote.id });
+    await handle.db.insert(payment).values(recordedPayment(recorded?.id ?? '', '0.0.4000@1.1'));
 
     expect(await pairTotalPaise(handle.db, pair, NOW)).toBe(998_000n + 1_000n + 884n);
+  });
+
+  it('counts a claimed quote until its payment is recorded, even past expiry', async () => {
+    const before = await pairTotalPaise(handle.db, pair, NOW);
+    // Settle has claimed it and is executing on Hedera; the aggregate doesn't include it yet
+    const [inFlight] = await handle.db
+      .insert(quote)
+      .values(
+        openQuote(500n, {
+          usedTransactionID: '0.0.4000@2.2',
+          expiresAt: new Date(NOW.getTime() - 1)
+        })
+      )
+      .returning({ id: quote.id });
+
+    expect(await pairTotalPaise(handle.db, pair, NOW)).toBe(before + 500n);
+
+    await handle.db.insert(payment).values(recordedPayment(inFlight?.id ?? '', '0.0.4000@2.2'));
+    expect(await pairTotalPaise(handle.db, pair, NOW)).toBe(before);
   });
 
   it('lets a quote written under the lock be seen by the next locked read', async () => {

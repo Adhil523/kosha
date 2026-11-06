@@ -1,13 +1,18 @@
 import type { KoshaDb } from './db/client';
-import { aggregate, quote } from './db/schema';
-import { and, eq, gt, isNull, sql } from 'drizzle-orm';
+import { aggregate, payment, quote } from './db/schema';
+import { and, eq, gt, isNotNull, notExists, or, sql } from 'drizzle-orm';
 
 export type PairKey = { agentId: string; receiverId: string; fy: string };
 
 // The total a decision is made against (PROTOCOL design fix 1): settled value, plus payments seen
-// outside Kosha, plus the value of the pair's open quotes (not expired, not used). Counting open
-// quotes means two concurrent quotes can't both slip under the threshold; an abandoned quote can
-// only cause over-deduction, which is a refundable credit.
+// outside Kosha, plus the value of the pair's open quotes. Counting open quotes means two
+// concurrent quotes can't both slip under the threshold; an abandoned quote can only cause
+// over-deduction, which is a refundable credit.
+//
+// A quote stays open until its payment is recorded, not just until it is claimed: settle claims
+// the quote, executes on Hedera for a few seconds, and only then adds the value to the aggregate.
+// A quote issued in that gap must still see the in-flight value, or it could under-deduct. A
+// claimed quote counts even past expiry, since execution can outlast it.
 export const pairTotalPaise = async (db: KoshaDb, pair: PairKey, now: Date): Promise<bigint> => {
   const [settled] = await db
     .select({ value: aggregate.valuePaise, outside: aggregate.outsideValuePaise })
@@ -28,8 +33,8 @@ export const pairTotalPaise = async (db: KoshaDb, pair: PairKey, now: Date): Pro
         eq(quote.agentID, pair.agentId),
         eq(quote.receiverID, pair.receiverId),
         eq(quote.fy, pair.fy),
-        isNull(quote.usedTransactionID),
-        gt(quote.expiresAt, now)
+        notExists(db.select({ id: payment.id }).from(payment).where(eq(payment.quoteID, quote.id))),
+        or(gt(quote.expiresAt, now), isNotNull(quote.usedTransactionID))
       )
     );
 

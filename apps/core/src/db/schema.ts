@@ -1,3 +1,4 @@
+import type { HcsJson } from '@kosha/hedera/hcs';
 import { RECEIVER_MODES, THRESHOLD_ACTIONS, UNVERIFIED_POLICIES } from '@kosha/shared/registry';
 import { createId } from '@paralleldrive/cuid2';
 import { sql } from 'drizzle-orm';
@@ -213,7 +214,7 @@ export const hcsOutbox = pgTable('HcsOutbox', {
   ...base,
   kind: text('kind', { enum: HCS_MESSAGE_KINDS }).notNull(),
   topicID: text('topicID').notNull(),
-  payload: jsonb('payload').notNull(),
+  payload: jsonb('payload').$type<HcsJson>().notNull(),
   paymentID: text('paymentID').references(() => payment.id),
   attempts: integer('attempts').notNull().default(0),
   lastError: text('lastError'),
