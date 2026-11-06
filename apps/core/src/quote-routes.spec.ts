@@ -133,6 +133,8 @@ describe('POST /v1/quote', () => {
           network: 'testnet',
           feePayer: '0.0.4000',
           settlementTokenId: '0.0.429274',
+          compatSettlementAccountId: '0.0.4200',
+          poolReserveAccountId: '0.0.4300',
           nodeAccountIds: ['0.0.3', '0.0.4', '0.0.5'],
           registerUrl: 'https://console.kosha.dev/register?level=1',
           now: () => NOW
@@ -228,11 +230,50 @@ describe('POST /v1/quote', () => {
     expect(reasons).toEqual(['threshold_crossed', 'under_threshold']);
   });
 
-  it('refuses a request without a receiver key, and one without an agent', async () => {
+  it('refuses a request without a receiver key', async () => {
     const noKey = await app.inject({ method: 'POST', url: '/v1/quote', payload: PRICE });
     expect(noKey.statusCode).toBe(401);
-    const noAgent = await quoteFor('business');
-    expect(noAgent.statusCode).toBe(400);
+  });
+
+  describe('compatibility mode', () => {
+    type Entry = { scheme: string; payTo: string; amount: string; extra: { kosha: object } };
+    const entriesOf = (response: { json: () => unknown }) =>
+      (response.json() as { accepts: Entry[] }).accepts;
+
+    it('adds an exact entry paying the all-in total to the settlement account', async () => {
+      await seedTotal('hedera:testnet:0.0.6001', 'business', 999_500n);
+      const [split, exact] = entriesOf(await quoteFor('business', 'hedera:testnet:0.0.6001'));
+      const quoteId = (split?.extra.kosha as { quoteId: string }).quoteId;
+      expect(exact).toMatchObject({
+        scheme: 'exact',
+        payTo: '0.0.4200',
+        amount: '101019',
+        extra: { feePayer: '0.0.4000', kosha: { quoteId, mode: 'compat' } }
+      });
+    });
+
+    it('prices a caller with no agent as an unverified payer whose tolerance is used up', async () => {
+      // 20% of ₹8.84 is 177 paise: 20023 micro-USDC on top of the 0.10 USDC price
+      const accepts = entriesOf(await quoteFor('business'));
+      expect(accepts).toHaveLength(1);
+      expect(accepts[0]).toMatchObject({ scheme: 'exact', payTo: '0.0.4200', amount: '120023' });
+
+      const [row] = await handle.db.select().from(quote);
+      expect(row).toMatchObject({
+        scheme: 'exact_compat',
+        agentID: null,
+        reason: 'tolerance_exceeded',
+        rateBps: 2000,
+        tdsMicro: 20_023n,
+        payToAccountID: '0.0.5001',
+        reserveAccountID: '0.0.4300'
+      });
+    });
+
+    it('charges a strict receiver’s unidentified caller 20% and a foreign one nothing', async () => {
+      expect(entriesOf(await quoteFor('strict'))[0]?.amount).toBe('120023');
+      expect(entriesOf(await quoteFor('foreign'))[0]?.amount).toBe('100000');
+    });
   });
 
   describe('with a spending policy', () => {

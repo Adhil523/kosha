@@ -76,7 +76,9 @@ export const wireCore = (
     db,
     feePayer: config.coreAccountId,
     settlementTokenId: config.settlementTokenId,
-    maxTransactionFeeHbar: config.maxTxFeeHbar
+    maxTransactionFeeHbar: config.maxTxFeeHbar,
+    compatSettlementAccountId: config.compatSettlementAccountId,
+    poolReserveAccountId: config.poolReserveAccountId
   };
 
   const routes: RegisterRoutes[] = [
