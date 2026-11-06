@@ -1,0 +1,134 @@
+import { checkPolicy, type PolicyBlockReason, type PolicyWarning } from './check-policy';
+import { signSplitPayment, type SplitRefusal } from './kosha-split-scheme';
+import { type PayConfig } from './pay-config';
+import { type SpendStore } from './spend-store';
+import { decodeHeader, encodeHeader, HEADERS, SCHEMES, X402_VERSION } from '@kosha/shared/headers';
+import {
+  type KoshaSplitRequirements,
+  koshaSplitRequirementsSchema,
+  type PaymentPayload,
+  type PaymentRequired,
+  paymentRequiredSchema
+} from '@kosha/shared/x402-payment';
+
+const PAYMENT_REQUIRED_STATUS = 402;
+
+export type PayFailureReason =
+  'invalid_402' | 'no_kosha_split' | 'payment_rejected' | PolicyBlockReason | SplitRefusal;
+
+export type PayFailure = {
+  reason: PayFailureReason;
+  message: string;
+  // The server's 402, so a caller (or `pay.fetch`) can hand it back unchanged
+  response: Response;
+};
+
+// A checked, signed payment, ready for `complete()` to send
+export type PreparedPayment = {
+  url: string;
+  init: RequestInit;
+  quote: KoshaSplitRequirements;
+  // The PAYMENT-SIGNATURE header value
+  signature: string;
+  totalMicro: bigint;
+  warnings: PolicyWarning[];
+};
+
+export type PrepareResult =
+  // The resource was free (or the server answered something other than 402)
+  | { ok: true; data: { kind: 'free'; response: Response } }
+  | { ok: true; data: { kind: 'payment'; payment: PreparedPayment } }
+  | { ok: false; data: PayFailure };
+
+export type PrepareDeps = {
+  config: PayConfig;
+  store: SpendStore;
+  fetch: typeof fetch;
+  now: () => Date;
+};
+
+const fail = (reason: PayFailureReason, message: string, response: Response): PrepareResult => ({
+  ok: false,
+  data: { reason, message, response }
+});
+
+// Adds X-KOSHA-AGENT, so Core quotes with this agent's verification level from the first call
+export const withHeaders = (init: RequestInit, extra: Record<string, string>): RequestInit => {
+  const headers = new Headers(init.headers);
+  Object.entries(extra).forEach(([name, value]) => headers.set(name, value));
+  return { ...init, headers };
+};
+
+// The quote from the PAYMENT-REQUIRED header, or from the 402 body when the header is missing
+const readPaymentRequired = async (response: Response): Promise<PaymentRequired | null> => {
+  const header = response.headers.get(HEADERS.paymentRequired);
+  if (header) {
+    const decoded = decodeHeader(paymentRequiredSchema, header);
+    return decoded.ok ? decoded.data : null;
+  }
+  let body: unknown;
+  try {
+    body = await response.clone().json();
+  } catch {
+    return null;
+  }
+  const parsed = paymentRequiredSchema.safeParse(body);
+  return parsed.success ? parsed.data : null;
+};
+
+// Step 1 of a paid call: fetch; on a 402, take the kosha-split entry, check it against the
+// owner's policy, and sign exactly the quoted transfer. Nothing is sent yet.
+export const preparePayment = async (
+  deps: PrepareDeps,
+  url: string,
+  init: RequestInit = {}
+): Promise<PrepareResult> => {
+  const { config, store } = deps;
+  const request = withHeaders(init, { [HEADERS.koshaAgent]: config.agentId });
+  const response = await deps.fetch(url, request);
+  if (response.status !== PAYMENT_REQUIRED_STATUS) {
+    return { ok: true, data: { kind: 'free', response } };
+  }
+
+  const paymentRequired = await readPaymentRequired(response);
+  if (!paymentRequired) {
+    return fail('invalid_402', 'the 402 carried no readable PAYMENT-REQUIRED', response);
+  }
+  const entry = paymentRequired.accepts.find((accept) => accept.scheme === SCHEMES.koshaSplit);
+  const parsedQuote = koshaSplitRequirementsSchema.safeParse(entry);
+  if (!parsedQuote.success) {
+    return fail('no_kosha_split', 'the 402 offered no kosha-split payment', response);
+  }
+  const quote = parsedQuote.data;
+
+  const now = deps.now();
+  const policy = checkPolicy({ policy: config.policy, url, quote, spent: await store.totals(now) });
+  if (!policy.ok) {
+    return fail(policy.data.reason, policy.data.message, response);
+  }
+  const signed = await signSplitPayment(quote, config, now);
+  if (!signed.ok) {
+    return fail(signed.data.reason, `refused to sign the quote: ${signed.data.reason}`, response);
+  }
+
+  const payload: PaymentPayload = {
+    x402Version: X402_VERSION,
+    resource: paymentRequired.resource,
+    accepted: quote,
+    payload: { transaction: signed.data.transaction }
+  };
+  return {
+    ok: true,
+    data: {
+      kind: 'payment',
+      payment: {
+        url,
+        init: request,
+        quote,
+        signature: encodeHeader(payload),
+        totalMicro: policy.data.totalMicro,
+        warnings: policy.data.warnings
+      }
+    }
+  };
+};
