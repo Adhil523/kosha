@@ -1,7 +1,7 @@
 import { parsePrivateKey } from '@kosha/hedera/client';
 import { loadEnv } from '@kosha/shared/env';
-import { accountIdSchema, hederaNetworkSchema } from '@kosha/shared/ids';
-import { decodePaymentResponseHeader, wrapFetchWithPayment, x402Client } from '@x402/fetch';
+import { accountIdSchema, hederaNetworkSchema, tokenIdSchema } from '@kosha/shared/ids';
+import { decodePaymentResponseHeader, wrapFetchWithPaymentFromConfig } from '@x402/fetch';
 import { createClientHederaSigner, ExactHederaScheme } from '@x402/hedera';
 import { z } from 'zod';
 
@@ -14,12 +14,14 @@ import { z } from 'zod';
 // Needs Core, demo-api-in and `pnpm seed --profiles`. Pays as agent-unknown, whose account the
 // seed registered, so Core books the payment to it.
 
-const DEFAULT_URL = 'http://localhost:4101/v1/gst-lookup?gstin=27AAPFU0939F1ZV';
+const MAX_MICRO_PER_PAYMENT = '1000000';
+const DEFAULT_URL = 'http://localhost:4101/v1/gst-lookup?gstin=29AAKCK4821M1ZQ';
 
 const envSchema = z.object({
   HEDERA_NETWORK: hederaNetworkSchema,
   AGENT_UNKNOWN_ACCOUNT_ID: accountIdSchema,
-  AGENT_UNKNOWN_PRIVATE_KEY: z.string().min(1)
+  AGENT_UNKNOWN_PRIVATE_KEY: z.string().min(1),
+  SETTLEMENT_TOKEN_ID: tokenIdSchema
 });
 
 const main = async (): Promise<void> => {
@@ -39,11 +41,17 @@ const main = async (): Promise<void> => {
   const signer = createClientHederaSigner(env.AGENT_UNKNOWN_ACCOUNT_ID, key.data, {
     network: `hedera:${env.HEDERA_NETWORK}`
   });
-  const client = new x402Client().register(
-    `hedera:${env.HEDERA_NETWORK}`,
-    new ExactHederaScheme(signer)
-  );
-  const paidFetch = wrapFetchWithPayment(fetch, client);
+  const network = `hedera:${env.HEDERA_NETWORK}` as const;
+  // Stock clients pay only default assets (Circle USDC) unless told otherwise; development runs
+  // on bootstrap's tUSDC, so allow it, capped at 1 USDC a payment
+  const paidFetch = wrapFetchWithPaymentFromConfig(fetch, {
+    schemes: [{ network, client: new ExactHederaScheme(signer) }],
+    spendControls: {
+      allowedAssets: [
+        { network, asset: env.SETTLEMENT_TOKEN_ID, maxAmountPerPayment: MAX_MICRO_PER_PAYMENT }
+      ]
+    }
+  });
 
   console.info(`[smoke-compat]: GET ${url} as ${env.AGENT_UNKNOWN_ACCOUNT_ID}, no Kosha headers`);
   const response = await paidFetch(url);
