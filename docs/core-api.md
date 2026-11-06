@@ -137,8 +137,8 @@ A refused quote returns `403` with `{ error: "policy_…", message }` and stores
 | `GET /v1/aggregates?receiverId=` | admin or receiver | — | array of `console-api` `aggregateRowSchema` | A13 |
 | `GET /v1/stream?receiverId=` | admin or receiver | — | SSE, each `data:` is `console-api` `streamEventSchema` | A13 |
 | `GET /v1/exports/tds?receiverId=&quarter=` | admin or receiver | `tax-reports` `quarterSchema` | CSV; one row per `tax-reports` `tdsExportRowSchema`, header = its keys | A15 |
-| `GET /v1/outside-payments?receiverId=` | admin | — | array of `console-api` `outsidePaymentRowSchema` | A19 (optional) |
-| `POST /v1/outside-payments/:id/classify` | admin | `tax-reports` `outsideClassifySchema` | `console-api` `outsidePaymentRowSchema` | A19 (optional) |
+| `GET /v1/outside-payments?receiverId=` | admin or receiver | — | array of `console-api` `outsidePaymentRowSchema`, newest first | A19 (optional) |
+| `POST /v1/outside-payments/:id/classify` | admin or receiver | `tax-reports` `outsideClassifySchema` | `console-api` `outsidePaymentRowSchema`; `409` once classified | A19 (optional) |
 | `GET /v1/close?receiverId=&month=` | admin | `tax-reports` `monthSchema` | `tax-reports` `monthlyCloseSchema` | A20 (optional) |
 | `POST /v1/challans` | admin | `tax-reports` `challanRecordSchema` | `tax-reports` `challanRowSchema` | A20 (optional) |
 | `GET /v1/releases?challanId=` | admin | — | array of `tax-reports` `releaseRowSchema` | A20 (optional) |
@@ -183,6 +183,24 @@ Events are in-process: Core runs as one instance.
 | `section` | `393(1)` |
 | `hcsSequence` | The payment's HCS record, empty until the outbox has published it |
 | `transactionId` | The Hedera transaction that settled it |
+
+### Outside-payment watcher (A19)
+
+A payer can still pay an API directly, outside Kosha. Every 30 seconds (`node-cron`, job `outside-watch`), Core reads each receiver wallet's new credits of the settlement token from the Mirror Node, from a per-wallet cursor (`WatcherCursor`). A wallet is watched from its first pass on; its earlier history is not flagged.
+
+**What is flagged:** a credit whose sender is a declared wallet of a Kosha agent, and whose transaction Core did not settle. Kosha's own settlements are recognised by the transaction ID a quote claims before execution, so one still in flight is recognised too. The memo is never trusted, because anyone can write `kosha:` in one. Forwards and reserve releases come from Kosha's accounts, not from payer wallets, so they never match.
+
+**What happens to a flagged payment.** Core never withholds on it. Under the pair's lock:
+- the credit is stored as an `OutsidePayment` with its INR value;
+- its `shortfallPaise` is the TDS `decide()` would have withheld against the pair's total at that moment;
+- its value is added to the pair's `outsideValuePaise`, so it counts toward the threshold until classified;
+- an HCS `outside` message is queued (`oid`, `tx`, HMAC pair ID, FY, value, shortfall), and `outside.payment` goes to the receiver's stream.
+
+**Classify,** once, with the admin token or the receiver's own key:
+- `consideration` keeps the value in the count.
+- `not_consideration_gift`, which needs a `note`, takes it out of the count.
+- Both queue an HCS `outside_resolved` message with the classification.
+- Flagged payments never appear in the TDS export, which lists deductions only.
 
 ## Demo administration (A14)
 
