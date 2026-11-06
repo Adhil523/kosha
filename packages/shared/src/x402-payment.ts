@@ -147,7 +147,9 @@ export const settlementResponseSchema = z.object({
         hashscanUrl: z.url(),
         // null until the HCS outbox has published the record
         hcsSequence: z.int().positive().nullable(),
-        tdsMicroUsdc: amountSchema
+        tdsMicroUsdc: amountSchema,
+        // The quoted API price: a resent payment's earlier result must not serve a dearer route
+        priceMicroUsdc: amountSchema.optional()
       })
     })
     .optional()
