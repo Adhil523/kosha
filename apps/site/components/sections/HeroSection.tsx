@@ -18,9 +18,8 @@ export const HeroSection = () => (
           {TAGLINE}
         </h1>
         <p className="max-w-[46ch] text-lead">
-          Kosha is an x402 payment gateway on Hedera. An AI agent paying an Indian API in USDC owes
-          Indian TDS, and nobody withholds it today. Kosha works the tax out at the quote and
-          withholds it in the same transaction.
+          An x402 payment gateway on Hedera. An AI agent paying an Indian API in USDC owes Indian
+          TDS, and nobody withholds it today. Kosha does, in the same transaction.
         </p>
         <div className="flex flex-col gap-3 sm:flex-row">
           <LinkButton href={LINKS.txTdsReserved}>{MAIN_ACTION}</LinkButton>
@@ -35,7 +34,7 @@ export const HeroSection = () => (
 
       <Loop
         label="the receipt"
-        className="lit relative h-[420px] overflow-hidden rounded-lg sm:h-[560px] lg:col-span-6 lg:col-start-7 lg:h-[716px]"
+        className="lit relative h-[380px] overflow-hidden rounded-lg sm:h-[560px] lg:col-span-6 lg:col-start-7 lg:h-[716px]"
       >
         <ConsoleWindow className="absolute top-4 left-4 w-[calc(100%-16px)] sm:top-16 sm:left-16 sm:w-[calc(100%-64px+28px)]" />
         <ReceiptCard className="absolute bottom-8 left-8 hidden sm:block" />

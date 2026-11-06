@@ -1,5 +1,6 @@
 import { SiteFooter } from '@/components/elements/SiteFooter';
 import { SiteNav } from '@/components/elements/SiteNav';
+import { FlowSection } from '@/components/sections/FlowSection';
 import { HeroSection } from '@/components/sections/HeroSection';
 
 const HomePage = () => (
@@ -7,6 +8,7 @@ const HomePage = () => (
     <SiteNav />
     <main className="flex flex-col">
       <HeroSection />
+      <FlowSection />
     </main>
     <SiteFooter />
   </>

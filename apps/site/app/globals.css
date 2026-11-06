@@ -353,3 +353,10 @@
     animation: none !important;
   }
 }
+
+@layer utilities {
+  /* A black third-party mark (GitHub, Express) reads white on the dark ground (icons.md) */
+  .ic-ink {
+    filter: invert(1) hue-rotate(180deg);
+  }
+}

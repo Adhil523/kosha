@@ -1,109 +1,45 @@
 import { cn } from '@/lib/utils';
 
+type Tone = 'accent' | 'warning' | 'plain';
 type PaymentRow = {
   time: string;
   agent: string;
   price: string;
   tds: string;
-  rate: string;
   reason: string;
-  tone: 'accent' | 'warning' | 'plain';
+  tone: Tone;
 };
 
 // Amounts and reasons match the seeded Console: 0.10 USDC at ₹88.4, 1% past ₹10,000 a year,
-// 20% for a payer with no PAN past the owner's tolerance.
-const ROWS: PaymentRow[] = [
-  {
-    time: '14:02:51',
-    agent: 'agent-resident',
-    price: '0.100000',
-    tds: '0.001019',
-    rate: '1%',
-    reason: '1% reserved',
-    tone: 'accent'
-  },
-  {
-    time: '14:02:38',
-    agent: 'agent-resident',
-    price: '0.100000',
-    tds: '0',
-    rate: '0%',
-    reason: 'under threshold',
-    tone: 'plain'
-  },
-  {
-    time: '14:01:10',
-    agent: 'agent-unknown',
-    price: '0.050000',
-    tds: '0.010000',
-    rate: '20%',
-    reason: '20% reserved, no PAN',
-    tone: 'warning'
-  },
-  {
-    time: '13:58:04',
-    agent: 'agent-nonresident',
-    price: '0.250000',
-    tds: '0',
-    rate: '0%',
-    reason: 'non-resident, flagged',
-    tone: 'plain'
-  },
-  {
-    time: '13:55:47',
-    agent: 'agent-resident',
-    price: '0.250000',
-    tds: '0',
-    rate: '0%',
-    reason: 'under threshold',
-    tone: 'plain'
-  },
-  {
-    time: '13:51:22',
-    agent: 'agent-unknown',
-    price: '0.050000',
-    tds: '0',
-    rate: '0%',
-    reason: 'within tolerance',
-    tone: 'plain'
-  },
-  {
-    time: '13:49:09',
-    agent: 'agent-resident',
-    price: '0.100000',
-    tds: '0',
-    rate: '0%',
-    reason: 'under threshold',
-    tone: 'plain'
-  },
-  {
-    time: '13:44:31',
-    agent: 'agent-resident',
-    price: '0.100000',
-    tds: '0',
-    rate: '0%',
-    reason: 'under threshold',
-    tone: 'plain'
-  },
-  {
-    time: '13:40:15',
-    agent: 'agent-unknown',
-    price: '0.050000',
-    tds: '0',
-    rate: '0%',
-    reason: 'within tolerance',
-    tone: 'plain'
-  },
-  {
-    time: '13:37:58',
-    agent: 'agent-resident',
-    price: '0.250000',
-    tds: '0',
-    rate: '0%',
-    reason: 'under threshold',
-    tone: 'plain'
-  }
+// 20% for a payer with no PAN past the owner's tolerance. Enough rows that the frame cuts the list.
+const ROW_DATA: [string, string, string, string, string, Tone][] = [
+  ['14:02:51', 'agent-resident', '0.100000', '0.001019', '1% reserved', 'accent'],
+  ['14:02:38', 'agent-resident', '0.100000', '0', 'under threshold', 'plain'],
+  ['14:01:10', 'agent-unknown', '0.050000', '0.010000', '20%, no PAN', 'warning'],
+  ['13:58:04', 'agent-nonresident', '0.250000', '0', 'non-resident', 'plain'],
+  ['13:55:47', 'agent-resident', '0.250000', '0', 'under threshold', 'plain'],
+  ['13:51:22', 'agent-unknown', '0.050000', '0', 'within tolerance', 'plain'],
+  ['13:49:09', 'agent-resident', '0.100000', '0', 'under threshold', 'plain'],
+  ['13:44:31', 'agent-resident', '0.100000', '0', 'under threshold', 'plain'],
+  ['13:40:15', 'agent-unknown', '0.050000', '0', 'within tolerance', 'plain'],
+  ['13:37:58', 'agent-resident', '0.250000', '0', 'under threshold', 'plain'],
+  ['13:33:12', 'agent-nonresident', '0.050000', '0', 'non-resident', 'plain'],
+  ['13:30:40', 'agent-resident', '0.100000', '0', 'under threshold', 'plain'],
+  ['13:27:05', 'agent-unknown', '0.050000', '0', 'within tolerance', 'plain'],
+  ['13:22:49', 'agent-resident', '0.250000', '0', 'under threshold', 'plain'],
+  ['13:19:31', 'agent-resident', '0.100000', '0', 'under threshold', 'plain'],
+  ['13:15:08', 'agent-unknown', '0.050000', '0', 'within tolerance', 'plain'],
+  ['13:11:52', 'agent-resident', '0.100000', '0', 'under threshold', 'plain'],
+  ['13:08:26', 'agent-resident', '0.100000', '0', 'under threshold', 'plain']
 ];
+const ROWS: PaymentRow[] = ROW_DATA.map(([time, agent, price, tds, reason, tone]) => ({
+  time,
+  agent,
+  price,
+  tds,
+  reason,
+  tone
+}));
 
 const SIDEBAR = ['Overview', 'Payments', 'Counterparties', 'Tax', 'Monthly'];
 
@@ -153,7 +89,8 @@ export const ConsoleWindow = ({ className }: ConsoleWindowProps) => (
           </span>
         ))}
       </div>
-      <div className="flex min-w-0 flex-col gap-4 p-4">
+      {/* The right padding keeps the content clear of the frame's cut at the window's right */}
+      <div className="flex min-w-0 flex-col gap-4 p-4 sm:pr-20">
         <div className="flex items-center justify-between">
           <span className="text-base font-medium">Payments</span>
           <span className="flex items-center gap-2 text-ui-meta text-muted">
@@ -182,9 +119,9 @@ export const ConsoleWindow = ({ className }: ConsoleWindowProps) => (
         <table className="w-full border-collapse font-mono text-ui-meta">
           <thead className="text-muted">
             <tr className="text-left">
-              <th className="py-1.5 pr-3 font-normal">time</th>
+              <th className="hidden py-1.5 pr-3 font-normal sm:table-cell">time</th>
               <th className="py-1.5 pr-3 font-normal">agent</th>
-              <th className="py-1.5 pr-3 text-right font-normal">price</th>
+              <th className="hidden py-1.5 pr-3 text-right font-normal sm:table-cell">price</th>
               <th className="py-1.5 pr-3 text-right font-normal">tds</th>
               <th className="py-1.5 font-normal">reason</th>
             </tr>
@@ -192,9 +129,9 @@ export const ConsoleWindow = ({ className }: ConsoleWindowProps) => (
           <tbody>
             {ROWS.map((row) => (
               <tr key={row.time} className="border-t border-line">
-                <td className="py-2 pr-3 text-muted">{row.time}</td>
-                <td className="py-2 pr-3">{row.agent}</td>
-                <td className="py-2 pr-3 text-right">{row.price}</td>
+                <td className="hidden py-2 pr-3 text-muted sm:table-cell">{row.time}</td>
+                <td className="py-2 pr-3 whitespace-nowrap">{row.agent}</td>
+                <td className="hidden py-2 pr-3 text-right sm:table-cell">{row.price}</td>
                 <td
                   className={cn(
                     'py-2 pr-3 text-right',
