@@ -3,6 +3,7 @@ import { encodeHeader, HEADERS } from '@kosha/shared/headers';
 import { paymentRequired, splitEntry } from '@kosha/shared/x402-payment.fixture';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 const AGENT = 'hedera:testnet:0.0.6001';
 const MERIDIAN_LEI = '5493001KQW6DM7KEDR62';
@@ -29,18 +30,41 @@ const SETTLED = {
   }
 };
 
+// What Gate sends to verify and settle; only the paid amount matters here
+const facilitatorBody = z.object({ paymentRequirements: z.object({ amount: z.string() }) });
+
 const setup = () => {
-  const replies = new Map<string, () => Response>([
+  // Core reports the API price of the quote a payment paid; here that is the amount it carries
+  const replies = new Map<string, (price: string) => Response>([
     ['/v1/quote', () => Response.json(paymentRequired)],
-    ['/v1/verify', () => Response.json({ isValid: true, payer: '0.0.6001' })],
-    ['/v1/settle', () => Response.json(SETTLED)]
+    [
+      '/v1/verify',
+      (price) =>
+        Response.json({
+          isValid: true,
+          payer: '0.0.6001',
+          extra: { kosha: { quoteId: 'q_7f3a', priceMicroUsdc: price } }
+        })
+    ],
+    [
+      '/v1/settle',
+      (price) =>
+        Response.json({
+          ...SETTLED,
+          extensions: { kosha: { ...SETTLED.extensions.kosha, priceMicroUsdc: price } }
+        })
+    ]
   ]);
-  const fetchMock = vi.fn<typeof fetch>(async (input) => {
+  const priceIn = (body: RequestInit['body']): string => {
+    const parsed = facilitatorBody.safeParse(typeof body === 'string' ? JSON.parse(body) : null);
+    return parsed.success ? parsed.data.paymentRequirements.amount : '0';
+  };
+  const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
     const reply = replies.get(new URL(String(input)).pathname);
     if (!reply) {
       throw new Error(`unexpected Core call: ${String(input)}`);
     }
-    return reply();
+    return reply(priceIn(init?.body));
   });
   // The fake Core's transactions aren't on the Mirror Node; Gate's own tests cover the proof
   return buildApp({
