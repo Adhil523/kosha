@@ -11,7 +11,7 @@ import {
   paymentRequiredSchema
 } from '@kosha/shared/x402-payment';
 
-const PAYMENT_REQUIRED_STATUS = 402;
+export const PAYMENT_REQUIRED_STATUS = 402;
 
 export type PayFailureReason =
   'invalid_402' | 'no_kosha_split' | 'payment_rejected' | PolicyBlockReason | SplitRefusal;
