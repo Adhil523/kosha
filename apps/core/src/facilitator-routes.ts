@@ -100,7 +100,11 @@ export const facilitatorRoutes =
           payer,
           transaction: settled,
           network: X402_NETWORKS[deps.network],
-          amount: quote.priceMicro.toString(),
+          // What payTo received: the price for kosha-split, the all-in total for exact (compat)
+          amount: (quote.scheme === 'exact_compat'
+            ? quote.totalMicro
+            : quote.priceMicro
+          ).toString(),
           extensions: {
             kosha: {
               hashscanUrl: hashscanTransaction(deps.network, settled),
