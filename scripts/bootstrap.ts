@@ -1,4 +1,5 @@
 import { type BootstrapContext, bootstrapLog, envSaver } from './lib/bootstrap-context';
+import { ensureDemoAccounts } from './lib/bootstrap-accounts';
 import { ensureSettlementToken } from './lib/bootstrap-token';
 import { readEnvFile } from './lib/env-file';
 import { clientRunner } from './lib/hedera-run';
@@ -37,6 +38,7 @@ const main = async () => {
   bootstrapLog(`operator ${operatorId.toString()}, env file ${envFile.data.path}`);
   try {
     await ensureSettlementToken(context);
+    await ensureDemoAccounts(context);
   } finally {
     client.close();
   }
