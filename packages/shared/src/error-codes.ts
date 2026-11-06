@@ -23,6 +23,10 @@ export const ERROR_CODES = [
   'quote_not_found',
   'quote_expired',
   'replay',
+  // Settlement: the network rejected the transaction, or its outcome is not yet known (it may
+  // still settle; Core never resubmits it)
+  'settlement_failed',
+  'settlement_pending',
   // Profiles
   'unknown_receiver',
   'payer_not_declared',
