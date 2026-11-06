@@ -203,6 +203,61 @@ Admin only. `pnpm seed --history` and `pnpm seed --reset-demo` call these. Parti
 
 HCS messages already published stay on chain, so after a reset the topic's running totals no longer match the database for the reset pairs.
 
+## Deploy (A16)
+
+Core runs on Fly.io from `apps/core/Dockerfile` and `apps/core/fly.toml` (Mumbai, `/health` check). Deploy it before the demo APIs and the Console, because both call it. Everything stays on testnet. A person runs these commands; the agents never deploy.
+
+**Image.** It keeps the pnpm workspace, installs only Core's dependency graph, and runs `src/server.ts` with `tsx`, like the demo APIs' images. A `pnpm deploy` bundle won't work: Core finds its env and rule pack from the workspace root, and the internal packages export TypeScript source. `CORE_PORT=8080` and `RULEPACK_PATH=rulepacks/in-2026.2.json` are set in the image. Pending migrations run at startup, before the server listens. To check it locally: `docker build -f apps/core/Dockerfile -t kosha-core .`
+
+**One machine, always on.** Core must run as exactly one instance:
+- the live-event bus is in process;
+- the HCS outbox and the compatibility forwarder loops run inside it;
+- compat funds wait in Kosha's settlement account until a forward goes out.
+
+So `fly.toml` keeps one machine up and never stops it.
+
+**No CORS.** No browser calls Core. The Console calls it only from Next.js server code (PROTOCOL §2), and agents and browsers talk to Gate. So Core sends no CORS headers; add them only if a browser client ever needs Core directly.
+
+```bash
+fly auth login
+fly apps create kosha-core
+
+# Postgres: Fly's own (attach sets DATABASE_URL as a secret), or any Postgres 16 URL
+fly postgres create --name kosha-core-db --region bom
+fly postgres attach kosha-core-db --app kosha-core
+
+# Secrets: copy each value from the shared env file (never commit or paste them anywhere else)
+fly secrets set --app kosha-core \
+  HEDERA_NETWORK=testnet MIRROR_URL=https://testnet.mirrornode.hedera.com \
+  CORE_ACCOUNT_ID=... CORE_PRIVATE_KEY=... ISSUER_PRIVATE_KEY=... \
+  SETTLEMENT_TOKEN_ID=... HCS_PAYMENTS_TOPIC=... \
+  COMPAT_SETTLEMENT_ACCOUNT_ID=... POOL_RESERVE_ACCOUNT_ID=... \
+  MAX_TX_FEE_HBAR=2 FX_DEMO_INR_PER_USD=88.40 \
+  PAIR_HMAC_SECRET=... PAN_COMMIT_SECRET=... CONSOLE_ADMIN_TOKEN=...
+
+fly deploy . --config apps/core/fly.toml --dockerfile apps/core/Dockerfile \
+  --ignorefile apps/core/Dockerfile.dockerignore
+fly scale count 1 --app kosha-core
+
+# Check it, then seed the demo against it from your machine
+curl https://kosha-core.fly.dev/health
+CORE_URL=https://kosha-core.fly.dev pnpm seed --profiles --history --reset-demo
+```
+
+Core refuses to start until every secret is set, and it names each missing key (never its value) in `fly logs`. Then point the demo APIs' and the Console's `CORE_URL` at `https://kosha-core.fly.dev` (README, "Deploy").
+
+| Secret | From |
+| --- | --- |
+| `HEDERA_NETWORK`, `MIRROR_URL` | `testnet` and the testnet Mirror Node |
+| `CORE_ACCOUNT_ID`, `CORE_PRIVATE_KEY` | Core's operator account (human step H2) |
+| `ISSUER_PRIVATE_KEY` | The test credential issuer (bootstrap) |
+| `SETTLEMENT_TOKEN_ID` | tUSDC from bootstrap, or Circle testnet USDC `0.0.429274` after H5 |
+| `HCS_PAYMENTS_TOPIC` | Bootstrap |
+| `COMPAT_SETTLEMENT_ACCOUNT_ID`, `POOL_RESERVE_ACCOUNT_ID` | Bootstrap |
+| `MAX_TX_FEE_HBAR`, `FX_DEMO_INR_PER_USD` | `2` and `88.40` |
+| `PAIR_HMAC_SECRET`, `PAN_COMMIT_SECRET`, `CONSOLE_ADMIN_TOKEN` | Bootstrap |
+| `DATABASE_URL` | Set by `fly postgres attach` |
+
 ## Fixtures
 
 `@kosha/shared/fixtures` exports one parsed example per read schema (`LEDGER_PAGE_FIXTURE`, `AGGREGATES_FIXTURE`, `STREAM_EVENTS_FIXTURE`, `TDS_EXPORT_FIXTURE`, `MONTHLY_CLOSE_FIXTURE`, and so on). The Console serves them under `KOSHA_MOCK=1` until Core serves real data. Core's responses must parse with the same schemas.
