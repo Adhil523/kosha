@@ -1,0 +1,1 @@
+ALTER TABLE "Payment" ADD COLUMN "forwardedAt" timestamp with time zone;
