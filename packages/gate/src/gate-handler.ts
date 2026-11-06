@@ -176,6 +176,12 @@ const coversRoute = (accepted: PaymentPayload['accepted'], route: MatchedRoute):
     : amount >= route.priceMicroUsdc;
 };
 
+// Core reports the API price its quote for this payment named. The route must cost exactly that:
+// otherwise a quote made for a cheaper route (an exact entry whose all-in total covers a dearer
+// price, or a resent payment's earlier result) would serve this route and short the API.
+const pricedForRoute = (price: string | undefined, route: MatchedRoute): boolean =>
+  price !== undefined && BigInt(price) === route.priceMicroUsdc;
+
 // Core sends a Kosha code as the errorReason when it has one; anything else is a bad payload
 const settleErrorCode = (settlement: SettlementResponse): ErrorCode => {
   const parsed = errorCodeSchema.safeParse(settlement.errorReason);
@@ -286,6 +292,9 @@ export const createGateHandler = (options: GateOptions) => {
       if (code === 'replay') return settle();
       return refuse(requote, code, accepted.network, undefined, verified.data.invalidMessage);
     }
+    if (!pricedForRoute(verified.data.extra?.kosha.priceMicroUsdc, route)) {
+      return refuse(requote, 'amount_mismatch', accepted.network);
+    }
 
     return deferSettle ? { action: 'verified', settle } : settle();
   };
@@ -304,6 +313,10 @@ export const createGateHandler = (options: GateOptions) => {
     const settlement = settled.data;
     if (!settlement.success) {
       return refuse(requote, settleErrorCode(settlement), accepted.network, settlement);
+    }
+    // Money has moved, so no fresh quote; but a payment priced for another route is not served
+    if (!pricedForRoute(settlement.extensions?.kosha.priceMicroUsdc, route)) {
+      return failure('amount_mismatch', accepted.network, settlement);
     }
 
     const proof =

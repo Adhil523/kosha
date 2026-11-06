@@ -14,6 +14,9 @@ import { describe, expect, it, vi } from 'vitest';
 const URL_GST = 'https://api.demo-in.dev/v1/gst-lookup?gstin=29ABCDE1234F1Z5';
 const AGENT = 'hedera:testnet:0.0.6001';
 
+// Core's quote for the payment priced the route at exactly 0.10 USDC
+const VERIFIED_EXTRA = { kosha: { quoteId: 'q_7f3a', priceMicroUsdc: '100000' } };
+
 const SETTLED = {
   success: true,
   payer: '0.0.6001',
@@ -24,7 +27,8 @@ const SETTLED = {
     kosha: {
       hashscanUrl: 'https://hashscan.io/testnet/transaction/1762424000.000000001',
       hcsSequence: 42,
-      tdsMicroUsdc: '1019'
+      tdsMicroUsdc: '1019',
+      priceMicroUsdc: '100000'
     }
   }
 };
@@ -40,7 +44,7 @@ const json = (body: unknown, status = 200) => Response.json(body, { status });
 const setup = (replies: CoreReplies = {}, overrides: Partial<GateOptions> = {}) => {
   const defaults: Required<CoreReplies> = {
     quote: () => json(paymentRequired),
-    verify: () => json({ isValid: true, payer: '0.0.6001' }),
+    verify: () => json({ isValid: true, payer: '0.0.6001', extra: VERIFIED_EXTRA }),
     settle: () => json(SETTLED)
   };
   const fetchMock = vi.fn<typeof fetch>(async (input) => {
@@ -309,6 +313,20 @@ describe('createGateHandler: failed payment', () => {
       }
     );
 
+    it("isn't served when its earlier result was for a cheaper route", async () => {
+      const cheaper = {
+        ...SETTLED,
+        extensions: { kosha: { ...SETTLED.extensions.kosha, priceMicroUsdc: '1000' } }
+      };
+      const { handle } = setup({ verify: replayVerify, settle: () => json(cheaper) });
+
+      const result = expectRespond(
+        await handle(request({ 'payment-signature': paymentFor(splitEntry) }))
+      );
+
+      expect(result).toMatchObject({ status: 402, body: { error: 'amount_mismatch' } });
+    });
+
     it('stays replay when settle says so', async () => {
       const replayed = {
         success: false,
@@ -394,6 +412,24 @@ describe('createGateHandler: failed payment', () => {
     expect(result.body).toEqual({ x402Version: 2, error: 'invalid_payload' });
     expect(result.headers).toHaveProperty(HEADERS.paymentRequired);
     expect(calls(CORE_PATHS.verify)).toEqual([]);
+  });
+
+  it('refuses an exact payment whose quote was for a cheaper route, before settling', async () => {
+    // A cheap route's all-in total can still cover this route's price
+    const cheaperQuote = () =>
+      json({
+        isValid: true,
+        payer: '0.0.6001',
+        extra: { kosha: { quoteId: 'q_7f3a', priceMicroUsdc: '90000' } }
+      });
+    const { handle, calls } = setup({ verify: cheaperQuote });
+
+    const result = expectRespond(
+      await handle(request({ 'payment-signature': paymentFor(exactEntry) }))
+    );
+
+    expect(result.body).toMatchObject({ error: 'amount_mismatch' });
+    expect(calls(CORE_PATHS.settle)).toEqual([]);
   });
 
   it('refuses a quote for a different price before calling Core', async () => {
