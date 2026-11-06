@@ -45,6 +45,19 @@ describe('mirror client', () => {
     });
   });
 
+  it('reads an account memo', async () => {
+    const { fetchImpl } = fakeFetch({
+      '/api/v1/accounts/0.0.6001': {
+        body: { account: '0.0.6001', memo: 'hcs-11:hcs://1/0.0.7001' }
+      }
+    });
+    const mirror = createMirrorClient(BASE, fetchImpl);
+    expect(await mirror.accountMemo('0.0.6001')).toEqual({
+      ok: true,
+      data: 'hcs-11:hcs://1/0.0.7001'
+    });
+  });
+
   it('reads a transaction with its token transfers and decoded memo', async () => {
     const { fetchImpl } = fakeFetch({
       '/api/v1/transactions/0.0.4000-1762424400-000000001': {
