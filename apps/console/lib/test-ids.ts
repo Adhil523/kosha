@@ -5,5 +5,6 @@ export const TEST_IDS = {
   pageTitle: 'page-title',
   signInRole: (role: string) => `sign-in-${role}`,
   signOut: 'sign-out',
-  footerLabels: 'footer-labels'
+  footerLabels: 'footer-labels',
+  rulePackBadge: 'rule-pack-badge'
 } as const;

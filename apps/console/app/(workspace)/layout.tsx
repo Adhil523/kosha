@@ -1,3 +1,4 @@
+import { RulePackBadge } from '@/components/elements/RulePackBadge';
 import { SideNav } from '@/components/elements/SideNav';
 import { WorkspaceNav } from '@/components/elements/WorkspaceNav';
 import { Suspense } from 'react';
@@ -11,7 +12,14 @@ const WorkspaceLayout = ({ children }: LayoutProps<'/'>) => (
         <WorkspaceNav />
       </Suspense>
     </aside>
-    <main className="flex-1 p-8">{children}</main>
+    <div className="flex flex-1 flex-col">
+      <header className="flex h-14 items-center justify-end border-b px-8">
+        <Suspense fallback={null}>
+          <RulePackBadge />
+        </Suspense>
+      </header>
+      <main className="flex-1 p-8">{children}</main>
+    </div>
   </div>
 );
 
