@@ -7,6 +7,7 @@ import {
 } from './agent-kit-plugin';
 import { type KoshaPay } from './kosha-pay';
 import { type PreparedPayment } from './prepare-payment';
+import { createMemorySpendStore } from './spend-store';
 import {
   AbstractHook,
   AbstractPolicy,
@@ -25,6 +26,7 @@ import {
 import { splitEntry } from '@kosha/shared/x402-payment.fixture';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 
+const NOW = new Date('2026-11-06T10:30:00Z');
 const URL_PAID = 'http://localhost:4101/v1/gst-lookup?gstin=29AAKCK4821M1ZQ';
 const BODY = { registration: { gstin: '29AAKCK4821M1ZQ' } };
 const TX_ID = transactionIdSchema.parse('0.0.4000@1762424400.123456789');
@@ -117,6 +119,17 @@ const run = (pay: KoshaPay, hooks: AbstractHook[] = [], mode?: AgentMode) =>
   new KoshaPaidFetchTool(pay).execute(client, { hooks, mode } satisfies Context, {
     url: URL_PAID
   });
+
+// A policy that runs after the budget and blocks every quote
+class BlockAfterQuotePolicy extends AbstractPolicy {
+  name = 'Block after quote';
+  description = 'blocks every quote';
+  relevantTools = [KOSHA_PAID_FETCH];
+
+  protected override shouldBlockPostCoreAction() {
+    return true;
+  }
+}
 
 // An org-wide rule written against tool types, not names: no transaction tools at all
 class NoTransactionsPolicy extends AbstractPolicy {
@@ -258,7 +271,8 @@ describe('KoshaBudgetPolicy', () => {
       url: URL_PAID,
       paid: false
     });
-    expect(second.raw.error).toContain('blocked by policy: Kosha budget');
+    expect(second.raw.error).toContain('blocked by policy: Kosha budget (daily cap');
+    expect(second.raw.error).toContain('0.202038 USDC, over 0.15 USDC');
     expect(pay.complete).toHaveBeenCalledOnce();
     // The blocked payment is never sent, so Pay's own caps get it back
     expect(pay.release).toHaveBeenCalledOnce();
@@ -270,8 +284,44 @@ describe('KoshaBudgetPolicy', () => {
 
     const output = await run(pay, [new KoshaBudgetPolicy({ perPaymentMicro: 500_000n })]);
 
-    expect(output.raw.status).toBe('ERROR');
+    expect(output.raw.error).toContain('per-payment cap: 0.60 USDC is over 0.50 USDC');
     expect(pay.complete).not.toHaveBeenCalled();
+  });
+
+  it('lets only one of two concurrent payments through a cap that fits one', async () => {
+    const pay = fakePay(101_019n);
+    const policy = new KoshaBudgetPolicy({ dailyMicro: 150_000n });
+
+    const outputs = await Promise.all([run(pay, [policy]), run(pay, [policy])]);
+
+    expect(outputs.map((output) => output.raw.paid).sort()).toEqual([false, true]);
+    expect(pay.complete).toHaveBeenCalledOnce();
+  });
+
+  it('gives the budget back when a later policy blocks the payment', async () => {
+    const pay = fakePay(101_019n);
+    const store = createMemorySpendStore();
+    const budget = new KoshaBudgetPolicy({ dailyMicro: 150_000n }, store, () => NOW);
+
+    const blocked = await run(pay, [budget, new BlockAfterQuotePolicy()]);
+
+    expect(blocked.raw.error).toContain('blocked by policy: Block after quote');
+    expect(await store.totals(NOW)).toEqual({ dayMicro: 0n, fyMicro: 0n });
+  });
+
+  it('gives the budget back when the server refuses the payment', async () => {
+    const pay = fakePay(101_019n);
+    pay.complete.mockResolvedValueOnce({
+      ok: false,
+      data: { reason: 'payment_rejected', message: 'replay', response: json({}, 402) }
+    });
+    const store = createMemorySpendStore();
+    const budget = new KoshaBudgetPolicy({ dailyMicro: 150_000n }, store, () => NOW);
+
+    const refused = await run(pay, [budget]);
+
+    expect(refused.raw).toMatchObject({ status: 'ERROR', paid: false });
+    expect(await store.totals(NOW)).toEqual({ dayMicro: 0n, fyMicro: 0n });
   });
 });
 

@@ -1,6 +1,11 @@
 import { type CompleteResult, type KoshaPay } from './kosha-pay';
 import { type PreparedPayment } from './prepare-payment';
-import { createMemorySpendStore, type SpendStore } from './spend-store';
+import {
+  createMemorySpendStore,
+  type SpendStore,
+  type SpendTotals,
+  withSpendLock
+} from './spend-store';
 import {
   AbstractPolicy,
   AgentMode,
@@ -134,16 +139,27 @@ export class KoshaPaidFetchTool extends BaseTool<Params, Params> {
       await super.postCoreActionHook(params);
     } catch (error) {
       const result: unknown = params.coreActionResult;
-      if (isQuoted(result)) await this.pay.release(result.payment);
+      if (isQuoted(result)) await this.release(params.context, result.payment);
       throw error;
     }
+  }
+
+  // Gives the caps back to Pay and to every budget policy that counted the payment
+  private async release(context: Context, payment: PreparedPayment): Promise<void> {
+    await this.pay.release(payment);
+    const budgets = (context.hooks ?? []).filter((hook) => hook instanceof KoshaBudgetPolicy);
+    for (const budget of budgets) await budget.release(payment);
   }
 
   override async shouldSecondaryAction(coreActionResult: CoreResult): Promise<boolean> {
     return isQuoted(coreActionResult);
   }
 
-  override async secondaryAction(quoted: { payment: PreparedPayment }): Promise<PaidFetchOutput> {
+  override async secondaryAction(
+    quoted: { payment: PreparedPayment },
+    _client: Client,
+    context: Context
+  ): Promise<PaidFetchOutput> {
     const { url } = quoted.payment;
     let completed: CompleteResult;
     try {
@@ -157,6 +173,8 @@ export class KoshaPaidFetchTool extends BaseTool<Params, Params> {
       };
     }
     if (!completed.ok) {
+      // The server refused, so nothing moved; Pay has already freed its own caps
+      await this.release(context, quoted.payment);
       return {
         raw: { status: TOOL_STATUS.ERROR, url, paid: false, error: completed.data.message },
         humanMessage: `Payment for ${url} was refused: ${completed.data.message}`
@@ -232,10 +250,32 @@ export type BudgetCaps = {
   fyMicro?: bigint;
 };
 
+// The cap a payment of `totalMicro` would break, named with the amounts, or null if it fits
+const brokenCap = (
+  { perPaymentMicro, dailyMicro, fyMicro }: BudgetCaps,
+  spent: SpendTotals,
+  totalMicro: bigint
+): string | null => {
+  const usdc = (micro: bigint) => `${formatUsdc(micro)} USDC`;
+  if (perPaymentMicro !== undefined && totalMicro > perPaymentMicro) {
+    return `per-payment cap: ${usdc(totalMicro)} is over ${usdc(perPaymentMicro)}`;
+  }
+  const day = spent.dayMicro + totalMicro;
+  if (dailyMicro !== undefined && day > dailyMicro) {
+    return `daily cap: ${usdc(totalMicro)} would bring today to ${usdc(day)}, over ${usdc(dailyMicro)}`;
+  }
+  const year = spent.fyMicro + totalMicro;
+  if (fyMicro !== undefined && year > fyMicro) {
+    return `financial-year cap: ${usdc(totalMicro)} would bring the year to ${usdc(year)}, over ${usdc(fyMicro)}`;
+  }
+  return null;
+};
+
 // The owner's budget, enforced by the kit between quote and payment. Caps count the all-in total
-// (price plus TDS). A quote that fits is counted as spent at once, so two calls running together
-// can't both squeeze under a cap; a payment that then fails still counts, which errs on the safe
-// side.
+// (price plus TDS). A quote that fits is recorded at once, under the store's lock, so two calls
+// in flight can't both fit under the same headroom; the lock holds within one process, so a store
+// shared between processes needs its own transaction. If a later policy blocks the payment or the
+// server refuses it, the tool calls `release` and the budget is given back.
 export class KoshaBudgetPolicy extends AbstractPolicy {
   name = 'Kosha budget';
   description = 'Per-payment, daily and financial-year caps on the all-in total, tax included';
@@ -249,21 +289,34 @@ export class KoshaBudgetPolicy extends AbstractPolicy {
     super();
   }
 
+  // Payments this policy recorded and hasn't given back, with when it recorded them
+  private readonly held = new WeakMap<PreparedPayment, Date>();
+
+  // Throws rather than returning true, so the agent learns which cap and by how much
   protected override async shouldBlockPostCoreAction(
-    params: PostCoreActionParams
+    params: PostCoreActionParams,
+    method: string
   ): Promise<boolean> {
     const result: unknown = params.coreActionResult;
     if (!isQuoted(result)) return false;
-    const { totalMicro } = result.payment;
+    const { payment } = result;
     const at = this.now();
-    const spent = await this.store.totals(at);
-    const { perPaymentMicro, dailyMicro, fyMicro } = this.caps;
-    const blocked =
-      (perPaymentMicro !== undefined && totalMicro > perPaymentMicro) ||
-      (dailyMicro !== undefined && spent.dayMicro + totalMicro > dailyMicro) ||
-      (fyMicro !== undefined && spent.fyMicro + totalMicro > fyMicro);
-    if (!blocked) await this.store.record(at, totalMicro);
-    return blocked;
+    const broken = await withSpendLock(this.store, async () => {
+      const cap = brokenCap(this.caps, await this.store.totals(at), payment.totalMicro);
+      if (!cap) await this.store.record(at, payment.totalMicro);
+      return cap;
+    });
+    if (broken) throw new Error(`Action ${method} blocked by policy: ${this.name} (${broken})`);
+    this.held.set(payment, at);
+    return false;
+  }
+
+  // Gives back a payment this policy let through that won't go ahead after all; once only
+  async release(payment: PreparedPayment): Promise<void> {
+    const at = this.held.get(payment);
+    if (!at) return;
+    this.held.delete(payment);
+    await this.store.release(at, payment.totalMicro);
   }
 }
 
