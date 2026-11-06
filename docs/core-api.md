@@ -31,6 +31,7 @@ The quote's `kosha-split` entry must pass `split-quote` `checkSplitQuote()`; Kos
 | `GET /v1/receivers/challenge` | admin | — | `registry` `receiverChallengeSchema` | A07 |
 | `POST /v1/receivers` | admin | `registry` `receiverCreateSchema` | `registry` `receiverCreatedSchema`; `409` if a wallet is already registered | A07 |
 | `POST /v1/agents` | admin | `registry` `agentRegisterSchema` | `registry` `agentRowSchema` | A07 |
+| `GET /v1/agents` | admin | — | array of `registry` `agentRowSchema`, oldest first; `[]` when none | #47 |
 | `GET /v1/agents/:id` | admin | — | `registry` `agentRowSchema` | A07 |
 | `GET` / `PUT /v1/agents/:id/policy` | admin | `registry` `policySchema` | `registry` `policySchema` | A12 |
 | `POST /v1/terms` | receiver | `registry` `termsProposalSchema` | `registry` `termsAnswerSchema` | A21 (optional) |
