@@ -11,8 +11,9 @@ import { parseEnv } from 'node:util';
 
 const ENV_FILE_NAME = '.env';
 const KEY_PATTERN = /^[A-Z][A-Z0-9_]*$/;
-// Generated values are IDs, DER hex and base64url; anything needing quotes is refused, not escaped
-const SAFE_VALUE_PATTERN = /^[A-Za-z0-9._:/+=-]*$/;
+// Generated values are IDs, DER hex, base64url and UAIDs (which carry `;`); anything needing
+// quotes is refused, not escaped
+const SAFE_VALUE_PATTERN = /^[A-Za-z0-9._:/+=;-]*$/;
 
 export type EnvValues = Record<string, string | undefined>;
 export type EnvFile = { path: string; values: EnvValues };
