@@ -2,11 +2,13 @@ import {
   accountIdSchema,
   agentIdentitySchema,
   quoteIdSchema,
+  scheduleIdSchema,
   topicIdSchema,
   transactionIdSchema
 } from './ids';
 import {
   hashscanAccount,
+  hashscanSchedule,
   hashscanTopic,
   hashscanTransaction,
   mirrorTopicMessage,
@@ -60,6 +62,9 @@ describe('links', () => {
       'https://hashscan.io/testnet/account/0.0.5001'
     );
     expect(hashscanTopic('testnet', topic)).toBe('https://hashscan.io/testnet/topic/0.0.7001');
+    expect(hashscanSchedule('testnet', scheduleIdSchema.parse('0.0.8001'))).toBe(
+      'https://hashscan.io/testnet/schedule/0.0.8001'
+    );
     expect(mirrorTopicMessage('https://testnet.mirrornode.hedera.com/', topic, 42)).toBe(
       'https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.7001/messages/42'
     );

@@ -101,3 +101,28 @@ export const rulepackMessage = (rulepack: string, hash: string): HcsJson => ({
   rp: rulepack,
   hash
 });
+
+// A receiver on the public topic: an HMAC, like a pair, never its internal ID
+export const receiverRef = (secret: string, receiverId: string): string =>
+  createHmac('sha256', secret)
+    .update(`receiver:${receiverId}`)
+    .digest('hex')
+    .slice(0, PAIR_ID_HEX_LENGTH);
+
+// The deductor paid the month's TDS on the portal (A20). The challan reference appears only as
+// its hash; the reserve releases that follow are the on-chain side of the same close.
+export const challanMessage = (input: {
+  challanId: string;
+  receiver: string;
+  month: string;
+  tdsPaise: bigint;
+  challanRefHash: string;
+}): HcsJson => ({
+  v: HCS_MESSAGE_VERSION,
+  t: 'challan',
+  cid: input.challanId,
+  rcv: input.receiver,
+  month: input.month,
+  tds: input.tdsPaise.toString(),
+  hash: input.challanRefHash
+});

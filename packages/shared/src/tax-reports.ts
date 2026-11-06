@@ -71,6 +71,10 @@ export const releaseRowSchema = z.object({
   cosignedBy: z.string().nullable()
 });
 
+// POST /v1/releases/:id/cosign: a ScheduleSignTransaction for the release's schedule, frozen and
+// signed by the agent operator, as the SDK's toBytes() in base64. Core submits it as it is.
+export const releaseCosignSchema = z.object({ transaction: z.base64() });
+
 // POST /v1/outside-payments/:id/classify; a gift needs a note
 export const outsideClassifySchema = z
   .object({
@@ -97,5 +101,6 @@ export type MonthlyClose = z.output<typeof monthlyCloseSchema>;
 export type ChallanRecord = z.output<typeof challanRecordSchema>;
 export type ChallanRow = z.output<typeof challanRowSchema>;
 export type ReleaseRow = z.output<typeof releaseRowSchema>;
+export type ReleaseCosign = z.output<typeof releaseCosignSchema>;
 export type OutsideClassify = z.output<typeof outsideClassifySchema>;
 export type PayerReportRow = z.output<typeof payerReportRowSchema>;
