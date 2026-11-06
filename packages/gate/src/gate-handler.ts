@@ -236,12 +236,16 @@ export const createGateHandler = (options: GateOptions) => {
     if (!verified.ok) {
       return unavailable(verified.data);
     }
+    const settle = () => settlePayment(body, route, agent);
     if (!verified.data.isValid) {
       const code = verified.data.extra?.kosha.errorCode ?? 'invalid_payload';
+      // A client resending the payment after a lost settle response gets replay from verify. Settle
+      // answers it with the earlier result (and keeps any other transaction on a used quote as
+      // replay), so it goes there now, deferred or not: the handler never runs on a bare replay.
+      if (code === 'replay') return settle();
       return failure(code, accepted.network, undefined, verified.data.invalidMessage);
     }
 
-    const settle = () => settlePayment(body, route, agent);
     return deferSettle ? { action: 'verified', settle } : settle();
   };
 

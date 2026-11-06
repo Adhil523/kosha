@@ -224,7 +224,7 @@ describe('createGateHandler: deferred settlement', () => {
 const VERIFIER_CODES = ERROR_CODES.slice(0, ERROR_CODES.indexOf('bad_signature') + 1);
 
 describe('createGateHandler: failed payment', () => {
-  it.each([...VERIFIER_CODES, 'quote_expired', 'quote_not_found', 'replay', 'policy_daily'])(
+  it.each([...VERIFIER_CODES, 'quote_expired', 'quote_not_found', 'policy_daily'])(
     'answers 402 with %s when Core rejects the payment, and never settles',
     async (code) => {
       const { handle, calls } = setup({
@@ -269,6 +269,46 @@ describe('createGateHandler: failed payment', () => {
     expect(decodePaymentResponseHeader(result.headers[HEADERS.paymentResponse] ?? '')).toEqual(
       replayed
     );
+  });
+
+  describe('a resent payment, which verify calls replay', () => {
+    const replayVerify = () =>
+      json({
+        isValid: false,
+        invalidReason: 'invalid_payload',
+        extra: { kosha: { quoteId: 'q_7f3a', errorCode: 'replay' } }
+      });
+
+    it.each([false, true])(
+      "is settled at once for Core's earlier result (deferred: %s)",
+      async (deferSettle) => {
+        const { handle, calls } = setup({ verify: replayVerify });
+
+        const result = await handle(request({ 'payment-signature': paymentFor(splitEntry) }), {
+          deferSettle
+        });
+
+        expect(result.action).toBe('pass');
+        expect(result.action === 'pass' && result.kosha.txId).toBe(SETTLED.transaction);
+        expect(calls(CORE_PATHS.settle)).toHaveLength(1);
+      }
+    );
+
+    it('stays replay when settle says so', async () => {
+      const replayed = {
+        success: false,
+        errorReason: 'replay',
+        transaction: '',
+        network: 'hedera:testnet'
+      };
+      const { handle } = setup({ verify: replayVerify, settle: () => json(replayed) });
+
+      const result = expectRespond(
+        await handle(request({ 'payment-signature': paymentFor(splitEntry) }))
+      );
+
+      expect(result).toMatchObject({ status: 402, body: { x402Version: 2, error: 'replay' } });
+    });
   });
 
   it.each([
