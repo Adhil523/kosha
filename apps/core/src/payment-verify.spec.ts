@@ -7,7 +7,7 @@ import { verifyPayment } from './payment-verify';
 import { PrivateKey, Transaction } from '@hiero-ledger/sdk';
 import { signedVariant } from '@kosha/hedera/transfer-verifier.fixture';
 import { amountSchema } from '@kosha/shared/money';
-import { paymentRequirementsSchema } from '@kosha/shared/x402-payment';
+import { exactRequirementsSchema, paymentRequirementsSchema } from '@kosha/shared/x402-payment';
 import { exactEntry } from '@kosha/shared/x402-payment.fixture';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -37,11 +37,20 @@ describe('verifyPayment', () => {
     expect(result.ok && result.data.quote.id).toBe(QUOTE_ID);
   });
 
-  it('refuses another scheme, another receiver, and an expired quote', async () => {
+  it('refuses an exact entry for an unknown quote, another receiver, and an expired quote', async () => {
     const exact = paymentRequirementsSchema.parse(exactEntry);
     const payload = { ...payloadFor(await signedVariant()), accepted: exact };
     const other = await verifyPayment(verifyDeps(handle.db), receiverId, payload);
-    expect(other).toEqual({ ok: false, data: { code: 'unsupported_scheme', quoteId: null } });
+    expect(other).toEqual({ ok: false, data: { code: 'quote_not_found', quoteId: 'q_7f3b' } });
+    const bareEntry = exactRequirementsSchema.parse({
+      ...exactEntry,
+      extra: { feePayer: '0.0.4000' }
+    });
+    const bare = { ...payload, accepted: bareEntry };
+    expect(await verifyPayment(verifyDeps(handle.db), receiverId, bare)).toEqual({
+      ok: false,
+      data: { code: 'quote_not_found', quoteId: null }
+    });
 
     expect(codeOf(await verify(await signedVariant(), {}, 'another-receiver'))).toBe(
       'quote_not_found'

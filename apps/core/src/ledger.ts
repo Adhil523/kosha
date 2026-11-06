@@ -105,7 +105,8 @@ export const recordSettlement = async (
           rateBps: row.rateBps,
           pair: pairId(context.pairSecret, agentId, row.receiverID),
           fy: row.fy,
-          aggregatePaise
+          aggregatePaise,
+          compat: row.scheme === 'exact_compat'
         })
       });
     }
