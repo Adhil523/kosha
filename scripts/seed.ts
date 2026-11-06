@@ -1,7 +1,14 @@
 import { parsePrivateKey } from '@kosha/hedera/client';
 import { issueCredential } from '@kosha/hedera/credentials';
+import {
+  type DemoResetRequest,
+  demoResetResponseSchema,
+  type SamplePayment,
+  samplePaymentsResponseSchema
+} from '@kosha/shared/demo-admin';
 import { loadEnv } from '@kosha/shared/env';
 import { accountIdSchema, agentIdentitySchema, hederaNetworkSchema } from '@kosha/shared/ids';
+import { amountSchema } from '@kosha/shared/money';
 import {
   type AgentRegister,
   receiverChallengeSchema,
@@ -11,9 +18,14 @@ import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
-// `pnpm seed --profiles`: the demo's receivers and agents (A11), registered through Core's admin
-// API, so it works against either agent's Core and database. Safe to run again: a receiver whose
-// wallet is already onboarded answers 409, and agent registration is an upsert.
+// `pnpm seed`, through Core's admin API, so it works against either agent's Core and database.
+// Every step is safe to run again.
+// --profiles    the demo's receivers and agents (A11). A receiver whose wallet is onboarded
+//               answers 409, and agent registration is an upsert.
+// --history     last quarter's sample payments (A14), keyed so a rerun adds nothing
+// --reset-demo  the threshold demo's starting point (A14): agent-resident ↔ receiver-in at ₹9,980,
+//               agent-unknown ↔ receiver-in at ₹4,980, agent-unknown at Level 0, and the last
+//               run's own payments cleared
 
 const MIN_SECRET_LENGTH = 32;
 const secret = z.string().min(MIN_SECRET_LENGTH);
@@ -210,10 +222,118 @@ export const seedAgents = async (core: CoreHttp, env: SeedEnv): Promise<SeedOutc
   return outcomes;
 };
 
-const USAGE = 'usage: pnpm seed --profiles';
+const DAY_MS = 86_400_000;
+const IST_OFFSET_MS = 19_800_000;
+const PAYMENTS_PER_PAIR = 40;
+const PRICE_STEPS_MICRO = [50_000, 100_000, 100_000, 150_000, 250_000, 500_000];
+
+// A small seeded generator, so the same quarter always gets the same history
+const randomFrom = (seed: number) => {
+  let state = seed;
+  return (bound: number): number => {
+    state = (state * 1_103_515_245 + 12_345) % 2_147_483_648;
+    return state % bound;
+  };
+};
+
+// The calendar quarter before the one `now` falls in (IST), e.g. Jul–Sep for a November run
+export const previousQuarter = (now: Date): { label: string; start: Date; days: number } => {
+  const ist = new Date(now.getTime() + IST_OFFSET_MS);
+  const month = ist.getUTCMonth() - (ist.getUTCMonth() % 3) - 3;
+  const start = new Date(Date.UTC(ist.getUTCFullYear(), month, 1) - IST_OFFSET_MS);
+  const end = new Date(Date.UTC(ist.getUTCFullYear(), month + 3, 1) - IST_OFFSET_MS);
+  // Named by its first IST month, e.g. 2026-07
+  const istStart = new Date(Date.UTC(ist.getUTCFullYear(), month, 1));
+  const label = `${istStart.getUTCFullYear()}-${String(istStart.getUTCMonth() + 1).padStart(2, '0')}`;
+  return { label, start, days: Math.round((end.getTime() - start.getTime()) / DAY_MS) };
+};
+
+// API calls of a few cents each, in IST working hours, across every demo payer–receiver pair
+export const sampleHistory = (env: SeedEnv, now: Date): SamplePayment[] => {
+  const quarter = previousQuarter(now);
+  const identity = (accountId: string) =>
+    agentIdentitySchema.parse(`hedera:${env.HEDERA_NETWORK}:${accountId}`);
+  const pairs = [
+    ['resident-in', env.AGENT_RESIDENT_ACCOUNT_ID, env.RECEIVER_IN_ACCOUNT_ID, 'api.demo-in.dev'],
+    [
+      'resident-solo',
+      env.AGENT_RESIDENT_ACCOUNT_ID,
+      env.RECEIVER_IN_SOLO_ACCOUNT_ID,
+      'api.demo-in.dev'
+    ],
+    [
+      'resident-global',
+      env.AGENT_RESIDENT_ACCOUNT_ID,
+      env.RECEIVER_GLOBAL_ACCOUNT_ID,
+      'api.demo-global.dev'
+    ],
+    [
+      'nonresident-in',
+      env.AGENT_NONRESIDENT_ACCOUNT_ID,
+      env.RECEIVER_IN_ACCOUNT_ID,
+      'api.demo-in.dev'
+    ]
+  ] as const;
+  return pairs.flatMap(([name, agentAccount, receiverAccount, host], pairIndex) => {
+    const next = randomFrom(pairIndex + 1);
+    return Array.from({ length: PAYMENTS_PER_PAIR }, (_, index) => {
+      const minutes = 9 * 60 + 30 + next(9 * 60);
+      const at = new Date(quarter.start.getTime() + next(quarter.days) * DAY_MS + minutes * 60_000);
+      return {
+        key: `history:${quarter.label}:${name}:${index}`,
+        agent: identity(agentAccount),
+        receiverAccountId: accountIdSchema.parse(receiverAccount),
+        at: at.toISOString(),
+        priceMicroUsdc: amountSchema.parse(
+          String(PRICE_STEPS_MICRO[next(PRICE_STEPS_MICRO.length)])
+        ),
+        resource: `https://${host}/v1/${index % 2 === 0 ? 'gst-lookup' : 'company-search'}`
+      };
+    });
+  });
+};
+
+export const seedHistory = async (core: CoreHttp, env: SeedEnv, now: Date) => {
+  const response = await core('POST', '/v1/admin/sample-payments', {
+    payments: sampleHistory(env, now)
+  });
+  if (response.status !== 200) throw failure('history', response.status, response.body);
+  return samplePaymentsResponseSchema.parse(response.body);
+};
+
+export const demoResetRequest = (env: SeedEnv): DemoResetRequest => {
+  const identity = (accountId: string) =>
+    agentIdentitySchema.parse(`hedera:${env.HEDERA_NETWORK}:${accountId}`);
+  const receiverIn = accountIdSchema.parse(env.RECEIVER_IN_ACCOUNT_ID);
+  const unknown = identity(env.AGENT_UNKNOWN_ACCOUNT_ID);
+  return {
+    balances: [
+      // ₹9,980: the next ₹20+ call crosses ₹10,000
+      {
+        agent: identity(env.AGENT_RESIDENT_ACCOUNT_ID),
+        receiverAccountId: receiverIn,
+        valuePaise: amountSchema.parse('998000')
+      },
+      // ₹4,980: the next call passes the ₹5,000 tolerance for an unverified payer
+      { agent: unknown, receiverAccountId: receiverIn, valuePaise: amountSchema.parse('498000') }
+    ],
+    clearAgents: demoAgents(env).map(({ accountId }) => identity(accountId)),
+    level0: [unknown]
+  };
+};
+
+export const seedResetDemo = async (core: CoreHttp, env: SeedEnv) => {
+  const response = await core('POST', '/v1/admin/demo-reset', demoResetRequest(env));
+  if (response.status !== 200) throw failure('demo reset', response.status, response.body);
+  return demoResetResponseSchema.parse(response.body);
+};
+
+const USAGE = 'usage: pnpm seed [--profiles] [--history] [--reset-demo]';
+const FLAGS = ['--profiles', '--history', '--reset-demo'];
 
 const main = async (): Promise<void> => {
-  if (!process.argv.slice(2).includes('--profiles')) {
+  const flags = process.argv.slice(2);
+  if (flags.length === 0 || flags.some((flag) => !FLAGS.includes(flag))) {
     console.error(`[seed]: ${USAGE}`);
     process.exitCode = 1;
     return;
@@ -232,11 +352,23 @@ const main = async (): Promise<void> => {
   }
 
   const core = coreHttp(env.data.CORE_URL, env.data.CONSOLE_ADMIN_TOKEN);
-  const outcomes = [
-    ...(await seedReceivers(core, env.data)),
-    ...(await seedAgents(core, env.data))
-  ];
-  for (const { name, result } of outcomes) console.info(`[seed]: ${name} ${result}`);
+  if (flags.includes('--profiles')) {
+    const outcomes = [
+      ...(await seedReceivers(core, env.data)),
+      ...(await seedAgents(core, env.data))
+    ];
+    for (const { name, result } of outcomes) console.info(`[seed]: ${name} ${result}`);
+  }
+  if (flags.includes('--history')) {
+    const { inserted, existing } = await seedHistory(core, env.data, new Date());
+    console.info(`[seed]: history ${inserted} sample payments added, ${existing} already there`);
+  }
+  if (flags.includes('--reset-demo')) {
+    const reset = await seedResetDemo(core, env.data);
+    console.info(
+      `[seed]: demo reset: ${reset.clearedPayments} payments cleared, ${reset.balancedPairs} pairs set, ${reset.level0Agents} agent at Level 0`
+    );
+  }
 };
 
 const isEntryPoint = (): boolean => {
