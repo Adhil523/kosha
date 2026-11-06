@@ -362,20 +362,25 @@ app.get('/v1/gst-lookup', (req, res) => res.json({ ok: true, paidBy: req.kosha.a
 
 ### Request lifecycle
 
-1. A request matches a priced route. With no `X-PAYMENT` header, Gate reads the agent's identity from `X-KOSHA-AGENT` (its HCS-14 ID), calls `POST /v1/quote`, and responds **402** with the `accepts[]` body.
-2. With an `X-PAYMENT` header, Gate calls `POST /v1/verify`, then `POST /v1/settle`.
-3. On success it sets `req.kosha = { agentId, txId, tdsMicroUsdc, hcsSequence }`, adds an `X-PAYMENT-RESPONSE` header (base64 JSON with the transaction ID and HashScan link), and calls `next()`.
-4. On failure it responds 402 again with an `error` code from the verifier (`amount_mismatch`, `quote_expired`, `replay`, and so on).
+1. A request matches a priced route. With no `PAYMENT-SIGNATURE` header, Gate reads the agent's identity from `X-KOSHA-AGENT`, calls `POST /v1/quote`, and responds **402** with the `PAYMENT-REQUIRED` header (base64 JSON) and the same JSON as the body.
+2. With a `PAYMENT-SIGNATURE` header (the legacy `X-PAYMENT` is also read), Gate calls `POST /v1/verify`, then `POST /v1/settle`.
+3. **Reserve proof** (`onChainProof`, on by default): Gate reads the settled transaction from the Mirror Node and checks that the reserve leg credited the quoted amount, so it relies on the chain rather than on Core's word. This adds the Mirror Node's few seconds of lag; the burst script turns it off.
+4. On success it sets `req.kosha = { agentId, txId, tdsMicroUsdc, hcsSequence }`, adds a `PAYMENT-RESPONSE` header (base64 v2 settlement response, Kosha data in `extensions.kosha`), and calls `next()`.
+5. On failure it responds 402 again, with a Kosha `error` code (`amount_mismatch`, `quote_expired`, `replay`, and so on) and `PAYMENT-RESPONSE` set to `success: false`.
+
+Gate uses `@x402/core`'s header codecs and types. If `x402ResourceServer` lets each request supply its own payment requirements (Kosha's quote is per request), Gate is built on it with an `HTTPFacilitatorClient` pointing at Core; otherwise Gate keeps its own flow and uses only the codecs. B04 checks this first.
 
 ### Package details
 
 | Item | Detail |
 | --- | --- |
 | Exports | `koshaGate(options)` for Express, `koshaHono(options)` for Hono, `createGateHandler()` for any framework |
-| Options | `core`, `apiKey`, `routes`, `onSettled(event)`, `settleMode` (`before` the handler runs, the default; or `after` a 2xx response) |
+| Options | `core`, `apiKey`, `routes` (net prices), `onSettled(event)`, `settleMode` (`before` the handler runs, the default; or `after` a 2xx response), `onChainProof` |
 | Behaviour | Settles before the handler runs, so an agent never gets data without paying |
-| Headers | Reads `X-PAYMENT`, `X-KOSHA-AGENT`; writes `X-PAYMENT-RESPONSE`, `X-KOSHA-TAX` (rate and amount withheld) |
-| Unknown agent | Still served: Core quotes with the 20% first-rupee rule, and the 402 body says how to register to lower it |
+| Headers | Reads `PAYMENT-SIGNATURE` (and `X-PAYMENT`), `X-KOSHA-AGENT`; writes `PAYMENT-REQUIRED`, `PAYMENT-RESPONSE`, `X-KOSHA-TAX` (rate and amount reserved). CORS exposes the response headers |
+| Unknown agent | Still served, under the receiver's unverified-payer policy. The 402 links to Level 1 registration |
+| Terms | Serves `GET /.well-known/kosha`: net prices, rule pack, unverified-payer policy, accepted verification levels |
+| Dependencies | `@kosha/shared` and the Mirror Node client only (`@kosha/hedera/mirror`, no SDK), so Gate stays light |
 | Build | `tsup` to ESM + CJS, types included; around 300 lines plus tests |
 | Tests | Supertest against a mocked Core: 402 shape, happy path, every verifier error, replay |
 
@@ -395,75 +400,91 @@ const pay = createKoshaPay({
   agentId: process.env.AGENT_HCS14_ID!,           // carries the tax credential reference
   policy: { perPaymentUsdc: '0.50', dailyUsdc: '5', fyBudgetUsdc: '200',
             allowlist: ['api.demo-in.dev', 'api.demo-global.dev'], onThreshold: 'warn' },
-  funding: 'payer',                               // or 'price_inclusive'
+  reserveAccountId: process.env.AGENT_RESERVE_ID!, // the agent's own TDS reserve (Core returns it at registration)
 });
 
 const res = await pay.fetch('https://api.demo-in.dev/v1/gst-lookup?gstin=27AAPFU0939F1ZV');
 console.log(await res.json(), pay.lastReceipt);   // { txId, hashscan, tdsMicroUsdc }
 ```
 
+Pay is an x402 v2 client: it registers a `kosha-split` scheme into `@x402/core`'s `x402Client`, the official extension point for new schemes. Any x402 client can therefore pay Kosha's atomic split by registering the same scheme. Pay also exposes the two steps separately, `pay.prepare(url)` (fetch the 402, check it, sign) and `pay.complete(prepared)` (retry with the payment), so the Agent Kit tool can run a policy check between them.
+
 ### Signing the quoted transfer
 
 ```ts
-import { TransferTransaction, TransactionId, AccountId, TokenId, PrivateKey } from '@hashgraph/sdk';
+import { AccountId, PrivateKey, TokenId, TransactionId, TransferTransaction } from '@hiero-ledger/sdk';
 
-async function signQuote(k: KoshaExtra, asset: string, me: string, key: PrivateKey) {
-  const total = k.transfers.reduce((s, t) => s + BigInt(t.amount), 0n);
+async function signQuote(k: KoshaExtra, feePayer: string, asset: string, me: string, key: PrivateKey) {
+  const token = TokenId.fromString(asset);
   let tx = new TransferTransaction()
-    .setTransactionId(TransactionId.generate(AccountId.fromString(k.feePayer)))  // Core pays the fee
-    .setNodeAccountIds([AccountId.fromString('0.0.3')])
+    .setTransactionId(TransactionId.generate(AccountId.fromString(feePayer)))   // Core pays the fee
+    .setNodeAccountIds(k.nodeAccountIds.map((n) => AccountId.fromString(n)))   // several nodes: one busy node can't block settlement
     .setTransactionMemo(k.memo)
-    .addTokenTransfer(TokenId.fromString(asset), AccountId.fromString(me), -Number(total));
-  for (const t of k.transfers)
-    tx = tx.addTokenTransfer(TokenId.fromString(asset), AccountId.fromString(t.account), Number(t.amount));
-  const signed = await tx.freeze().sign(key);                                   // freeze, then sign
-  return Buffer.from(signed.toBytes()).toString('base64');
+    .setMaxTransactionFee(MAX_FEE)
+    .addTokenTransfer(token, AccountId.fromString(me), -BigInt(k.totalMicro));
+  for (const t of k.transfers) tx = tx.addTokenTransfer(token, AccountId.fromString(t.account), BigInt(t.amount));
+  const signed = await tx.freeze().sign(key);                                  // signs the body for every quoted node
+  return Buffer.from(signed.toBytes()).toString('base64');                     // payload.transaction
 }
 ```
 
-Amounts are passed as numbers of micro-units; switch to `Long` if a single payment ever exceeds 2^53 micro-units.
+The SDK accepts `bigint` amounts directly. In the codebase this is `buildQuotedTransfer()` in `@kosha/hedera`, the same function the verifier's tests use.
 
 ### Rules applied before every payment
 
 1. The host is on the allowlist.
-2. Price plus TDS is within the per-payment, daily and yearly budgets. Tax counts towards budgets.
-3. If the quote's `reason` is `threshold_crossed`, apply `onThreshold`: `warn` (log and pay), `block` (refuse), or `allow`.
+2. The all-in total (price plus TDS) is within the per-payment, daily and yearly budgets. Tax counts towards budgets.
+3. If the quote's `reason` is `threshold_crossed` or `tolerance_exceeded`, apply `onThreshold`: `warn` (log and pay), `block` (refuse), or `allow`.
 4. The quote's rule pack is one the owner accepts (`acceptRulepacks: ['in-2026.*']`).
-5. The signed transfer list equals the quote's `transfers` exactly. Pay never signs anything else.
+5. The signed transfer list equals the quote's `transfers` exactly, and the `tds_reserve` leg goes to **the agent's own reserve**. Pay never signs anything else.
 
 Core enforces the same policy server-side, so a modified client can't bypass it.
 
-### Agreeing who funds the tax before paying
+### Agreeing terms before paying
 
-The Hedera bonus for agents negotiating before payment is met with a short exchange before the first paid call:
+Funding is no longer negotiable: mode C is the only mode. The Hedera bonus for agents negotiating before payment is met by agreeing **verification terms** in a short exchange before the first paid call:
 
-1. Pay reads the API's terms at `GET /.well-known/kosha` (rule pack, funding modes accepted, prices).
-2. Pay proposes `funding: 'payer'` (the API gets the full price) or `'price_inclusive'` (the API absorbs it).
-3. The API answers `accept` or `counter`. The agreed term is stored in Core for that pair and stamped on every quote.
+1. Pay reads the API's terms at `GET /.well-known/kosha`: net prices, rule pack, the owner's unverified-payer policy, and accepted verification levels.
+2. Pay proposes the level it will pay under (Level 0, or Level 1 with its credential reference) and the rule packs it accepts.
+3. The API answers `accept`, with the rate that will apply, or `counter` (for example "strict policy: Level 0 pays 20%; present Level 1 for 1%"). The agreed term is stored in Core for that pair and stamped on every quote.
 
 For a fuller version, run it as an A2A task between the agent and an API-side agent. That's a stretch goal.
 
-### Hedera Agent Kit tool
+### Hedera Agent Kit plugin
+
+`kosha_paid_fetch` is a **`BaseTool`** inside a kit plugin, not a plain tool object. The kit runs policies and hooks only for `BaseTool` subclasses (`hedera-skills`: agent-kit-policy, agent-kit-hook).
 
 ```ts
-import { tool } from '@langchain/core/tools';
-import { z } from 'zod';
+// packages/pay/src/agent-kit-plugin.ts (sketch; match the kit's BaseTool signatures when building)
+export class KoshaPaidFetchTool extends BaseTool {
+  method = 'kosha_paid_fetch';
+  name = 'Kosha paid fetch';
+  description = 'Fetch a paid API; pays in USDC on Hedera with Indian TDS reserved';
+  parameters = z.object({ url: z.url() });
+  constructor(private pay: KoshaPay) { super(); }
+  async coreAction({ url }) { return this.pay.prepare(url); }           // 402 → checked, signed payment
+  async secondaryAction(prepared) { return this.pay.complete(prepared); } // retry with PAYMENT-SIGNATURE
+}
 
-export const koshaFetchTool = (pay: KoshaPay) => tool(
-  async ({ url }) => JSON.stringify({ body: await (await pay.fetch(url)).json(), receipt: pay.lastReceipt }),
-  { name: 'kosha_paid_fetch', description: 'Fetch a paid API; pays in USDC on Hedera with Indian TDS handled',
-    schema: z.object({ url: z.string().url() }) },
-);
+// Blocks between the two steps if the quote breaks the owner's budget
+export class KoshaBudgetPolicy extends AbstractPolicy {
+  name = 'Kosha budget'; description = 'Per-payment, daily and FY caps including tax';
+  relevantTools = ['kosha_paid_fetch'];
+  protected shouldBlockPostCoreAction(params) { return !withinBudget(params.coreActionResult.quote); }
+}
+
+export const koshaPayPlugin = (pay: KoshaPay): Plugin =>
+  ({ name: 'kosha-pay', version: '0.1.0', tools: () => [new KoshaPaidFetchTool(pay)] });
 ```
 
-The demo agent registers this tool next to the Agent Kit's Hedera tools, so the LLM decides when to buy data and Kosha Pay handles payment and tax.
+The demo agent loads `koshaPayPlugin(pay)` and `coreAccountQueryPlugin` only (no mutation plugins, so the LLM can't move funds outside Kosha's policy). It sets `context.hooks` to `[new KoshaBudgetPolicy(), new HcsAuditTrailHook(...)]` so every paid call is also written to an HCS audit topic by the kit itself. The agent is built with `createAgent` from `langchain` v1, and the LLM is chosen by `LLM_PROVIDER`.
 
-### Registration (once per agent)
+### Registration and verification levels
 
-1. Create the agent's HCS-14 identity with the standards SDK.
-2. Add a `kosha` field to the profile: credential issuer, credential hash, and declared wallet list. Never the PAN.
-3. Call `POST /v1/agents` with the HCS-14 ID. Core verifies the credential signature and stores residency, PAN-on-file and specified-person flags.
-4. For the demo, Core's own test issuer signs three credentials: resident with PAN, resident specified person, and non-resident with a Tax Residency Certificate.
+1. **Level 0** happens automatically: on the first quote for an unknown `X-KOSHA-AGENT` account, Core registers it at Level 0 and creates its reserve account.
+2. **Level 1:** create the agent's HCS-14 UAID with `createUaid()` and inscribe an HCS-11 profile whose `properties.kosha` holds the credential issuer, the credential hash and the declared wallet list (never the PAN). Then call `POST /v1/agents` with the UAID and the signed credential. Core resolves the profile, checks the hash and the issuer's signature, and stores residency and PAN-on-file. See `docs/research/hcs-14.md`.
+3. **Level 2:** a full KYC credential from a provider (mocked in the MVP).
+4. For the demo, Core's own test issuer signs: resident with PAN (Level 1), non-resident with a Tax Residency Certificate (Level 1), and a Level 2 business payer. Specified-person status is now a **receiver** property, so no agent credential carries it.
 
 ## Component 4: Kosha Console (web dashboard)
 
