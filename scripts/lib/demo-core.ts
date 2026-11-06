@@ -1,5 +1,12 @@
-import { type AggregateRow, aggregateRowSchema, ledgerPageSchema } from '@kosha/shared/console-api';
+import {
+  type AggregateRow,
+  aggregateRowSchema,
+  ledgerPageSchema,
+  type OutsidePaymentRow,
+  outsidePaymentRowSchema
+} from '@kosha/shared/console-api';
 import { type AgentRow, agentRowSchema, type Policy, policySchema } from '@kosha/shared/registry';
+import { type OutsideClassify } from '@kosha/shared/tax-reports';
 import { z } from 'zod';
 
 // What the demo runner reads and sets through Core's admin API (B17): the IDs behind the
@@ -44,6 +51,8 @@ export type DemoCore = {
   getPolicy: (agentId: string) => Promise<CoreResult<Policy | null>>;
   putPolicy: (agentId: string, policy: Policy) => Promise<CoreResult<Policy>>;
   tdsExport: (receiverId: string, quarter: string) => Promise<CoreResult<string>>;
+  outsidePayments: (receiverId: string) => Promise<CoreResult<OutsidePaymentRow[]>>;
+  classifyOutside: (id: string, body: OutsideClassify) => Promise<CoreResult<OutsidePaymentRow>>;
   // The status an optional endpoint answers: 404 means the feature is not built
   probe: (path: string) => Promise<number>;
 };
@@ -131,6 +140,23 @@ export const demoCore = (core: AdminHttp): DemoCore => {
       return typeof response.body === 'string'
         ? { ok: true, data: response.body }
         : { ok: false, data: 'the TDS export was not CSV text' };
+    },
+    outsidePayments: async (receiverId) => {
+      const path = `/v1/outside-payments?receiverId=${encodeURIComponent(receiverId)}`;
+      const response = await core('GET', path);
+      if (response.status !== OK)
+        return {
+          ok: false,
+          data: refusal('GET /v1/outside-payments', response.status, response.body)
+        };
+      return parse('GET /v1/outside-payments', z.array(outsidePaymentRowSchema), response.body);
+    },
+    classifyOutside: async (id, body) => {
+      const path = `/v1/outside-payments/${encodeURIComponent(id)}/classify`;
+      const response = await core('POST', path, body);
+      if (response.status !== OK)
+        return { ok: false, data: refusal('POST classify', response.status, response.body) };
+      return parse('POST classify', outsidePaymentRowSchema, response.body);
     },
     probe: async (path) => (await core('GET', path)).status
   };
