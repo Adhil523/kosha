@@ -6,12 +6,15 @@ import { receiver, receiverWallet } from './db/schema';
 import { testDb } from './db/test-db';
 import { panCommitment, receiverRoutes } from './receiver-routes';
 import { PrivateKey } from '@hiero-ledger/sdk';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const ADMIN = { authorization: `Bearer ${'a'.repeat(48)}` };
 const PAN_SECRET = 's'.repeat(32);
 const walletKey = PrivateKey.generateED25519();
 const otherKey = PrivateKey.generateED25519();
+const soloKey = PrivateKey.generateED25519();
+const KEYS: Record<string, PrivateKey> = { '0.0.5001': walletKey, '0.0.5002': soloKey };
 
 const sign = (key: PrivateKey, nonce: string) =>
   Buffer.from(key.sign(new TextEncoder().encode(nonce))).toString('hex');
@@ -54,7 +57,7 @@ describe('receiver onboarding', () => {
           db: handle.db,
           adminToken: 'a'.repeat(48),
           panCommitSecret: PAN_SECRET,
-          keyLookup: async (accountId) => (accountId === '0.0.5001' ? walletKey.publicKey : null),
+          keyLookup: async (accountId) => KEYS[accountId]?.publicKey ?? null,
           challenges,
           defaultUnverifiedPolicy: 'threshold_tolerant'
         })
@@ -80,8 +83,20 @@ describe('receiver onboarding', () => {
     expect(row?.panCommitment).toBe(panCommitment('AAPFU0939F', PAN_SECRET));
     expect(JSON.stringify(row)).not.toContain('AAPFU0939F');
     expect(row?.unverifiedPolicy).toBe('threshold_tolerant');
+    expect(row?.mode).toBe('threshold');
     const wallets = await handle.db.select().from(receiverWallet);
     expect(wallets.map((wallet) => wallet.accountID)).toEqual(['0.0.5001']);
+  });
+
+  it('deducts from the first rupee when the owner names no mode', async () => {
+    const nonce = await challenge();
+    const { mode: _mode, tan: _tan, ...solo } = business(nonce, sign(soloKey, nonce), '0.0.5002');
+    const response = await onboard({ ...solo, specifiedPerson: true });
+
+    expect(response.statusCode).toBe(201);
+    const { receiverId } = response.json<{ receiverId: string }>();
+    const [row] = await handle.db.select().from(receiver).where(eq(receiver.id, receiverId));
+    expect(row?.mode).toBe('first_rupee');
   });
 
   it('refuses a wallet that is already registered', async () => {
