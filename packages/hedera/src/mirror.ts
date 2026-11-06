@@ -186,8 +186,10 @@ export const createMirrorClient = (baseUrl: string, fetchImpl: FetchLike = fetch
   ): Promise<MirrorResult<{ credits: TokenCredit[]; cursor: string }>> => {
     const credits: TokenCredit[] = [];
     let latest = cursor;
+    // Every transaction type: a payer can also credit the account by airdrop, by claiming an
+    // airdrop, or through a contract call to the token
     let path: string | null =
-      `/api/v1/transactions?account.id=${account}&transactiontype=CRYPTOTRANSFER` +
+      `/api/v1/transactions?account.id=${account}` +
       `&timestamp=gt:${cursor}&order=asc&limit=${PAGE_LIMIT}`;
 
     while (path) {

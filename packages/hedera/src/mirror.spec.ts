@@ -137,8 +137,8 @@ describe('mirror client', () => {
     });
   });
 
-  it('collects credits across pages and returns the last timestamp as the cursor', async () => {
-    const first = `/api/v1/transactions?account.id=0.0.5001&transactiontype=CRYPTOTRANSFER&timestamp=gt:100.0&order=asc&limit=100`;
+  it('collects credits of any transaction type across pages, with the last timestamp as the cursor', async () => {
+    const first = `/api/v1/transactions?account.id=0.0.5001&timestamp=gt:100.0&order=asc&limit=100`;
     const second = '/api/v1/transactions?account.id=0.0.5001&timestamp=gt:200.0&page=2';
     const { fetchImpl, requested } = fakeFetch({
       [first]: {
@@ -164,10 +164,14 @@ describe('mirror client', () => {
       [second]: {
         body: {
           transactions: [
-            transfer('c', '250.0', [
-              ['0.0.6002', -9],
-              ['0.0.5001', 9]
-            ])
+            // An airdrop credits an associated account directly, like a transfer
+            {
+              ...transfer('c', '250.0', [
+                ['0.0.6002', -9],
+                ['0.0.5001', 9]
+              ]),
+              name: 'TOKENAIRDROP'
+            }
           ],
           links: { next: null }
         }
