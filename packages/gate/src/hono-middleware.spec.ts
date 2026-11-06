@@ -10,6 +10,9 @@ const GST_PATH = '/v1/gst-lookup';
 const URL_BASE = 'http://api.test';
 const AGENT = 'hedera:testnet:0.0.6001';
 
+// Core's quote for the payment priced the route at exactly 0.10 USDC
+const VERIFIED_EXTRA = { kosha: { quoteId: 'q_7f3a', priceMicroUsdc: '100000' } };
+
 const SETTLED = {
   success: true,
   payer: '0.0.6001',
@@ -20,7 +23,8 @@ const SETTLED = {
     kosha: {
       hashscanUrl: 'https://hashscan.io/testnet/transaction/1762424000.000000001',
       hcsSequence: 42,
-      tdsMicroUsdc: '1019'
+      tdsMicroUsdc: '1019',
+      priceMicroUsdc: '100000'
     }
   }
 };
@@ -42,7 +46,7 @@ const setup = (
 ) => {
   const defaults: Required<CoreReplies> = {
     quote: () => Response.json(paymentRequired),
-    verify: () => Response.json({ isValid: true, payer: '0.0.6001' }),
+    verify: () => Response.json({ isValid: true, payer: '0.0.6001', extra: VERIFIED_EXTRA }),
     settle: () => Response.json(SETTLED)
   };
   const coreCalls: string[] = [];

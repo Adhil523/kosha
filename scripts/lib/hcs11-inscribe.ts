@@ -23,9 +23,15 @@ export const encodeHcs1 = (json: string): { memo: string; chunks: Hcs1Chunk[] } 
   const raw = Buffer.from(json, 'utf8');
   const hash = createHash('sha256').update(raw).digest('hex');
   const encoded = `${DATA_PREFIX}${zstdCompressSync(raw).toString('base64')}`;
+  // Each message is the serialized { o, c }, so its envelope comes out of the 1,024 bytes; a
+  // larger message would be split by the SDK into pieces no HCS-1 reader can parse
   const chunks: Hcs1Chunk[] = [];
-  for (let offset = 0; offset < encoded.length; offset += HCS1_CHUNK_BYTES) {
-    chunks.push({ o: chunks.length, c: encoded.slice(offset, offset + HCS1_CHUNK_BYTES) });
+  let offset = 0;
+  while (offset < encoded.length) {
+    const envelope = JSON.stringify({ o: chunks.length, c: '' }).length;
+    const size = HCS1_CHUNK_BYTES - envelope;
+    chunks.push({ o: chunks.length, c: encoded.slice(offset, offset + size) });
+    offset += size;
   }
   return { memo: `${hash}:zstd:base64`, chunks };
 };
@@ -74,7 +80,10 @@ export const inscribeProfile = async (
 
   for (const chunk of chunks) {
     const sent = await run(
-      new TopicMessageSubmitTransaction().setTopicId(topicId).setMessage(JSON.stringify(chunk))
+      new TopicMessageSubmitTransaction()
+        .setTopicId(topicId)
+        .setMessage(JSON.stringify(chunk))
+        .setMaxChunks(1)
     );
     if (!sent.ok)
       return { ok: false, data: { step: `chunk_${chunk.o}`, status: sent.data.status } };

@@ -3,24 +3,38 @@ import { ensureSecrets, ensureTopics, missingSecrets } from './bootstrap-topics'
 import { PrivateKey, TopicCreateTransaction } from '@hiero-ledger/sdk';
 import { describe, expect, it } from 'vitest';
 
+const AUDIT_KEY = PrivateKey.generateED25519().publicKey;
+const EXISTING_AUDIT = { key: AUDIT_KEY, created: false };
+
 const numberedTopics = () => {
   let next = 8000;
   return () => receipt({ topicId: `0.0.${(next += 1)}` });
 };
 
 describe('ensureTopics', () => {
-  it('creates the three topics with Core as submit key', async () => {
+  it("creates Kosha's topics with Core as submit key, and the audit topic with the audit key", async () => {
     const context = fakeContext({}, numberedTopics());
-    await ensureTopics(context);
+    await ensureTopics(context, EXISTING_AUDIT);
     expect(context.saved).toEqual({
       HCS_PAYMENTS_TOPIC: '0.0.8001',
       HCS_PROFILES_TOPIC: '0.0.8002',
       HCS_AUDIT_TOPIC: '0.0.8003'
     });
-    for (const create of context.transactions) {
+    const submitKeys = context.transactions.map((create) => {
       if (!(create instanceof TopicCreateTransaction)) throw new Error('expected a topic create');
-      expect(create.getSubmitKey()?.toString()).toBe(context.coreKey.publicKey.toString());
-    }
+      return create.getSubmitKey()?.toString();
+    });
+    const core = context.coreKey.publicKey.toString();
+    expect(submitKeys).toEqual([core, core, AUDIT_KEY.toString()]);
+  });
+
+  it('replaces an audit topic made before the audit account existed', async () => {
+    const context = fakeContext(
+      { HCS_PAYMENTS_TOPIC: '0.0.5', HCS_PROFILES_TOPIC: '0.0.6', HCS_AUDIT_TOPIC: '0.0.7' },
+      numberedTopics()
+    );
+    await ensureTopics(context, { key: AUDIT_KEY, created: true });
+    expect(context.saved).toEqual({ HCS_AUDIT_TOPIC: '0.0.8001' });
   });
 
   it('skips topics already in the env file', async () => {
@@ -28,7 +42,7 @@ describe('ensureTopics', () => {
       { HCS_PAYMENTS_TOPIC: '0.0.5', HCS_AUDIT_TOPIC: '0.0.6' },
       numberedTopics()
     );
-    await ensureTopics(context);
+    await ensureTopics(context, EXISTING_AUDIT);
     expect(context.saved).toEqual({ HCS_PROFILES_TOPIC: '0.0.8001' });
   });
 });

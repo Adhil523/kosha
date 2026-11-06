@@ -50,7 +50,14 @@ export const verifyResponseSchema = z.object({
   invalidMessage: z.string().optional(),
   payer: accountIdSchema.optional(),
   extra: z
-    .object({ kosha: z.object({ quoteId: quoteIdSchema, errorCode: errorCodeSchema.optional() }) })
+    .object({
+      kosha: z.object({
+        quoteId: quoteIdSchema,
+        errorCode: errorCodeSchema.optional(),
+        // A valid payment's quoted API price: Gate serves only the route priced at exactly this
+        priceMicroUsdc: amountSchema.optional()
+      })
+    })
     .optional()
 });
 export const settleResponseSchema = settlementResponseSchema;

@@ -22,6 +22,8 @@ export type KoshaPay = {
   prepare: (url: string, init?: RequestInit) => Promise<PrepareResult>;
   // Step 2: retry once with the signed payment
   complete: (payment: PreparedPayment) => Promise<CompleteResult>;
+  // Instead of step 2: frees the caps `prepare` held for a payment that won't be sent
+  release: (payment: PreparedPayment) => Promise<void>;
   // Both steps, as a drop-in fetch. When Pay won't pay, the server's 402 comes back unchanged
   // and `lastError` says why.
   fetch: (url: string, init?: RequestInit) => Promise<Response>;
@@ -54,10 +56,24 @@ export const createKoshaPay = (input: PayConfigInput, deps: KoshaPayDeps = {}): 
   let lastReceipt: Receipt | null = null;
   let lastError: KoshaPay['lastError'] = null;
 
-  const prepare: KoshaPay['prepare'] = (url, init) =>
-    preparePayment({ config, store, fetch: fetchImpl, now }, url, init);
+  // Payments prepared here whose caps are still held: `release` frees each at most once
+  const held = new WeakSet<PreparedPayment>();
+  const free = (payment: PreparedPayment) => store.release(payment.reservedAt, payment.totalMicro);
+
+  const prepare: KoshaPay['prepare'] = async (url, init) => {
+    const prepared = await preparePayment({ config, store, fetch: fetchImpl, now }, url, init);
+    if (prepared.ok && prepared.data.kind === 'payment') held.add(prepared.data.payment);
+    return prepared;
+  };
+
+  const release: KoshaPay['release'] = async (payment) => {
+    if (held.delete(payment)) await free(payment);
+  };
 
   const complete: KoshaPay['complete'] = async (payment) => {
+    // Sending uses up the hold. Only the server's refusal frees it from here: a lost answer
+    // must never free up budget.
+    const wasHeld = held.delete(payment);
     const response = await fetchImpl(
       payment.url,
       withHeaders(payment.init, { [HEADERS.paymentSignature]: payment.signature })
@@ -65,13 +81,12 @@ export const createKoshaPay = (input: PayConfigInput, deps: KoshaPayDeps = {}): 
     const settlement = readSettlement(response);
     if (response.status === PAYMENT_REQUIRED_STATUS || settlement?.success === false) {
       const reason = settlement?.errorReason ?? 'unknown';
+      if (wasHeld) await free(payment);
       return {
         ok: false,
         data: { reason: 'payment_rejected', message: `the server refused: ${reason}`, response }
       };
     }
-    // Counted as spent unless the server said it failed: a lost receipt must never free up budget
-    await store.record(now(), payment.totalMicro);
     const tdsMicroUsdc = BigInt(payment.quote.extra.kosha.tax.tdsMicroUsdc);
     const receipt = settlement
       ? toReceipt(settlement, { totalMicro: payment.totalMicro, tdsMicroUsdc })
@@ -110,6 +125,7 @@ export const createKoshaPay = (input: PayConfigInput, deps: KoshaPayDeps = {}): 
   return {
     prepare,
     complete,
+    release,
     fetch: payFetch,
     register,
     get lastReceipt() {

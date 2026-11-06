@@ -117,7 +117,7 @@ government requires: paying the tax in rupees.
 | Agents negotiating before payment       | Each Gate-protected API publishes its terms (prices, rule pack, unverified-payer policy, accepted levels) at `/.well-known/kosha`; propose-and-counter is planned                                   |
 | HTS token settlement and revenue splits | USDC price and TDS split in one `TransferTransaction`                                                                                                                                               |
 | Scheduled transactions                  | Monthly reserve release: Core schedules it after the challan, the agent co-signs from the Console's Reserve screen or `pnpm demo`                                                                   |
-| Hedera Agent Kit                        | `kosha_paid_fetch` as a `BaseTool` plugin (in progress)                                                                                                                                             |
+| Hedera Agent Kit                        | `kosha_paid_fetch_tool` as a `BaseTool` plugin (in progress)                                                                                                                                        |
 
 Kosha uses no smart contracts, only native HTS, HCS and scheduled transactions.
 

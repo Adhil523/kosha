@@ -1,4 +1,4 @@
-import { type BudgetCaps } from '@kosha/pay/agent-kit-plugin';
+import { type BudgetCaps, KOSHA_PAID_FETCH_TOOL } from '@kosha/pay/agent-kit-plugin';
 import { type PayConfigInput } from '@kosha/pay/pay-config';
 import {
   accountIdSchema,
@@ -37,9 +37,12 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
   HEDERA_NETWORK: hederaNetworkSchema,
+  // Public: the only facilitator Pay trusts
   CORE_ACCOUNT_ID: accountIdSchema,
-  // Signs the audit hook's HCS messages: every Kosha topic's submit key is Core's
-  CORE_PRIVATE_KEY: z.string().min(1),
+  // Signs and pays for the audit hook's HCS messages: its key is the audit topic's submit key, so
+  // the agent never holds Core's key (pnpm bootstrap creates it)
+  AUDIT_ACCOUNT_ID: accountIdSchema,
+  AUDIT_PRIVATE_KEY: z.string().min(1),
   HCS_AUDIT_TOPIC: topicIdSchema,
   SETTLEMENT_TOKEN_ID: tokenIdSchema,
   MAX_TX_FEE_HBAR: z.string().min(1),
@@ -112,7 +115,7 @@ export const budgetCaps = (env: AgentEnv): BudgetCaps => ({
 export const demoPrompt = (env: AgentEnv): string =>
   [
     'Find GST details for these 5 companies and summarise.',
-    `Look each one up with kosha_paid_fetch at ${demoApiBase(env)}/v1/gst-lookup?gstin=<GSTIN>.`,
+    `Look each one up with ${KOSHA_PAID_FETCH_TOOL} at ${demoApiBase(env)}/v1/gst-lookup?gstin=<GSTIN>.`,
     `GSTINs: ${DEMO_GSTINS.join(', ')}.`,
     'For each company give its legal name, state and registration status, and say what you paid,',
     'including any TDS reserved.'

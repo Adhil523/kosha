@@ -29,6 +29,8 @@ Besides the transaction checks, verify and settle refuse a payment when:
 - the transaction is past its valid duration, or its valid start is still in the future (`valid_start_out_of_window`). This is checked before the quote is claimed, so the payer can sign again.
 - the payer's balance of the settlement token, read from the Mirror Node, is below the debit, or the payer isn't associated with the token (`insufficient_funds`; x402 reason `invalid_exact_hedera_payload_preflight_failed`). Core pays the network fee even for a failed transfer.
 
+**Quoted price.** A valid verify carries `extra.kosha.priceMicroUsdc`, and a successful settle carries `extensions.kosha.priceMicroUsdc`: the API price of the quote this payment paid. Gate serves only a route priced at exactly that. Otherwise a quote made for a cheaper route could serve a dearer one. That covers an `exact` entry whose all-in total covers the dearer price, and a resent payment's earlier result.
+
 **Retried settle.** A settle sent again with the same signed transaction, for example after Gate timed out while the transfer landed, gets the earlier result instead of `replay`. That is the same success body, or `settlement_pending` or `settlement_failed`. The payer's signature is checked again, because transaction IDs are public. Any other transaction on a used quote is still `replay`. A resent success is not announced on the live stream a second time.
 
 Clients reading a 402 that may also offer entries Kosha doesn't model (another network, or a scheme like `upto`) should parse it with `x402-payment` `offeredPaymentRequiredSchema`. That schema drops those entries instead of failing.
