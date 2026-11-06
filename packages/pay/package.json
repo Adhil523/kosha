@@ -12,8 +12,11 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@hiero-ledger/sdk": "2.90.1",
+    "@kosha/hedera": "workspace:*",
     "@kosha/shared": "workspace:*",
     "@kosha/tax-engine": "workspace:*",
+    "@x402/core": "2.30.0",
     "zod": "4.6.7"
   }
 }
