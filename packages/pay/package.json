@@ -1,0 +1,19 @@
+{
+  "name": "@kosha/pay",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@kosha/shared": "workspace:*",
+    "@kosha/tax-engine": "workspace:*",
+    "zod": "4.6.7"
+  }
+}
