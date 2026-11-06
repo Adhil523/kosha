@@ -97,7 +97,11 @@ importers:
         specifier: ^4
         version: 4.3.4
 
-  packages/shared: {}
+  packages/shared:
+    dependencies:
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
 
   packages/tax-engine:
     dependencies:
