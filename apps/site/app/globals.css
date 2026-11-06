@@ -29,6 +29,9 @@
   --radius-lg: 8px;
   --radius-xl: 12px;
 
+  --text-hero: clamp(2.75rem, 1rem + 5.4vw, 5.75rem); /* 44 to 92: the hero's one headline */
+  --text-hero--line-height: 0.98;
+  --text-hero--letter-spacing: -0.045em;
   --text-h1: clamp(2.5rem, 1.1rem + 3.6vw, 4rem); /* 40 to 64 */
   --text-h1--line-height: 1.02;
   --text-h1--letter-spacing: -0.035em;
@@ -261,17 +264,18 @@
       0 24px 48px -24px color-mix(in oklab, black 60%, transparent);
   }
 
-  /* The lit ground behind a window: one soft light, no grain, no pattern */
+  /* The lit ground behind a window: one soft light where the ground shows, right of and under
+     the window; no grain, no pattern */
   .lit {
     background:
       radial-gradient(
-        120% 90% at 30% 20%,
+        110% 100% at 88% 96%,
         color-mix(in oklab, var(--color-accent) 42%, var(--color-ground)) 0%,
         color-mix(in oklab, var(--color-accent) 18%, var(--color-ground)) 38%,
-        color-mix(in oklab, var(--color-accent) 6%, var(--color-ground)) 70%,
-        var(--color-ground) 100%
+        color-mix(in oklab, var(--color-accent) 6%, var(--color-card)) 70%,
+        var(--color-card) 100%
       ),
-      var(--color-ground);
+      var(--color-card);
   }
 }
 
@@ -345,6 +349,83 @@
   }
 }
 
+/* The products' one loop: Core's log shows settled, holds, its four lines arrive again 0.5 s
+   apart, then it holds (motion.md). The finished log is the base style. */
+@theme {
+  --animate-log-1: log-1 var(--m-loop) var(--ease-ui) infinite;
+  --animate-log-2: log-2 var(--m-loop) var(--ease-ui) infinite;
+  --animate-log-3: log-3 var(--m-loop) var(--ease-ui) infinite;
+  --animate-log-4: log-4 var(--m-loop) var(--ease-ui) infinite;
+  @keyframes log-1 {
+    0%,
+    40% {
+      opacity: 1;
+      translate: 0 0;
+    }
+    41%,
+    46% {
+      opacity: 0;
+      translate: 0 4px;
+    }
+    52%,
+    100% {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+  @keyframes log-2 {
+    0%,
+    40% {
+      opacity: 1;
+      translate: 0 0;
+    }
+    41%,
+    58% {
+      opacity: 0;
+      translate: 0 4px;
+    }
+    64%,
+    100% {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+  @keyframes log-3 {
+    0%,
+    40% {
+      opacity: 1;
+      translate: 0 0;
+    }
+    41%,
+    70% {
+      opacity: 0;
+      translate: 0 4px;
+    }
+    76%,
+    100% {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+  @keyframes log-4 {
+    0%,
+    40% {
+      opacity: 1;
+      translate: 0 0;
+    }
+    41%,
+    82% {
+      opacity: 0;
+      translate: 0 4px;
+    }
+    88%,
+    100% {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+}
+
 [data-paused] * {
   animation-play-state: paused !important;
 }
@@ -355,6 +436,19 @@
 }
 
 @layer utilities {
+  /* The hero's accent words: the accent lit from the top-left, clipped to the letters */
+  .text-sheen {
+    background: linear-gradient(
+      100deg,
+      color-mix(in oklab, var(--color-accent) 55%, var(--color-ink)) 0%,
+      var(--color-accent) 45%,
+      color-mix(in oklab, var(--color-accent) 70%, var(--color-ground)) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
   /* A black third-party mark (GitHub, Express) reads white on the dark ground (icons.md) */
   .ic-ink {
     filter: invert(1) hue-rotate(180deg);
@@ -456,14 +550,14 @@
     transition: opacity var(--m-out) var(--ease-ui);
     pointer-events: none;
   }
-  .lit > :first-child {
+  .lit-ui {
     transition: translate 180ms var(--ease-out-strong);
   }
   @media (hover: hover) and (pointer: fine) {
     .card-link:hover .lit::after {
       opacity: 0.07;
     }
-    .card-link:hover .lit > :first-child {
+    .card-link:hover .lit-ui {
       translate: 0 -2px;
     }
   }

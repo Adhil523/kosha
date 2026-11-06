@@ -18,6 +18,9 @@ export const LINKS = {
   txUnderThreshold: `${HASHSCAN}/transaction/0.0.11341449-1793987958-456000000`,
   /** A payment past the threshold: price to the API, 1% TDS to the agent's reserve */
   txTdsReserved: `${HASHSCAN}/transaction/0.0.11341449-1793987971-680000000`,
+  /** A stock @x402/fetch client paying through compatibility mode, and Core's forward of it */
+  txCompatPayment: `${HASHSCAN}/transaction/0.0.11341449-1793994119-889323367`,
+  txCompatForward: `${HASHSCAN}/transaction/0.0.11341449-1793994125-219566604`,
   /** The co-signed scheduled transaction releasing a reserve (after the monthly close) */
   txReserveRelease: null,
   paymentsTopic: `${HASHSCAN}/topic/0.0.11342856`,

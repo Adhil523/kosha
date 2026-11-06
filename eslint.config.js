@@ -7,7 +7,15 @@ import tseslint from 'typescript-eslint';
 
 export default defineConfig(
   {
-    ignores: ['**/dist/**', '**/.next/**', '**/.turbo/**', '**/coverage/**', '**/next-env.d.ts']
+    ignores: [
+      '**/dist/**',
+      '**/.next/**',
+      '**/.turbo/**',
+      '**/coverage/**',
+      '**/next-env.d.ts',
+      // Vendored browser effects (the design-taste skill's fx.js), served as is from public/
+      '**/public/fx/**'
+    ]
   },
   js.configs.recommended,
   tseslint.configs.strict,
