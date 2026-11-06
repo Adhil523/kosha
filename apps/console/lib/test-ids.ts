@@ -13,5 +13,6 @@ export const TEST_IDS = {
   paymentRow: (paymentId: string) => `payment-row-${paymentId}`,
   thresholdCounter: (agentId: string) => `threshold-counter-${agentId}`,
   thresholdStatus: (agentId: string) => `threshold-status-${agentId}`,
-  overviewStat: (id: string) => `overview-stat-${id}`
+  overviewStat: (id: string) => `overview-stat-${id}`,
+  counterparty: (agentId: string) => `counterparty-${agentId}`
 } as const;
