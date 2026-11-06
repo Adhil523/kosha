@@ -42,7 +42,13 @@ const setup = () => {
     }
     return reply();
   });
-  return buildApp({ core: 'https://core.test', apiKey: 'key_123', fetch: fetchMock });
+  // The fake Core's transactions aren't on the Mirror Node; Gate's own tests cover the proof
+  return buildApp({
+    core: 'https://core.test',
+    apiKey: 'key_123',
+    fetch: fetchMock,
+    onChainProof: false
+  });
 };
 
 const paidGet = (path: string) =>
