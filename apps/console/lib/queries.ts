@@ -5,6 +5,7 @@ import { QUERY_KEYS } from '@/lib/query-client';
 import { spendSummarySchema } from '@/lib/spend';
 import { URLS } from '@/lib/urls';
 import { aggregateRowSchema, ledgerPageSchema } from '@kosha/shared/console-api';
+import { policySchema } from '@kosha/shared/registry';
 import { z } from 'zod';
 
 // Fetches a Console route and validates it at the boundary; query functions throw on failure
@@ -39,4 +40,10 @@ export const getAgentsQueryParams = () => ({
 export const getAgentSpendQueryParams = (agentId: string) => ({
   queryKey: QUERY_KEYS.agentSpend(agentId),
   queryFn: () => getValidated(URLS.console.agentSpend(agentId), spendSummarySchema)
+});
+
+// null: the agent has no policy yet, so no caps
+export const getAgentPolicyQueryParams = (agentId: string) => ({
+  queryKey: QUERY_KEYS.agentPolicy(agentId),
+  queryFn: () => getValidated(URLS.console.agentPolicy(agentId), policySchema.nullable())
 });
