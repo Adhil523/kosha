@@ -52,6 +52,30 @@ export const addToAggregate = async (
   return total.value + total.outside;
 };
 
+// Moves a pair's outside value (payments seen outside Kosha, A19): up when one is flagged, down
+// when the owner marks it a gift. Call it inside the pair's lock.
+export const addOutsideToAggregate = async (
+  tx: KoshaDb,
+  pair: PairKey,
+  deltaPaise: bigint
+): Promise<void> => {
+  await tx
+    .insert(aggregate)
+    .values({
+      agentID: pair.agentId,
+      receiverID: pair.receiverId,
+      fy: pair.fy,
+      outsideValuePaise: deltaPaise
+    })
+    .onConflictDoUpdate({
+      target: [aggregate.agentID, aggregate.receiverID, aggregate.fy],
+      set: {
+        outsideValuePaise: sql`${aggregate.outsideValuePaise} + excluded."outsideValuePaise"`,
+        updatedAt: sql`now()`
+      }
+    });
+};
+
 // Records an executed settlement in one database transaction, under the pair's lock so a
 // concurrent quote for the pair waits and then sees the new total:
 // - settled: the payment, its value added to the pair's aggregate, and the HCS pay message queued
