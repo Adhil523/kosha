@@ -129,4 +129,16 @@ describe('createCoreClient', () => {
 
     expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
   });
+
+  it("gives settle longer than quote and verify, to outlast Core's receipt and Mirror wait", async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
+    const { client } = clientWith(async () => jsonResponse(503, {}));
+
+    await client.quote(QUOTE_REQUEST);
+    await client.verify({} as never);
+    await client.settle({} as never);
+
+    expect(timeout.mock.calls).toEqual([[10_000], [10_000], [75_000]]);
+    timeout.mockRestore();
+  });
 });
