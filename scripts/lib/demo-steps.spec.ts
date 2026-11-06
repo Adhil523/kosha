@@ -83,6 +83,7 @@ const fakeContext = ({
     urls: { gstLookup: '', company: '', lei: '' },
     stockFetchFor: unused,
     sendOutside: async () => ({ ok: true, data: SENT_ID }),
+    signRelease: async (_agent, scheduleId) => `signed:${scheduleId}`,
     now: () => new Date('2026-11-06T12:00:00Z'),
     pause: async () => undefined
   };
@@ -120,3 +121,31 @@ describe('demo step 7: an outside transfer', () => {
   });
 });
 
+describe('demo step 8b: the challan and the reserve release', () => {
+  it('co-signs agent-resident’s scheduled release with its own key, and sees it run', async () => {
+    const { context, cosigned } = fakeContext();
+    const outcome = await runStep('8b', context);
+    expect(outcome.status).toBe('passed');
+    expect(cosigned).toEqual([`signed:${SCHEDULED.scheduleId}`]);
+  });
+
+  it('passes without signing again when the month was closed and released earlier', async () => {
+    const { context, cosigned } = fakeContext({ release: releaseFixture });
+    const outcome = await runStep('8b', context);
+    expect(outcome.status).toBe('passed');
+    expect(outcome.detail).toContain('already run');
+    expect(cosigned).toEqual([]);
+  });
+
+  it('fails when Core never schedules the release', async () => {
+    const pending: ReleaseRow = { ...SCHEDULED, status: 'pending', scheduleId: null };
+    const { context, cosigned } = fakeContext({ release: pending });
+    expect((await runStep('8b', context)).status).toBe('failed');
+    expect(cosigned).toEqual([]);
+  });
+
+  it('is skipped when Core has no monthly close', async () => {
+    const { context } = fakeContext({ probe: 404 });
+    expect((await runStep('8b', context)).status).toBe('skipped');
+  });
+});

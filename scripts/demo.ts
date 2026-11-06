@@ -1,3 +1,4 @@
+import { signedScheduleSign } from './cosign-release';
 import { adminHttp, demoCore } from './lib/demo-core';
 import { sendDirect } from './lib/demo-outside';
 import { DEMO_STEPS, type DemoAgent, type DemoContext, type StepOutcome } from './lib/demo-steps';
@@ -177,6 +178,7 @@ export const buildContext = (env: DemoEnv, fetchImpl: typeof fetch = fetch): Dem
         to: env.RECEIVER_IN_ACCOUNT_ID,
         micro: OUTSIDE_MICRO
       }),
+    signRelease: (agent, scheduleId) => signedScheduleSign(scheduleId, agentKeys(env, agent)),
     now: () => new Date(),
     pause: (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   };

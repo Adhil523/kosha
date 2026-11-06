@@ -1,4 +1,4 @@
-import { type CoreResult, currentQuarter, type DemoCore } from './demo-core';
+import { type CoreResult, currentMonth, currentQuarter, type DemoCore } from './demo-core';
 import { sameTransaction, type Sent } from './demo-outside';
 import { type PrivateKey } from '@hiero-ledger/sdk';
 import { issueCredential } from '@kosha/hedera/credentials';
@@ -8,9 +8,9 @@ import { type PreparedPayment } from '@kosha/pay/prepare-payment';
 import { type OutsidePaymentRow } from '@kosha/shared/console-api';
 import { decodeHeader, HEADERS, SCHEMES } from '@kosha/shared/headers';
 import { type AgentIdentity } from '@kosha/shared/ids';
-import { amountSchema } from '@kosha/shared/money';
+import { amountSchema, formatInr, formatUsdc } from '@kosha/shared/money';
 import { type Policy } from '@kosha/shared/registry';
-import { tdsExportRowSchema } from '@kosha/shared/tax-reports';
+import { type ReleaseRow, tdsExportRowSchema } from '@kosha/shared/tax-reports';
 import { paymentRequiredSchema, type QuoteTax, type TaxReason } from '@kosha/shared/x402-payment';
 
 // The spec's eight demo steps (B17), each asserting what the stage shows. A step whose feature
@@ -32,6 +32,8 @@ export type DemoContext = {
   stockFetchFor: (agent: DemoAgent) => typeof fetch;
   // A plain token transfer from the agent straight to receiver-in's wallet, outside Kosha
   sendOutside: (agent: DemoAgent) => Promise<Sent>;
+  // The agent operator's half of a reserve release: a signed ScheduleSign, base64
+  signRelease: (agent: DemoAgent, scheduleId: string) => Promise<string>;
   now: () => Date;
   pause: (ms: number) => Promise<void>;
 };
@@ -51,6 +53,9 @@ const OUTSIDE_WAIT_MS = 90_000;
 const OUTSIDE_POLL_MS = 5_000;
 const MS_PER_SECOND = 1_000;
 const GIFT_NOTE = 'Demo: a gift from a relative, not a payment for the API';
+// Core schedules a release on the next read; Hedera runs it a few seconds after the co-sign
+const RELEASE_POLL_MS = 3_000;
+const RELEASE_ATTEMPTS = 10;
 
 const passed = (detail: string): StepOutcome => ({ status: 'passed', detail });
 const failed = (detail: string): StepOutcome => ({ status: 'failed', detail });
@@ -340,14 +345,76 @@ const stepTdsFile: DemoStep = {
   }
 };
 
+// agent's release under a challan, once `done` holds for it; null if it never does in time
+const waitForRelease = async (
+  context: DemoContext,
+  challanId: string,
+  agentId: string,
+  done: (release: ReleaseRow) => boolean
+): Promise<CoreResult<ReleaseRow | null>> => {
+  for (let attempt = 0; attempt < RELEASE_ATTEMPTS; attempt += 1) {
+    const rows = await context.core.releases(challanId);
+    if (!rows.ok) return rows;
+    const release = rows.data.find((row) => row.agentId === agentId);
+    if (release && done(release)) return { ok: true, data: release };
+    await context.pause(RELEASE_POLL_MS);
+  }
+  return { ok: true, data: null };
+};
+
+// 8b. The month's challan (a mock reference), then agent-resident co-signs its release (A20, B25)
 const stepChallan: DemoStep = {
   label: '8b',
   title: 'record a mock challan and co-sign the reserve release',
   run: async (context) => {
-    const status = await context.core.probe('/v1/close?receiverId=none&month=2026-11');
-    return status === NOT_FOUND
-      ? skipped('(cut) the monthly close (A20) is not built')
-      : skipped('(cut) the close answers, but the Console screens (B25) are not built');
+    const status = await context.core.probe('/v1/challans');
+    if (status === NOT_FOUND) return skipped('(cut) the monthly close (A20) is not built');
+    const ids = await pairIds(context, 'resident');
+    if (!ids.ok) return failed(ids.data);
+    const { agentId, receiverId } = ids.data;
+    const month = currentMonth(context.now());
+
+    const close = await context.core.monthlyClose(receiverId, month);
+    if (!close.ok) return failed(close.data);
+    if (!close.data.rows.some((row) => row.agentId === agentId)) {
+      return failed(`agent-resident has no TDS to release in ${month}`);
+    }
+    const challan = await context.core.closeMonth(receiverId, month, `DEMO-MOCK-${month}`);
+    if (!challan.ok) return failed(challan.data);
+
+    const ready = await waitForRelease(
+      context,
+      challan.data.id,
+      agentId,
+      (row) => row.status !== 'pending'
+    );
+    if (!ready.ok) return failed(ready.data);
+    if (!ready.data) return failed('Core did not schedule agent-resident’s release');
+    const release = ready.data;
+    if (release.status === 'executed') {
+      return passed(`${month} was closed earlier; release ${release.id} has already run`);
+    }
+    if (release.status !== 'scheduled' || !release.scheduleId) {
+      return failed(`release ${release.id} is ${release.status}, not waiting for a co-sign`);
+    }
+
+    const signed = await context.signRelease('resident', release.scheduleId);
+    const cosigned = await context.core.cosignRelease(release.id, signed);
+    if (!cosigned.ok) return failed(cosigned.data);
+    const ran =
+      cosigned.data.status === 'executed'
+        ? { ok: true as const, data: cosigned.data }
+        : await waitForRelease(
+            context,
+            challan.data.id,
+            agentId,
+            (row) => row.status === 'executed'
+          );
+    if (!ran.ok) return failed(ran.data);
+    if (!ran.data) return failed(`co-signed, but schedule ${release.scheduleId} has not run`);
+    return passed(
+      `challan for ${month} (${formatInr(BigInt(close.data.totalTdsPaise))}); ${formatUsdc(BigInt(release.micro))} USDC released from ${release.reserveAccountId}, schedule ${release.scheduleId}`
+    );
   }
 };
 
