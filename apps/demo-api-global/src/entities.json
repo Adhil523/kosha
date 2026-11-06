@@ -1,0 +1,59 @@
+{
+  "note": "Mock data: fictional entities with well-formed LEIs. Not real GLEIF records.",
+  "entities": [
+    {
+      "lei": "5493001KQW6DM7KEDR62",
+      "legalName": "Meridian Data Exchange Pte. Ltd.",
+      "country": "SG",
+      "jurisdiction": "Singapore",
+      "sector": "Data services",
+      "registeredOn": "2014-03-11",
+      "status": "ISSUED"
+    },
+    {
+      "lei": "529900T8BM49AURSDO55",
+      "legalName": "Nordlicht Analytik GmbH",
+      "country": "DE",
+      "jurisdiction": "Berlin",
+      "sector": "Market research",
+      "registeredOn": "2012-10-02",
+      "status": "ISSUED"
+    },
+    {
+      "lei": "213800WAVVOPS85N2Z93",
+      "legalName": "Harbourline Shipping Holdings plc",
+      "country": "GB",
+      "jurisdiction": "London",
+      "sector": "Shipping",
+      "registeredOn": "2009-06-19",
+      "status": "ISSUED"
+    },
+    {
+      "lei": "549300GKFG0RYRRQ1U64",
+      "legalName": "Cobalt Ridge Software, Inc.",
+      "country": "US",
+      "jurisdiction": "Delaware",
+      "sector": "Software",
+      "registeredOn": "2016-01-27",
+      "status": "ISSUED"
+    },
+    {
+      "lei": "353800ZK7M2AXQJR4C95",
+      "legalName": "Sakura Precision Components K.K.",
+      "country": "JP",
+      "jurisdiction": "Osaka",
+      "sector": "Manufacturing",
+      "registeredOn": "2005-04-01",
+      "status": "ISSUED"
+    },
+    {
+      "lei": "724500PMK2A2M1SQQ228",
+      "legalName": "Atlantico Agro Comercio Ltda.",
+      "country": "BR",
+      "jurisdiction": "Sao Paulo",
+      "sector": "Agribusiness",
+      "registeredOn": "2011-08-30",
+      "status": "ISSUED"
+    }
+  ]
+}
