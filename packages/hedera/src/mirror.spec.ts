@@ -88,6 +88,21 @@ describe('mirror client', () => {
     ]);
   });
 
+  it("reads an account's balance of one token, or null when it is not associated", async () => {
+    const { fetchImpl } = fakeFetch({
+      '/api/v1/accounts/0.0.6001/tokens?token.id=0.0.429274': {
+        body: { tokens: [{ token_id: '0.0.429274', balance: 250000 }] }
+      },
+      '/api/v1/accounts/0.0.6002/tokens?token.id=0.0.429274': { body: { tokens: [] } }
+    });
+    const mirror = createMirrorClient(BASE, fetchImpl);
+    expect(await mirror.tokenBalance('0.0.6001', '0.0.429274')).toEqual({
+      ok: true,
+      data: 250000n
+    });
+    expect(await mirror.tokenBalance('0.0.6002', '0.0.429274')).toEqual({ ok: true, data: null });
+  });
+
   it('reads the result of the transaction at a consensus timestamp', async () => {
     const ran = { ...transfer('0.0.4000-1796529900-000000000', '1796529960.000000000', []) };
     const { fetchImpl } = fakeFetch({

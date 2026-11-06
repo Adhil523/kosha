@@ -47,6 +47,10 @@ const scheduleSchema = z.object({
   payer_account_id: z.string().nullable()
 });
 
+const accountTokensSchema = z.object({
+  tokens: z.array(z.object({ token_id: z.string(), balance: z.number().int() }))
+});
+
 const topicMessageSchema = z.object({ topic_id: z.string(), sequence_number: z.number().int() });
 
 export type MirrorAccountKey = { type: string; hex: string };
@@ -128,6 +132,18 @@ export const createMirrorClient = (baseUrl: string, fetchImpl: FetchLike = fetch
     if (!result.ok) return result;
     if (!result.data.key) return { ok: false, data: { reason: 'invalid_response' } };
     return { ok: true, data: { type: result.data.key._type, hex: result.data.key.key } };
+  };
+
+  // One token's balance on an account, or null when the account is not associated with it
+  const tokenBalance = async (
+    accountId: string,
+    tokenId: string
+  ): Promise<MirrorResult<bigint | null>> => {
+    const path = `/api/v1/accounts/${accountId}/tokens?token.id=${tokenId}`;
+    const result = await getJson(path, accountTokensSchema);
+    if (!result.ok) return result;
+    const held = result.data.tokens.find((token) => token.token_id === tokenId);
+    return { ok: true, data: held ? BigInt(held.balance) : null };
   };
 
   // The account memo; an agent's points at its HCS-11 profile (hcs11-profile.ts)
@@ -231,6 +247,7 @@ export const createMirrorClient = (baseUrl: string, fetchImpl: FetchLike = fetch
   return {
     accountKey,
     accountMemo,
+    tokenBalance,
     transactionById,
     transactionAt,
     tokenCreditsSince,
