@@ -2,5 +2,8 @@
 export const TEST_IDS = {
   sideNav: 'side-nav',
   navLink: (href: string) => `nav-link-${href.replace(/^\//, '')}`,
-  pageTitle: 'page-title'
+  pageTitle: 'page-title',
+  signInRole: (role: string) => `sign-in-${role}`,
+  signOut: 'sign-out',
+  footerLabels: 'footer-labels'
 } as const;
