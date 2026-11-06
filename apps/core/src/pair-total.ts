@@ -1,6 +1,6 @@
 import type { KoshaDb } from './db/client';
-import { aggregate, payment, quote } from './db/schema';
-import { and, eq, gt, isNotNull, notExists, or, sql } from 'drizzle-orm';
+import { aggregate, decision, payment, quote } from './db/schema';
+import { and, eq, gt, isNotNull, isNull, notExists, or, sql } from 'drizzle-orm';
 
 export type PairKey = { agentId: string; receiverId: string; fy: string };
 
@@ -38,7 +38,26 @@ export const pairTotalPaise = async (db: KoshaDb, pair: PairKey, now: Date): Pro
       )
     );
 
-  return (settled?.value ?? 0n) + (settled?.outside ?? 0n) + BigInt(open?.value ?? '0');
+  // Decisions for other rails (A24) hold their value the same way until confirmed or expired
+  const [deciding] = await db
+    .select({ value: sql<string>`coalesce(sum(${decision.valuePaise}), 0)::text` })
+    .from(decision)
+    .where(
+      and(
+        eq(decision.agentID, pair.agentId),
+        eq(decision.receiverID, pair.receiverId),
+        eq(decision.fy, pair.fy),
+        isNull(decision.confirmedAt),
+        gt(decision.expiresAt, now)
+      )
+    );
+
+  return (
+    (settled?.value ?? 0n) +
+    (settled?.outside ?? 0n) +
+    BigInt(open?.value ?? '0') +
+    BigInt(deciding?.value ?? '0')
+  );
 };
 
 // Serialises quoting for one pair: the total is read and the new quote written under the same

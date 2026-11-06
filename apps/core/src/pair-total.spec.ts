@@ -1,5 +1,5 @@
 import type { DbHandle } from './db/client';
-import { agent, aggregate, payment, quote, receiver } from './db/schema';
+import { agent, aggregate, decision, payment, quote, receiver } from './db/schema';
 import { testDb } from './db/test-db';
 import { pairTotalPaise, withPairLock } from './pair-total';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -128,5 +128,35 @@ describe('pairTotalPaise', () => {
     const totals = await Promise.all([quoteUnderLock(), quoteUnderLock()]);
 
     expect([...totals].sort()).toEqual([before, before + 100n]);
+  });
+
+  it('holds an open decision for another rail, but not a confirmed or expired one', async () => {
+    const before = await pairTotalPaise(handle.db, pair, NOW);
+    const decided = (valuePaise: bigint, fields: Record<string, unknown> = {}) => ({
+      receiverID: pair.receiverId,
+      agentID: pair.agentId,
+      chain: 'eip155:8453',
+      priceMicro: 100000n,
+      inrPerUsdMicro: 88_400_000n,
+      valuePaise,
+      tdsPaise: 0n,
+      tdsMicro: 0n,
+      rateBps: 0,
+      reason: 'under_threshold',
+      flags: [],
+      rulepack: 'in-2026.2',
+      fy: '2026-27',
+      expiresAt: new Date(NOW.getTime() + 60_000),
+      ...fields
+    });
+    await handle.db
+      .insert(decision)
+      .values([
+        decided(300n),
+        decided(50n, { confirmedAt: NOW, transactionRef: '0xabc' }),
+        decided(70n, { expiresAt: new Date(NOW.getTime() - 1) })
+      ]);
+
+    expect(await pairTotalPaise(handle.db, pair, NOW)).toBe(before + 300n);
   });
 });
