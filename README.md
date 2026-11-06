@@ -301,6 +301,63 @@ from [portal.hedera.com](https://portal.hedera.com). Kosha only runs on testnet.
 | A reserve release (co-signed scheduled transaction) | Added once the monthly close is built                                                                          |
 | Every account and topic                             | [docs/testnet-accounts.md](docs/testnet-accounts.md)                                                           |
 
+## Deploy
+
+Kosha Core deploys separately; its steps and secrets are in [docs/core-api.md](docs/core-api.md)
+(A16). Deploy it first, because the demo APIs and the Console both call it. Everything stays on
+testnet.
+
+### Demo APIs (Fly.io)
+
+Each demo API has a Dockerfile and a `fly.toml` (Mumbai region, one machine kept running, a health
+check on `/.well-known/kosha`). Run these from the repo root, once per API (`in` and `global`):
+
+```bash
+fly auth login
+fly apps create kosha-demo-api-in
+fly secrets set --config apps/demo-api-in/fly.toml \
+  CORE_URL=https://<core-host> DEMO_API_IN_KEY=<from the shared env> CONSOLE_URL=https://<console-host>
+fly deploy . --config apps/demo-api-in/fly.toml --dockerfile apps/demo-api-in/Dockerfile \
+  --ignorefile apps/demo-api-in/Dockerfile.dockerignore
+```
+
+For the foreign API, swap `in` for `global` and `DEMO_API_IN_KEY` for `DEMO_API_GLOBAL_KEY`. To
+check the image locally first:
+`docker build -f apps/demo-api-in/Dockerfile -t kosha-demo-api-in .`
+
+### Console (Vercel)
+
+1. Import the repository in Vercel and set **Root Directory** to `apps/console`.
+   `apps/console/vercel.json` sets the framework and the install and build commands.
+2. Add these environment variables. They are all server-only: the browser never sees a Core
+   credential.
+
+   | Variable              | Value                                                                    |
+   | --------------------- | ------------------------------------------------------------------------ |
+   | `CORE_URL`            | The deployed Core's URL                                                  |
+   | `CONSOLE_ADMIN_TOKEN` | From the shared env                                                      |
+   | `CONSOLE_RECEIVER_ID` | Core's receiver ID for receiver-in: its `receiverId` in `GET /v1/ledger` |
+   | `DEMO_AUTH`           | `1` (the workspace picker)                                               |
+   | `MIRROR_URL`          | `https://testnet.mirrornode.hedera.com`                                  |
+   | `SETTLEMENT_TOKEN_ID` | From the shared env                                                      |
+   | `HCS_PAYMENTS_TOPIC`  | From the shared env                                                      |
+   | `FX_DEMO_INR_PER_USD` | `88.40` (the rate Core quotes with)                                      |
+
+   Leave `KOSHA_MOCK` unset.
+
+3. Deploy, then set the demo APIs' `CONSOLE_URL` to the Console's URL.
+
+The live feed is a server-sent-events proxy that Vercel closes after 300 seconds. The Console then
+polls every 3 seconds until the stream reconnects.
+
+### Check the deployed stack
+
+Pay the deployed Indian API once from your machine, then watch the payment appear in the Console:
+
+```bash
+DEMO_API_IN_URL=https://kosha-demo-api-in.fly.dev pnpm pay-once
+```
+
 ## First settled payment (testnet)
 
 On 6 November 2026 an agent paid the Indian demo API through Kosha Pay (`pnpm pay-once`). The pair

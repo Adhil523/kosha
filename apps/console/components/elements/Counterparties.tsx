@@ -8,6 +8,7 @@ import { LEVEL_LABELS, RESIDENCY_LABELS } from '@/lib/payer-labels';
 import { getAggregatesQueryParams } from '@/lib/queries';
 import { TEST_IDS } from '@/lib/test-ids';
 import { POLL_FALLBACK_MS, useLiveStream } from '@/lib/use-live-stream';
+import { usePayerLabel } from '@/lib/use-payer-labels';
 import { useQuery } from '@tanstack/react-query';
 
 // Every payer of this receiver: yearly total against the receiver's threshold, with who they
@@ -18,6 +19,7 @@ export const Counterparties = ({ fxInrPerUsd }: { fxInrPerUsd: string }) => {
     ...getAggregatesQueryParams(),
     refetchInterval: streaming ? false : POLL_FALLBACK_MS
   });
+  const labelFor = usePayerLabel();
 
   if (aggregates.isPending) return <QueryPending label="payers" />;
   if (aggregates.error) {
@@ -39,7 +41,7 @@ export const Counterparties = ({ fxInrPerUsd }: { fxInrPerUsd: string }) => {
             <span className="text-xs text-muted-foreground">FY {row.fy}</span>
           </Card.CardHeader>
           <Card.CardContent>
-            <PayerCounter row={row} fxInrPerUsd={fxInrPerUsd} />
+            <PayerCounter row={row} label={labelFor(row.agentId)} fxInrPerUsd={fxInrPerUsd} />
           </Card.CardContent>
         </Card.Card>
       ))}

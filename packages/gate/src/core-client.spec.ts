@@ -55,7 +55,26 @@ describe('createCoreClient', () => {
 
     expect(await client.quote(QUOTE_REQUEST)).toEqual({
       ok: false,
-      data: { reason: 'policy_refused', status: 403, ...body }
+      data: { reason: 'refused', status: 403, ...body }
+    });
+  });
+
+  it("reports another 4xx with Core's error body as Core's refusal", async () => {
+    const body = { error: 'invalid_payload', message: 'X-KOSHA-AGENT is required' };
+    const { client } = clientWith(async () => jsonResponse(400, body));
+
+    expect(await client.quote(QUOTE_REQUEST)).toEqual({
+      ok: false,
+      data: { reason: 'refused', status: 400, ...body }
+    });
+  });
+
+  it('keeps a 401 as unauthorized whatever its body says', async () => {
+    const { client } = clientWith(async () => jsonResponse(401, { error: 'policy_daily' }));
+
+    expect(await client.quote(QUOTE_REQUEST)).toEqual({
+      ok: false,
+      data: { reason: 'unauthorized', status: 401 }
     });
   });
 
