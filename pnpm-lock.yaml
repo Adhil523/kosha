@@ -99,6 +99,9 @@ importers:
 
   packages/hedera:
     dependencies:
+      '@hiero-ledger/proto':
+        specifier: 2.32.0
+        version: 2.32.0(protobufjs@8.6.6)
       '@hiero-ledger/sdk':
         specifier: 2.90.1
         version: 2.90.1
