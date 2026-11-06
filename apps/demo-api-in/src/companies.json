@@ -1,0 +1,125 @@
+{
+  "note": "Mock data: fictional companies with well-formed identifiers. Not real registry records.",
+  "companies": [
+    {
+      "cin": "U72200KA2016PTC094512",
+      "gstin": "29AAKCK4821M1ZQ",
+      "legalName": "Kaveri Analytics Private Limited",
+      "tradeName": "Kaveri Analytics",
+      "state": "Karnataka",
+      "industry": "IT services",
+      "incorporatedOn": "2016-04-12",
+      "gstRegisteredOn": "2017-07-01",
+      "gstStatus": "Active",
+      "paidUpCapitalInr": 2500000
+    },
+    {
+      "cin": "U17110MH2011PTC218733",
+      "gstin": "27AADCS7310Q1Z4",
+      "legalName": "Sahyadri Textiles Private Limited",
+      "tradeName": "Sahyadri Looms",
+      "state": "Maharashtra",
+      "industry": "Textiles",
+      "incorporatedOn": "2011-09-30",
+      "gstRegisteredOn": "2017-07-01",
+      "gstStatus": "Active",
+      "paidUpCapitalInr": 12000000
+    },
+    {
+      "cin": "L24230GJ2004PLC044190",
+      "gstin": "24AAECN2287F1ZK",
+      "legalName": "Narmada Fine Chemicals Limited",
+      "tradeName": "Narmada Chem",
+      "state": "Gujarat",
+      "industry": "Chemicals",
+      "incorporatedOn": "2004-02-18",
+      "gstRegisteredOn": "2017-07-01",
+      "gstStatus": "Active",
+      "paidUpCapitalInr": 85000000
+    },
+    {
+      "cin": "U63030DL2019PTC351276",
+      "gstin": "07AAHCY5521D1Z9",
+      "legalName": "Yamuna Freight Logistics Private Limited",
+      "tradeName": "Yamuna Freight",
+      "state": "Delhi",
+      "industry": "Logistics",
+      "incorporatedOn": "2019-06-03",
+      "gstRegisteredOn": "2019-07-15",
+      "gstStatus": "Active",
+      "paidUpCapitalInr": 1000000
+    },
+    {
+      "cin": "U15400TN2014PTC097845",
+      "gstin": "33AAFCT9064R1Z2",
+      "legalName": "Thamirabarani Foods Private Limited",
+      "tradeName": "TB Foods",
+      "state": "Tamil Nadu",
+      "industry": "Food processing",
+      "incorporatedOn": "2014-11-21",
+      "gstRegisteredOn": "2017-07-01",
+      "gstStatus": "Active",
+      "paidUpCapitalInr": 6000000
+    },
+    {
+      "cin": "U72900TG2020PTC140318",
+      "gstin": "36AAJCG3375L1ZT",
+      "legalName": "Godavari Cloud Systems Private Limited",
+      "tradeName": "Godavari Cloud",
+      "state": "Telangana",
+      "industry": "Software products",
+      "incorporatedOn": "2020-01-09",
+      "gstRegisteredOn": "2020-02-01",
+      "gstStatus": "Active",
+      "paidUpCapitalInr": 500000
+    },
+    {
+      "cin": "U51909WB2009PTC136602",
+      "gstin": "19AADCH8812K1ZB",
+      "legalName": "Hooghly Trading Company Private Limited",
+      "tradeName": "Hooghly Trading",
+      "state": "West Bengal",
+      "industry": "Wholesale trade",
+      "incorporatedOn": "2009-03-27",
+      "gstRegisteredOn": "2017-07-01",
+      "gstStatus": "Cancelled",
+      "paidUpCapitalInr": 3000000
+    },
+    {
+      "cin": "U55101KL2017PTC049981",
+      "gstin": "32AAGCP6640H1ZM",
+      "legalName": "Periyar Hospitality Private Limited",
+      "tradeName": "Periyar Stays",
+      "state": "Kerala",
+      "industry": "Hospitality",
+      "incorporatedOn": "2017-08-14",
+      "gstRegisteredOn": "2017-09-01",
+      "gstStatus": "Active",
+      "paidUpCapitalInr": 4200000
+    },
+    {
+      "cin": "U74999UP2018PTC104427",
+      "gstin": "09AAICS4410G1ZX",
+      "legalName": "Sarayu Consulting Private Limited",
+      "tradeName": "Sarayu Advisory",
+      "state": "Uttar Pradesh",
+      "industry": "Management consulting",
+      "incorporatedOn": "2018-05-22",
+      "gstRegisteredOn": "2018-06-10",
+      "gstStatus": "Active",
+      "paidUpCapitalInr": 200000
+    },
+    {
+      "cin": "L26940RJ2001PLC017358",
+      "gstin": "08AABCM9087E1ZP",
+      "legalName": "Mewar Cement Works Limited",
+      "tradeName": "Mewar Cement",
+      "state": "Rajasthan",
+      "industry": "Cement",
+      "incorporatedOn": "2001-12-05",
+      "gstRegisteredOn": "2017-07-01",
+      "gstStatus": "Active",
+      "paidUpCapitalInr": 150000000
+    }
+  ]
+}
