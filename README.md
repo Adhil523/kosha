@@ -280,17 +280,22 @@ from [portal.hedera.com](https://portal.hedera.com). Kosha only runs on testnet.
 
 ### The full demo
 
-`pnpm demo` will run the whole story and assert each result (in progress):
+`pnpm demo` resets the threshold demo (`seed --reset-demo`), then runs the whole story against
+Core and the two demo APIs and asserts each result; a step whose feature was cut prints
+`SKIPPED (cut)`. `pnpm burst` fires 20 calls, four in flight, through its own `demo-api-in` with
+the reserve proof off (`DEMO_API_PROOF=off`), so the counter visibly moves on stage.
 
 1. An agent pays the Indian API under the threshold: price only, no TDS.
 2. More calls cross ₹10,000: the Console counter turns amber, then "1% reserved".
 3. An unverified agent pays within the API owner's tolerance with no tax, then crosses it and pays
-   20% until it presents a PAN credential, after which the next quote is 1%.
+   20% until it presents a PAN credential, after which the next quote drops to the verified rate
+   (0% while the pair is still under ₹10,000, 1% past it).
 4. A non-resident agent pays a foreign API: no TDS, flagged for FEMA review.
-5. An agent hits its daily cap, and the Agent Kit budget policy blocks the call.
+5. An agent hits its daily cap: Core's server-side policy refuses the quote (`policy_daily`), as
+   the Agent Kit budget policy does inside `demo-agent`.
 6. A stock x402 client pays through compatibility mode.
-7. An outside transfer is flagged and marked as a gift.
-8. Download the TDS file, record a mock challan, and co-sign the reserve release.
+7. An outside transfer is flagged and marked as a gift (cut: skipped by the runner).
+8. Download the TDS file; record a mock challan and co-sign the reserve release (cut: skipped).
 
 ### Testnet evidence
 
