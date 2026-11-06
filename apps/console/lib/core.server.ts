@@ -136,13 +136,37 @@ export const getAgentLedger = async (
 };
 
 // The agent's spending policy; null when none is set (Core answers 404, and there are no caps)
+// Mock mode keeps edits in memory, so the editor round-trips until the server restarts
+const mockPolicies = new Map<string, Policy>();
+
 export const getPolicy = async (agentId: string): Promise<CoreResult<Policy | null>> => {
-  if (isMockMode()) return { ok: true, status: 200, data: POLICY_FIXTURE };
+  if (isMockMode())
+    return { ok: true, status: 200, data: mockPolicies.get(agentId) ?? POLICY_FIXTURE };
   const base = coreBase();
   if (!base) return notConfigured;
   const policy = await getParsed(URLS.core.agentPolicy(base, agentId), policySchema);
   if (!policy.ok && policy.status === NOT_FOUND) return { ok: true, status: 200, data: null };
   return policy;
+};
+
+// Replaces every rule of the agent's policy (PUT /v1/agents/:id/policy)
+export const putPolicy = async (agentId: string, policy: Policy): Promise<CoreResult<Policy>> => {
+  if (isMockMode()) {
+    mockPolicies.set(agentId, policy);
+    return { ok: true, status: 200, data: policy };
+  }
+  const base = coreBase();
+  if (!base) return notConfigured;
+  const response = await api.put<unknown>(
+    URLS.core.agentPolicy(base, agentId),
+    policy,
+    coreOptions()
+  );
+  if (!response.ok) return response;
+  const parsed = policySchema.safeParse(response.data);
+  if (parsed.success) return { ok: true, status: response.status, data: parsed.data };
+  console.error(`[core]: PUT policy broke its schema: ${parsed.error.message}`);
+  return { ok: false, status: BAD_GATEWAY, data: { message: 'Core answered in an unknown shape' } };
 };
 
 export const openCoreStream = async (
