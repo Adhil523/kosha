@@ -1,7 +1,14 @@
 import type { DbHandle } from './db/client';
 import { aggregate, hcsOutbox, payment, quote } from './db/schema';
 import { testDb } from './db/test-db';
-import { payloadFor, QUOTE_ID, seedQuotedPayment, verifyDeps } from './payment.fixture';
+import { pairTotalPaise } from './pair-total';
+import {
+  ISSUED_AT,
+  payloadFor,
+  QUOTE_ID,
+  seedQuotedPayment,
+  verifyDeps
+} from './payment.fixture';
 import { type SettleDeps, settlePayment } from './payment-settle';
 import { type Executed, UNKNOWN_EXECUTION_STATUS } from '@kosha/hedera/executor';
 import { signedVariant } from '@kosha/hedera/transfer-verifier.fixture';
@@ -50,6 +57,26 @@ describe('settlePayment', () => {
     settlePayment(deps, receiverId, payloadFor(transaction ?? (await signedVariant())));
   const storedQuote = async () =>
     (await handle.db.select().from(quote).where(eq(quote.id, QUOTE_ID)))[0];
+
+  // A quote issued mid-settlement must still see this payment, or it could under-deduct
+  it('keeps the payment in its pair total while it executes', async () => {
+    const row = await storedQuote();
+    const pair = { agentId: row?.agentID ?? '', receiverId, fy: row?.fy ?? '' };
+    const before = await pairTotalPaise(handle.db, pair, ISSUED_AT);
+    let during = 0n;
+    const deps: SettleDeps = {
+      ...depsWith(SETTLED),
+      execute: async () => {
+        during = await pairTotalPaise(handle.db, pair, ISSUED_AT);
+        return SETTLED;
+      }
+    };
+
+    await settle(deps);
+
+    expect(before).toBeGreaterThan(0n);
+    expect([during, await pairTotalPaise(handle.db, pair, ISSUED_AT)]).toEqual([before, before]);
+  });
 
   it('marks the quote used, executes once and records the payment', async () => {
     const result = await settle(depsWith(SETTLED));
