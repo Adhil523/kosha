@@ -1,9 +1,11 @@
 import { type CoreResult, currentQuarter, type DemoCore } from './demo-core';
+import { sameTransaction, type Sent } from './demo-outside';
 import { type PrivateKey } from '@hiero-ledger/sdk';
 import { issueCredential } from '@kosha/hedera/credentials';
 import { type KoshaPay } from '@kosha/pay/kosha-pay';
 import { type Receipt } from '@kosha/pay/pay-receipt';
 import { type PreparedPayment } from '@kosha/pay/prepare-payment';
+import { type OutsidePaymentRow } from '@kosha/shared/console-api';
 import { decodeHeader, HEADERS, SCHEMES } from '@kosha/shared/headers';
 import { type AgentIdentity } from '@kosha/shared/ids';
 import { amountSchema } from '@kosha/shared/money';
@@ -28,7 +30,10 @@ export type DemoContext = {
   urls: { gstLookup: string; company: string; lei: string };
   // The official x402 client paying as the agent: no Kosha code, no X-KOSHA-AGENT
   stockFetchFor: (agent: DemoAgent) => typeof fetch;
+  // A plain token transfer from the agent straight to receiver-in's wallet, outside Kosha
+  sendOutside: (agent: DemoAgent) => Promise<Sent>;
   now: () => Date;
+  pause: (ms: number) => Promise<void>;
 };
 
 export type DemoStep = {
@@ -41,6 +46,11 @@ const PERCENT_PER_BPS = 100;
 const PAN_RATE_BPS = 2000;
 const FULL_PCT = 100;
 const NOT_FOUND = 404;
+// The watcher runs every 30 s and the Mirror Node lags a few seconds behind consensus
+const OUTSIDE_WAIT_MS = 90_000;
+const OUTSIDE_POLL_MS = 5_000;
+const MS_PER_SECOND = 1_000;
+const GIFT_NOTE = 'Demo: a gift from a relative, not a payment for the API';
 
 const passed = (detail: string): StepOutcome => ({ status: 'passed', detail });
 const failed = (detail: string): StepOutcome => ({ status: 'failed', detail });
@@ -263,15 +273,53 @@ const stepCompat: DemoStep = {
   }
 };
 
-// 7. An outside transfer is flagged and marked as a gift (A19, B24: cut 3)
+// Core's row for a transfer, once its watcher has flagged it; null if it never does in time
+const waitForFlag = async (
+  context: DemoContext,
+  receiverId: string,
+  transactionId: string
+): Promise<CoreResult<OutsidePaymentRow | null>> => {
+  for (let waited = 0; waited <= OUTSIDE_WAIT_MS; waited += OUTSIDE_POLL_MS) {
+    const rows = await context.core.outsidePayments(receiverId);
+    if (!rows.ok) return rows;
+    const row = rows.data.find((flagged) => sameTransaction(flagged.transactionId, transactionId));
+    if (row) return { ok: true, data: row };
+    await context.pause(OUTSIDE_POLL_MS);
+  }
+  return { ok: true, data: null };
+};
+
+// 7. agent-resident pays receiver-in directly: Core flags it, the owner marks it a gift (A19, B24)
 const stepOutsidePayment: DemoStep = {
   label: '7',
   title: 'an outside transfer is flagged and marked as a gift',
   run: async (context) => {
     const status = await context.core.probe('/v1/outside-payments?receiverId=none');
-    return status === NOT_FOUND
-      ? skipped('(cut) the outside-payment watcher (A19) is not built')
-      : skipped('(cut) the watcher answers, but the classification screen (B24) is not built');
+    if (status === NOT_FOUND)
+      return skipped('(cut) the outside-payment watcher (A19) is not built');
+    const ids = await pairIds(context, 'resident');
+    if (!ids.ok) return failed(ids.data);
+
+    const started = context.now().getTime();
+    const sent = await context.sendOutside('resident');
+    if (!sent.ok) return failed(sent.data);
+    const flagged = await waitForFlag(context, ids.data.receiverId, sent.data);
+    if (!flagged.ok) return failed(flagged.data);
+    if (!flagged.data) {
+      return failed(
+        `Core did not flag ${sent.data} within ${OUTSIDE_WAIT_MS / MS_PER_SECOND} s; is its watcher running?`
+      );
+    }
+    const seconds = Math.round((context.now().getTime() - started) / MS_PER_SECOND);
+
+    const gift = await context.core.classifyOutside(flagged.data.id, {
+      classification: 'not_consideration_gift',
+      note: GIFT_NOTE
+    });
+    if (!gift.ok) return failed(`marking it a gift: ${gift.data}`);
+    return passed(
+      `${sent.data} flagged in ${seconds} s with ${gift.data.shortfallPaise} paise TDS short, then marked a gift`
+    );
   }
 };
 

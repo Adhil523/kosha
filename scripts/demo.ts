@@ -1,4 +1,5 @@
 import { adminHttp, demoCore } from './lib/demo-core';
+import { sendDirect } from './lib/demo-outside';
 import { DEMO_STEPS, type DemoAgent, type DemoContext, type StepOutcome } from './lib/demo-steps';
 import { seedEnvSchema, seedResetDemo } from './seed';
 import { parsePrivateKey } from '@kosha/hedera/client';
@@ -32,6 +33,8 @@ const SAMPLE_CIN = 'U72200KA2016PTC094512';
 const SAMPLE_LEI = '5493001KQW6DM7KEDR62';
 // The stock client pays only default assets unless told otherwise: allow tUSDC, capped at 1 USDC
 const MAX_MICRO_PER_PAYMENT = '1000000';
+// Demo step 7's direct transfer: 0.10 tUSDC, one GST lookup's price
+const OUTSIDE_MICRO = 100_000;
 const HEALTH_TIMEOUT_MS = 3000;
 const PORT_RANGE = { min: 1, max: 65_535 };
 
@@ -166,7 +169,16 @@ export const buildContext = (env: DemoEnv, fetchImpl: typeof fetch = fetch): Dem
         }
       });
     },
-    now: () => new Date()
+    sendOutside: (agent) =>
+      sendDirect({
+        network: env.HEDERA_NETWORK,
+        tokenId: env.SETTLEMENT_TOKEN_ID,
+        from: agentKeys(env, agent),
+        to: env.RECEIVER_IN_ACCOUNT_ID,
+        micro: OUTSIDE_MICRO
+      }),
+    now: () => new Date(),
+    pause: (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   };
 };
 
