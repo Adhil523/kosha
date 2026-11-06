@@ -1,4 +1,4 @@
-import type { AccountId, HederaNetwork, TopicId, TransactionId } from './ids';
+import type { AccountId, HederaNetwork, ScheduleId, TopicId, TransactionId } from './ids';
 
 const HASHSCAN_BASE_URL = 'https://hashscan.io';
 
@@ -17,6 +17,10 @@ export const hashscanAccount = (network: HederaNetwork, accountId: AccountId): s
 
 export const hashscanTopic = (network: HederaNetwork, topicId: TopicId): string =>
   `${HASHSCAN_BASE_URL}/${network}/topic/${topicId}`;
+
+// A scheduled transaction: its signatures so far, and the transfer once it has run
+export const hashscanSchedule = (network: HederaNetwork, scheduleId: ScheduleId): string =>
+  `${HASHSCAN_BASE_URL}/${network}/schedule/${scheduleId}`;
 
 // One HCS message as JSON, for an evidence link that names the exact sequence number
 export const mirrorTopicMessage = (mirrorUrl: string, topicId: TopicId, sequence: number): string =>
