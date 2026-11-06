@@ -12,5 +12,6 @@ export const TEST_IDS = {
   feedStatus: 'feed-status',
   paymentRow: (paymentId: string) => `payment-row-${paymentId}`,
   thresholdCounter: (agentId: string) => `threshold-counter-${agentId}`,
-  thresholdStatus: (agentId: string) => `threshold-status-${agentId}`
+  thresholdStatus: (agentId: string) => `threshold-status-${agentId}`,
+  overviewStat: (id: string) => `overview-stat-${id}`
 } as const;

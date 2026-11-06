@@ -1,5 +1,6 @@
 import 'server-only';
 import { api, type ApiError, type ApiOptions, type ApiResponse } from '@/lib/api';
+import { istMonthStart, type Overview, overviewStats } from '@/lib/overview';
 import {
   FALLBACK_RULE_PACK,
   parseRulePackStatus,
@@ -20,6 +21,9 @@ import { z } from 'zod';
 const DEFAULT_RECEIVER_ID = 'rcv_in';
 const BAD_GATEWAY = 502;
 const NOT_CONFIGURED = 503;
+const LEDGER_PAGE_LIMIT = '200';
+// 10 pages of 200: a month of demo traffic; Core paginates newest first
+const MAX_LEDGER_PAGES = 10;
 
 export const isMockMode = (): boolean => process.env.KOSHA_MOCK === '1';
 export const consoleReceiverId = (): string =>
@@ -56,6 +60,42 @@ export const getLedger = async (): Promise<CoreResult<LedgerPage>> => {
   if (!base) return notConfigured;
   const query = { receiverId: consoleReceiverId(), limit: '50' };
   return getParsed(URLS.core.ledger(base, query), ledgerPageSchema);
+};
+
+// This month's payments, newest first, following Core's cursor
+const getLedgerSince = async (
+  base: string,
+  from: Date
+): Promise<CoreResult<LedgerPage['rows']>> => {
+  const rows: LedgerPage['rows'] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < MAX_LEDGER_PAGES; page += 1) {
+    const query: Record<string, string> = {
+      receiverId: consoleReceiverId(),
+      from: from.toISOString(),
+      limit: LEDGER_PAGE_LIMIT,
+      ...(cursor ? { cursor } : {})
+    };
+    const response = await getParsed(URLS.core.ledger(base, query), ledgerPageSchema);
+    if (!response.ok) return response;
+    rows.push(...response.data.rows);
+    cursor = response.data.nextCursor;
+    if (!cursor) break;
+  }
+  return { ok: true, status: 200, data: rows };
+};
+
+export const getOverview = async (now: Date): Promise<CoreResult<Overview>> => {
+  if (isMockMode()) {
+    // The fixtures are dated; measure from the newest fixture so the cards show numbers
+    const rows = LEDGER_PAGE_FIXTURE.rows;
+    const newest = rows[0] ? new Date(rows[0].consensusAt) : now;
+    return { ok: true, status: 200, data: overviewStats(rows, newest) };
+  }
+  const base = coreBase();
+  if (!base) return notConfigured;
+  const rows = await getLedgerSince(base, istMonthStart(now));
+  return rows.ok ? { ok: true, status: 200, data: overviewStats(rows.data, now) } : rows;
 };
 
 export const getAggregates = async (): Promise<CoreResult<AggregateRow[]>> => {

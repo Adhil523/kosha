@@ -1,4 +1,5 @@
 import { api } from '@/lib/api';
+import { overviewSchema } from '@/lib/overview';
 import { QUERY_KEYS } from '@/lib/query-client';
 import { URLS } from '@/lib/urls';
 import { aggregateRowSchema, ledgerPageSchema } from '@kosha/shared/console-api';
@@ -21,4 +22,9 @@ export const getLedgerQueryParams = () => ({
 export const getAggregatesQueryParams = () => ({
   queryKey: QUERY_KEYS.aggregates,
   queryFn: () => getValidated(URLS.console.aggregates, z.array(aggregateRowSchema))
+});
+
+export const getOverviewQueryParams = () => ({
+  queryKey: QUERY_KEYS.overview,
+  queryFn: () => getValidated(URLS.console.overview, overviewSchema)
 });

@@ -17,6 +17,7 @@ export const URLS = {
   console: {
     ledger: '/api/ledger',
     aggregates: '/api/aggregates',
+    overview: '/api/overview',
     stream: '/api/stream'
   },
   hashscan: {
