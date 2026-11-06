@@ -301,7 +301,14 @@ export const challan = pgTable(
   (table) => [unique('challanReceiverMonth').on(table.receiverID, table.month)]
 );
 
-export const RELEASE_STATUSES = ['pending', 'scheduled', 'executed', 'expired', 'deleted'] as const;
+export const RELEASE_STATUSES = [
+  'pending',
+  'scheduled',
+  'executed',
+  'failed',
+  'expired',
+  'deleted'
+] as const;
 
 // One scheduled transfer per payer reserve for a challan: the month's TDS goes back from the
 // agent's 2-of-2 reserve to the deductor's wallet as reimbursement. Core signs at creation; the

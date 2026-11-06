@@ -94,6 +94,18 @@ describe('releases', () => {
     expect((await stored())[1]).toMatchObject({ status: 'expired' });
   });
 
+  it('marks a release failed when its schedule ran but the transfer inside it failed', async () => {
+    ({ challanId } = await seedChallan(handle.db, seed.receivers.in, [
+      { agentId: seed.agents.resident, micro: 2_038n, status: 'scheduled' }
+    ]));
+    const mirror = fakeMirror({ '0.0.800': 'executed_failed' });
+    expect(await refreshReleases(deps(fakeScheduler(), mirror), { challanId })).toEqual({
+      changed: 1,
+      failed: 0
+    });
+    expect(await stored()).toMatchObject([{ status: 'failed' }]);
+  });
+
   it('refreshes scheduled releases from the Mirror Node', async () => {
     ({ challanId } = await seedChallan(handle.db, seed.receivers.in, [
       { agentId: seed.agents.resident, micro: 2_038n, status: 'scheduled' },
