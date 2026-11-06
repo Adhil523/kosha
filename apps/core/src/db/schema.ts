@@ -78,7 +78,11 @@ export const agent = pgTable(
     credentialHash: text('credentialHash'),
     // The agent's own 2-of-2 TDS reserve; null until Core creates it
     reserveAccountID: text('reserveAccountID').unique(),
-    verifiedAt: utc('verifiedAt')
+    verifiedAt: utc('verifiedAt'),
+    // HCS-11 profile topic behind a UAID, checked at registration (A18) and never per request.
+    // Both stay null for a CAIP-10 agent, or when Core runs without the profile check.
+    profileTopicID: text('profileTopicID'),
+    profileCheckedAt: utc('profileCheckedAt')
   },
   (table) => [check('agentLevelRange', sql`${table.level} between 0 and 2`)]
 );
