@@ -6,6 +6,7 @@ import { type CoreConfig, SETTLEMENT_NODE_ACCOUNT_IDS } from './config';
 import type { KoshaDb } from './db/client';
 import { demoRoutes } from './demo-routes';
 import { createEventBus } from './event-bus';
+import { exportRoutes } from './export-routes';
 import { facilitatorRoutes } from './facilitator-routes';
 import { demoFixedFx } from './fx';
 import type { OutboxDeps } from './hcs-outbox';
@@ -114,6 +115,11 @@ export const wireCore = (
       pack: rulePack.pack
     }),
     streamRoutes({ db, adminToken: config.adminToken, bus }),
+    exportRoutes({
+      db,
+      adminToken: config.adminToken,
+      financialYearStart: rulePack.pack.financialYearStart
+    }),
     facilitatorRoutes({
       ...settlement,
       payerKey,
