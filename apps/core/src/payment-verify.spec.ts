@@ -82,6 +82,14 @@ describe('verifyPayment', () => {
     expect(codeOf(await verify(signed, early))).toBe('valid_start_out_of_window');
   });
 
+  it('refuses a payer who cannot cover the debit or holds no association with the token', async () => {
+    const signed = await signedVariant();
+    const broke = { tokenBalance: async () => ({ ok: true as const, data: 1n }) };
+    expect(codeOf(await verify(signed, broke))).toBe('insufficient_funds');
+    const unassociated = { tokenBalance: async () => ({ ok: true as const, data: null }) };
+    expect(codeOf(await verify(signed, unassociated))).toBe('insufficient_funds');
+  });
+
   it('refuses a used quote', async () => {
     await handle.db
       .update(quote)

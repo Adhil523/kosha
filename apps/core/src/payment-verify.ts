@@ -6,6 +6,7 @@ import { type QuoteRow, verifiableQuote } from './quote-terms';
 import { checkSpendPolicy } from './spend-policy';
 import type { TransferTransaction } from '@hiero-ledger/sdk';
 import { verifyExactTransfer } from '@kosha/hedera/exact-verifier';
+import type { MirrorClient } from '@kosha/hedera/mirror';
 import type { PayerKeyLookup } from '@kosha/hedera/payer-key';
 import { verifyPayerSignature, verifyTransfer } from '@kosha/hedera/transfer-verifier';
 import type { ErrorCode } from '@kosha/shared/error-codes';
@@ -29,6 +30,7 @@ export type VerifyDeps = {
   // payTo of the exact compatibility entry
   compatSettlementAccountId: string;
   payerKey: PayerKeyLookup;
+  tokenBalance: MirrorClient['tokenBalance'];
   now?: () => Date;
 };
 
@@ -54,7 +56,8 @@ export const walletOwner = async (db: KoshaDb, accountId: string): Promise<strin
 
 // Everything Core checks before it signs as fee payer: the stored quote (the receiver's own, unexpired,
 // unused), the transaction against that quote, the payer as a declared wallet of the quoted agent,
-// the agent's spending policy, and the payer's signature with its key from the Mirror Node.
+// the agent's spending policy, the payer's signature with its key from the Mirror Node, and the
+// payer's balance of the settlement token.
 export const verifyPayment = async (
   deps: VerifyDeps,
   receiverId: string,
@@ -164,6 +167,12 @@ export const verifyPayment = async (
     return fail(key.data.reason === 'unavailable' ? 'core_unavailable' : 'bad_signature');
   const signed = verifyPayerSignature(transaction, key.data);
   if (!signed.ok) return fail(signed.data.code);
+
+  // Core pays the network fee even when the transfer fails, so a payer who can't cover the debit
+  // is refused before Core signs, as the official exact facilitator's preflight does
+  const funds = await deps.tokenBalance(payer, deps.settlementTokenId);
+  if (!funds.ok) return fail('core_unavailable');
+  if (funds.data === null || funds.data < row.totalMicro) return fail('insufficient_funds');
 
   return { ok: true, data: { quote: row, transaction, payer, scheme: accepted.scheme } };
 };

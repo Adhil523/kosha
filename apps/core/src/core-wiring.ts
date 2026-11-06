@@ -109,7 +109,8 @@ export const wireCore = (
     settlementTokenId: config.settlementTokenId,
     maxTransactionFeeHbar: config.maxTxFeeHbar,
     compatSettlementAccountId: config.compatSettlementAccountId,
-    poolReserveAccountId: config.poolReserveAccountId
+    poolReserveAccountId: config.poolReserveAccountId,
+    tokenBalance: mirror.tokenBalance
   };
 
   const routes: RegisterRoutes[] = [
