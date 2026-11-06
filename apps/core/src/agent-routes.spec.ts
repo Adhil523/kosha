@@ -108,6 +108,21 @@ describe('agent registry', () => {
     });
   });
 
+  it('lists every registered agent, oldest first, with its wallets', async () => {
+    const later = agentIdentitySchema.parse('hedera:testnet:0.0.6002');
+    await register({ identity: later, wallets: ['0.0.6002', '0.0.6012'] });
+
+    const response = await app.inject({ method: 'GET', url: '/v1/agents', headers: ADMIN });
+    expect(response.statusCode).toBe(200);
+    const rows = response.json() as { identity: string; wallets: string[] }[];
+    expect(rows.map((row) => row.identity)).toEqual([UNKNOWN, later]);
+    expect(rows[0]).toMatchObject({ level: 1, wallets: ['0.0.6003'] });
+    expect([...(rows[1]?.wallets ?? [])].sort()).toEqual(['0.0.6002', '0.0.6012']);
+
+    const anonymous = await app.inject({ method: 'GET', url: '/v1/agents' });
+    expect(anonymous.statusCode).toBe(401);
+  });
+
   it('answers 404 for an unknown agent and 401 without the admin token', async () => {
     expect(
       (await app.inject({ method: 'GET', url: '/v1/agents/nope', headers: ADMIN })).statusCode

@@ -8,7 +8,7 @@ import { credentialHash, verifyCredential } from '@kosha/hedera/credentials';
 import type { ProfileReader } from '@kosha/hedera/hcs11-profile';
 import { type ErrorResponse, errorResponseSchema } from '@kosha/shared/error-codes';
 import { agentRegisterSchema, type AgentRow, agentRowSchema } from '@kosha/shared/registry';
-import { eq, inArray } from 'drizzle-orm';
+import { asc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 
 export type AgentRouteDeps = {
@@ -25,24 +25,45 @@ const NO_PROFILE_CHECK: ProfileCheckResult = { ok: true, data: null };
 
 const invalid = (message: string): ErrorResponse => ({ error: 'invalid_payload', message });
 
+const toAgentRow = (row: typeof agent.$inferSelect, wallets: string[]): AgentRow =>
+  agentRowSchema.parse({
+    agentId: row.id,
+    identity: row.identity,
+    level: row.level,
+    residency: row.residency,
+    panOnFile: row.panOnFile,
+    wallets,
+    reserveAccountId: row.reserveAccountID,
+    credentialIssuer: row.credentialIssuer,
+    verifiedAt: row.verifiedAt?.toISOString() ?? null
+  });
+
 export const loadAgentRow = async (db: KoshaDb, agentId: string): Promise<AgentRow | null> => {
   const [row] = await db.select().from(agent).where(eq(agent.id, agentId));
   if (!row) return null;
   const wallets = await db
     .select({ accountID: agentWallet.accountID })
     .from(agentWallet)
-    .where(eq(agentWallet.agentID, agentId));
-  return agentRowSchema.parse({
-    agentId: row.id,
-    identity: row.identity,
-    level: row.level,
-    residency: row.residency,
-    panOnFile: row.panOnFile,
-    wallets: wallets.map((wallet) => wallet.accountID),
-    reserveAccountId: row.reserveAccountID,
-    credentialIssuer: row.credentialIssuer,
-    verifiedAt: row.verifiedAt?.toISOString() ?? null
-  });
+    .where(eq(agentWallet.agentID, agentId))
+    .orderBy(asc(agentWallet.createdAt), asc(agentWallet.accountID));
+  return toAgentRow(
+    row,
+    wallets.map((wallet) => wallet.accountID)
+  );
+};
+
+// Every registered agent, oldest first: two queries, not one per agent
+export const listAgentRows = async (db: KoshaDb): Promise<AgentRow[]> => {
+  const rows = await db.select().from(agent).orderBy(asc(agent.createdAt), asc(agent.id));
+  const wallets = await db
+    .select({ agentID: agentWallet.agentID, accountID: agentWallet.accountID })
+    .from(agentWallet)
+    .orderBy(asc(agentWallet.createdAt), asc(agentWallet.accountID));
+  const walletsOf = new Map<string, string[]>();
+  for (const wallet of wallets) {
+    walletsOf.set(wallet.agentID, [...(walletsOf.get(wallet.agentID) ?? []), wallet.accountID]);
+  }
+  return rows.map((row) => toAgentRow(row, walletsOf.get(row.id) ?? []));
 };
 
 export const agentRoutes =
@@ -150,6 +171,13 @@ export const agentRoutes =
         if (!row) throw new Error('[agents]: saved agent could not be read back');
         return reply.status(existing ? 200 : 201).send(row);
       }
+    );
+
+    // The Console's agent-owner workspace lists agents; it can't know Core's internal IDs
+    app.get(
+      '/v1/agents',
+      { ...admin, schema: { response: { 200: z.array(agentRowSchema) } } },
+      async () => listAgentRows(deps.db)
     );
 
     app.get(
