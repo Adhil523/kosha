@@ -51,6 +51,25 @@ The quote's `kosha-split` entry must pass `split-quote` `checkSplitQuote()`; Kos
 | `POST /v1/releases/:id/cosign` | admin | signed `ScheduleSignTransaction` bytes (base64) | `tax-reports` `releaseRowSchema` | A20 (optional) |
 | `GET /v1/payers/:id/report` | admin | — | array of `tax-reports` `payerReportRowSchema` | A17 (optional) |
 
+### Ledger, aggregates and stream (A13)
+
+**Scope.** The admin token reads any receiver (and may leave `receiverId` out of the ledger and aggregates). A receiver key reads only its own rows; naming another receiver returns `403`.
+
+**`/v1/ledger`** lists settled payments only, newest first. `from` and `to` bound the time Core recorded the payment. `nextCursor` is opaque; pass it back as `cursor`. A cursor Core did not issue returns `400`. Notes on the row fields:
+- `agentLabel` is the agent's `ownerRef`, or its identity when it has none.
+- `consensusAt` falls back to the recorded time until the Mirror Node's consensus time is stored.
+- `flags` is `["fema_review"]` exactly when the reason is `receiver_non_resident` or `non_resident`.
+- `sample` is `false` until A14.
+
+**`/v1/aggregates`** returns the current financial year (IST) unless `fy` is given, and accepts an optional `agentId`. `thresholdPaise` comes from the receiver (₹50,000 for a specified person). `tolerancePaise` is set only for an unverified payer under a `threshold_tolerant` receiver. `pct` is the share of the nearer of the two, to two decimals.
+
+**`/v1/stream`** needs a `receiverId`. It sends `: connected` and then `data: <StreamEvent JSON>` per event, with a `: heartbeat` comment every 15 s. Each settlement sends:
+- `payment.settled`, with the ledger row.
+- `tds.withheld`, when TDS was reserved.
+- `threshold.near`, once, on the payment that takes the pair from under 90% of its nearer limit to 90% or more. `promptLevel1` is true for a Level 0 payer.
+
+Events are in-process: Core runs as one instance.
+
 ## Fixtures
 
 `@kosha/shared/fixtures` exports one parsed example per read schema (`LEDGER_PAGE_FIXTURE`, `AGGREGATES_FIXTURE`, `STREAM_EVENTS_FIXTURE`, `TDS_EXPORT_FIXTURE`, `MONTHLY_CLOSE_FIXTURE`, and so on). The Console serves them under `KOSHA_MOCK=1` until Core serves real data. Core's responses must parse with the same schemas.
