@@ -65,10 +65,38 @@ const withBody =
   <T, E = ApiError>(url: string, body: unknown, options: ApiOptions = {}) =>
     request<T, E>(method, url, body, options);
 
+// Server-sent events: the body stays an open stream, so there is no timeout; the caller's signal
+// ends it. Used only by the route handler that proxies Core's stream.
+const stream = async (
+  url: string,
+  { headers = {}, customFetch = fetch, signal }: ApiOptions & { signal?: AbortSignal } = {}
+): Promise<ApiResponse<ReadableStream<Uint8Array>>> => {
+  try {
+    const response = await customFetch(url, {
+      headers: { accept: 'text/event-stream', ...headers },
+      signal
+    });
+    if (!response.ok || !response.body) {
+      const data = await readBody(response);
+      const message = data && typeof data === 'object' && 'message' in data ? data.message : null;
+      return {
+        ok: false,
+        status: response.status,
+        data: { message: typeof message === 'string' ? message : 'stream unavailable' }
+      };
+    }
+    return { ok: true, status: response.status, data: response.body };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'stream failed';
+    return { ok: false, status: NO_RESPONSE, data: { message } };
+  }
+};
+
 export const api = {
   get: withoutBody('GET'),
   delete: withoutBody('DELETE'),
   post: withBody('POST'),
   put: withBody('PUT'),
-  patch: withBody('PATCH')
+  patch: withBody('PATCH'),
+  stream
 } as const;

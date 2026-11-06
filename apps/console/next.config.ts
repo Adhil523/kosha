@@ -1,7 +1,8 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Internal packages export TypeScript source (PROTOCOL §2)
+  transpilePackages: ['@kosha/shared'],
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {

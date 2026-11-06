@@ -52,3 +52,24 @@ describe('api', () => {
     expect(response).toEqual({ ok: false, status: 0, data: { message: 'fetch failed' } });
   });
 });
+
+describe('api.stream', () => {
+  it('hands back the open body of an event stream', async () => {
+    const customFetch: Fetch = async () => new Response('data: {}\n\n', { status: 200 });
+
+    const response = await api.stream('http://core/v1/stream', { customFetch });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) return;
+    expect(await new Response(response.data).text()).toBe('data: {}\n\n');
+  });
+
+  it("keeps Core's message when the stream is refused", async () => {
+    const customFetch: Fetch = async () =>
+      Response.json({ message: 'unauthorized' }, { status: 401 });
+
+    const response = await api.stream('http://core/v1/stream', { customFetch });
+
+    expect(response).toEqual({ ok: false, status: 401, data: { message: 'unauthorized' } });
+  });
+});
