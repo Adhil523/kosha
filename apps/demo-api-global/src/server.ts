@@ -4,11 +4,10 @@ import { loadEnv } from '@kosha/shared/env';
 
 // The foreign demo API's entry point: `pnpm --filter @kosha/demo-api-global dev`
 const main = (): void => {
-  const env = loadEnv();
-  if (!env.ok) {
-    console.error(`[demo-api-global]: no pnpm workspace found above ${env.data.searchedFrom}`);
-    process.exitCode = 1;
-    return;
+  // Locally the shared env files sit at the repo root. A deployed image has no workspace and gets
+  // its settings from the platform's environment instead.
+  if (!loadEnv().ok) {
+    console.info('[demo-api-global]: no pnpm workspace here; reading the process environment only');
   }
   const config = loadConfig(process.env);
   if (!config.ok) {
