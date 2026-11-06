@@ -1,6 +1,7 @@
 import {
   type Client,
   PrecheckStatusError,
+  type PrivateKey,
   ReceiptStatusError,
   type Transaction
 } from '@hiero-ledger/sdk';
@@ -19,15 +20,19 @@ export type Executed =
   | { ok: true; data: ReceiptLike }
   | { ok: false; data: { status: string; receipt: ReceiptLike | null } };
 
-export type Executor = (transaction: Transaction) => Promise<Executed>;
+// Extra signers sign after the operator freezes the transaction, e.g. an agent co-signing a
+// scheduled release
+export type Executor = (transaction: Transaction, signers?: PrivateKey[]) => Promise<Executed>;
 
 export const UNKNOWN_EXECUTION_STATUS = 'EXECUTION_ERROR';
 
 // Executes with the client's operator as payer and waits for the receipt
 export const clientExecutor =
   (client: Client): Executor =>
-  async (transaction) => {
+  async (transaction, signers = []) => {
     try {
+      if (signers.length > 0) transaction.freezeWith(client);
+      for (const signer of signers) await transaction.sign(signer);
       const response = await transaction.execute(client);
       return { ok: true, data: await response.getReceipt(client) };
     } catch (error) {
