@@ -1,9 +1,11 @@
+import { checkAgentProfile, type ProfileCheckResult } from './agent-profile';
 import type { RegisterRoutes } from './app';
 import { requireAdmin } from './auth';
 import { credentialHash, verifyCredential } from './credentials';
 import type { KoshaDb } from './db/client';
 import { agent, agentWallet } from './db/schema';
 import type { PublicKey } from '@hiero-ledger/sdk';
+import type { ProfileReader } from '@kosha/hedera/hcs11-profile';
 import { type ErrorResponse, errorResponseSchema } from '@kosha/shared/error-codes';
 import { agentRegisterSchema, type AgentRow, agentRowSchema } from '@kosha/shared/registry';
 import { eq, inArray } from 'drizzle-orm';
@@ -14,7 +16,12 @@ export type AgentRouteDeps = {
   adminToken: string;
   // Core's test issuer (ISSUER_PRIVATE_KEY's public key)
   issuerKey: PublicKey;
+  // Checks a UAID against its HCS-11 profile (A18). Without one, Core registers the UAID and
+  // credential only: the spec's fallback for when the Kiloscribe CDN is down.
+  profileReader?: Pick<ProfileReader, 'profileForUaid'>;
 };
+
+const NO_PROFILE_CHECK: ProfileCheckResult = { ok: true, data: null };
 
 const invalid = (message: string): ErrorResponse => ({ error: 'invalid_payload', message });
 
@@ -50,7 +57,12 @@ export const agentRoutes =
         ...admin,
         schema: {
           body: agentRegisterSchema,
-          response: { 200: agentRowSchema, 201: agentRowSchema, 400: errorResponseSchema }
+          response: {
+            200: agentRowSchema,
+            201: agentRowSchema,
+            400: errorResponseSchema,
+            502: errorResponseSchema
+          }
         }
       },
       async (request, reply) => {
@@ -69,6 +81,16 @@ export const agentRoutes =
           if (!checked.ok)
             return reply.status(400).send(invalid(`credential ${checked.data.reason}`));
           verified = checked.data;
+        }
+
+        const profileCheck = deps.profileReader
+          ? await checkAgentProfile(deps.profileReader, { identity, credential, wallets })
+          : NO_PROFILE_CHECK;
+        if (!profileCheck.ok) {
+          const { reason, message } = profileCheck.data;
+          return reason === 'unavailable'
+            ? reply.status(502).send({ error: 'internal_error', message })
+            : reply.status(400).send(invalid(message));
         }
 
         const [existing] = await deps.db.select().from(agent).where(eq(agent.identity, identity));
@@ -90,6 +112,7 @@ export const agentRoutes =
               verifiedAt: new Date()
             }
           : {};
+        const profileCache = profileCheck.data ?? {};
 
         const agentId = await deps.db.transaction(async (tx) => {
           const [saved] = existing
@@ -97,13 +120,19 @@ export const agentRoutes =
                 .update(agent)
                 .set({
                   ...profile,
+                  ...profileCache,
                   reserveAccountID: existing.reserveAccountID ?? reserveAccountId ?? null
                 })
                 .where(eq(agent.id, existing.id))
                 .returning({ id: agent.id })
             : await tx
                 .insert(agent)
-                .values({ identity, reserveAccountID: reserveAccountId ?? null, ...profile })
+                .values({
+                  identity,
+                  reserveAccountID: reserveAccountId ?? null,
+                  ...profile,
+                  ...profileCache
+                })
                 .returning({ id: agent.id });
           const id = saved?.id ?? '';
           const known = new Set(owners.map((owner) => owner.accountID));
