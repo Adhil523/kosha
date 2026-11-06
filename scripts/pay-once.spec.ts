@@ -56,4 +56,14 @@ describe('payOnceConfig', () => {
     });
     expect(lookupUrl(env.data)).toContain('http://localhost:4201/');
   });
+
+  it('targets and allowlists a deployed demo API when DEMO_API_IN_URL is set', () => {
+    const env = readPayOnceEnv({ ...ENV, DEMO_API_IN_URL: 'https://kosha-demo-api-in.fly.dev' });
+    if (!env.ok) throw new Error('expected the env to parse');
+
+    expect(lookupUrl(env.data)).toBe(
+      'https://kosha-demo-api-in.fly.dev/v1/gst-lookup?gstin=29AAKCK4821M1ZQ'
+    );
+    expect(payOnceConfig(env.data).policy.allowlist).toEqual(['kosha-demo-api-in.fly.dev']);
+  });
 });

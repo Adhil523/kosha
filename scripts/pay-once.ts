@@ -32,7 +32,9 @@ export const payOnceEnvSchema = z.object({
   AGENT_RESIDENT_RESERVE_ID: accountIdSchema,
   HCS_PAYMENTS_TOPIC: topicIdSchema,
   MAX_TX_FEE_HBAR: z.string().min(1),
-  DEMO_API_IN_PORT: z.coerce.number().int().min(1).max(65_535).default(DEFAULT_DEMO_API_IN_PORT)
+  DEMO_API_IN_PORT: z.coerce.number().int().min(1).max(65_535).default(DEFAULT_DEMO_API_IN_PORT),
+  // A deployed demo API, e.g. https://kosha-demo-api-in.fly.dev; the local one otherwise
+  DEMO_API_IN_URL: z.url().optional()
 });
 export type PayOnceEnv = z.output<typeof payOnceEnvSchema>;
 
@@ -46,8 +48,14 @@ export const readPayOnceEnv = (
   return { ok: false, data: { keys } };
 };
 
-export const lookupUrl = (env: PayOnceEnv): string =>
-  `http://localhost:${env.DEMO_API_IN_PORT}${LOOKUP_PATH}?gstin=${SAMPLE_GSTIN}`;
+export const lookupUrl = (env: PayOnceEnv): string => {
+  const url = new URL(
+    LOOKUP_PATH,
+    env.DEMO_API_IN_URL ?? `http://localhost:${env.DEMO_API_IN_PORT}`
+  );
+  url.searchParams.set('gstin', SAMPLE_GSTIN);
+  return url.toString();
+};
 
 // agent-resident at Level 0: pays from its own account, reserves TDS in its own 2-of-2 reserve,
 // and lets only this Core submit its transactions
@@ -63,7 +71,8 @@ export const payOnceConfig = (env: PayOnceEnv): PayConfigInput => ({
     perPaymentUsdc: '1',
     dailyUsdc: '10',
     fyBudgetUsdc: '500',
-    allowlist: ['localhost']
+    // Pay only the demo API this run targets
+    allowlist: [new URL(lookupUrl(env)).hostname]
   }
 });
 

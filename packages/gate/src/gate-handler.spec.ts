@@ -322,6 +322,15 @@ describe('createGateHandler: Core unavailable', () => {
     expect(result).toMatchObject({ status: 503, body: { error: 'unauthorized' } });
   });
 
+  it("passes Core's 400 through to the agent instead of a 503", async () => {
+    const refusal = { error: 'invalid_payload', message: 'X-KOSHA-AGENT is required' };
+    const { handle } = setup({ quote: () => json(refusal, 400) });
+
+    const result = expectRespond(await handle(request()));
+
+    expect(result).toMatchObject({ status: 400, body: refusal });
+  });
+
   it("passes Core's policy refusal through to the agent as a 403", async () => {
     const refusal = { error: 'policy_per_payment', message: 'over the 1 USDC per-payment cap' };
     const { handle } = setup({ quote: () => json(refusal, 403) });
