@@ -44,7 +44,16 @@
     "@x402/core": "2.30.0",
     "zod": "4.6.7"
   },
+  "peerDependencies": {
+    "@hashgraph/hedera-agent-kit": "^4.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@hashgraph/hedera-agent-kit": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@hashgraph/hedera-agent-kit": "4.2.0",
     "@kosha/hedera": "workspace:*",
     "@kosha/shared": "workspace:*",
     "@kosha/tax-engine": "workspace:*",
