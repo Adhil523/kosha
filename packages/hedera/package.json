@@ -12,6 +12,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@hiero-ledger/proto": "2.32.0",
     "@hiero-ledger/sdk": "2.90.1",
     "@kosha/shared": "workspace:*",
     "zod": "4.6.7"
