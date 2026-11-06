@@ -365,9 +365,8 @@ export const createGateHandler = (options: GateOptions) => {
     // A malformed identity is ignored: the caller is treated as an unverified payer
     const parsedAgent = agentIdentitySchema.safeParse(agentHeader);
     const agent = parsedAgent.success ? parsedAgent.data : undefined;
-    const rawPayment =
-      readHeader(request.headers, HEADERS.paymentSignature) ??
-      readHeader(request.headers, HEADERS.legacyPayment);
+    // v2 only (docs/research/x402.md): a v1 X-PAYMENT is not read, so that caller gets the v2 quote
+    const rawPayment = readHeader(request.headers, HEADERS.paymentSignature);
 
     if (!rawPayment) {
       return quote(request, route, agent);

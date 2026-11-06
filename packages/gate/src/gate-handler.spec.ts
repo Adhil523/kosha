@@ -135,14 +135,11 @@ describe('createGateHandler: unpaid request', () => {
 });
 
 describe('createGateHandler: paid request', () => {
-  it.each([
-    ['PAYMENT-SIGNATURE', 'payment-signature'],
-    ['the legacy X-PAYMENT', 'x-payment']
-  ])('verifies, settles and passes through with %s', async (_label, header) => {
+  it('verifies, settles and passes through with PAYMENT-SIGNATURE', async () => {
     const { handle, calls } = setup();
     const payment = paymentFor(splitEntry);
 
-    const result = await handle(request({ [header]: payment, 'x-kosha-agent': AGENT }));
+    const result = await handle(request({ 'payment-signature': payment, 'x-kosha-agent': AGENT }));
 
     if (result.action !== 'pass') {
       throw new Error(`expected pass, got ${result.action}`);
@@ -166,6 +163,16 @@ describe('createGateHandler: paid request', () => {
     const facilitatorBody = { x402Version: 2, paymentRequirements: splitEntry };
     expect(calls(CORE_PATHS.verify)).toEqual([expect.objectContaining(facilitatorBody)]);
     expect(calls(CORE_PATHS.settle)).toEqual([expect.objectContaining(facilitatorBody)]);
+  });
+
+  it('quotes a request that sends only the v1 X-PAYMENT, since Gate speaks v2 alone', async () => {
+    const { handle, calls } = setup();
+
+    const result = expectRespond(await handle(request({ 'x-payment': paymentFor(splitEntry) })));
+
+    expect(result.status).toBe(402);
+    expect(result.headers).toHaveProperty(HEADERS.paymentRequired);
+    expect(calls(CORE_PATHS.verify)).toEqual([]);
   });
 
   it('accepts the compatibility entry, whose all-in total covers the price', async () => {
