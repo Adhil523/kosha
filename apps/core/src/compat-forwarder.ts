@@ -10,6 +10,7 @@ import {
 } from '@hiero-ledger/sdk';
 import type { Executed } from '@kosha/hedera/executor';
 import { UNKNOWN_EXECUTION_STATUS } from '@kosha/hedera/executor';
+import { USDC_DECIMALS } from '@kosha/shared/money';
 import { and, eq, isNull } from 'drizzle-orm';
 
 // Compatibility mode's second transaction (A23): from Kosha's settlement account, the price to the
@@ -52,10 +53,20 @@ export const buildForward = (deps: ForwarderDeps, due: Due): TransferTransaction
     .setTransactionId(TransactionId.generate(AccountId.fromString(deps.coreAccountId)))
     .setTransactionMemo(`kosha-fwd:${due.quoteId}`)
     .setMaxTransactionFee(new Hbar(deps.maxTransactionFeeHbar))
-    .addTokenTransfer(token, deps.compatSettlementAccountId, -(due.priceMicro + due.tdsMicro))
-    .addTokenTransfer(token, due.apiAccountId, due.priceMicro);
+    .addTokenTransferWithDecimals(
+      token,
+      deps.compatSettlementAccountId,
+      -(due.priceMicro + due.tdsMicro),
+      USDC_DECIMALS
+    )
+    .addTokenTransferWithDecimals(token, due.apiAccountId, due.priceMicro, USDC_DECIMALS);
   return due.tdsMicro > 0n
-    ? forward.addTokenTransfer(token, deps.poolReserveAccountId, due.tdsMicro)
+    ? forward.addTokenTransferWithDecimals(
+        token,
+        deps.poolReserveAccountId,
+        due.tdsMicro,
+        USDC_DECIMALS
+      )
     : forward;
 };
 

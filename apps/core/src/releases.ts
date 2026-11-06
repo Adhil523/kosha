@@ -4,6 +4,7 @@ import { Hbar, type Key, TokenId, TransferTransaction } from '@hiero-ledger/sdk'
 import type { Executor } from '@kosha/hedera/executor';
 import type { MirrorClient } from '@kosha/hedera/mirror';
 import { createScheduledTransfer } from '@kosha/hedera/schedule';
+import { USDC_DECIMALS } from '@kosha/shared/money';
 import { type ReleaseRow, releaseRowSchema } from '@kosha/shared/tax-reports';
 import { and, asc, eq } from 'drizzle-orm';
 
@@ -42,8 +43,8 @@ export const buildReleaseTransfer = (deps: ReleaseDeps, due: Due): TransferTrans
   return new TransferTransaction()
     .setTransactionMemo(releaseMemo(due.month, due.agentID))
     .setMaxTransactionFee(new Hbar(deps.maxTransactionFeeHbar))
-    .addTokenTransfer(token, due.reserveAccountID, -due.micro)
-    .addTokenTransfer(token, due.toAccountID, due.micro);
+    .addTokenTransferWithDecimals(token, due.reserveAccountID, -due.micro, USDC_DECIMALS)
+    .addTokenTransferWithDecimals(token, due.toAccountID, due.micro, USDC_DECIMALS);
 };
 
 const matching = (db: KoshaDb, filter: ReleaseFilter, status?: ReleaseRecord['status']) =>
