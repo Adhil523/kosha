@@ -1,5 +1,5 @@
 import type { KoshaDb } from './db/client';
-import { challan, release } from './db/schema';
+import { agent, challan, release } from './db/schema';
 import { Hbar, type Key, TokenId, TransferTransaction } from '@hiero-ledger/sdk';
 import type { Executor } from '@kosha/hedera/executor';
 import type { MirrorClient } from '@kosha/hedera/mirror';
@@ -51,6 +51,7 @@ const matching = (db: KoshaDb, filter: ReleaseFilter, status?: ReleaseRecord['st
     .select({ row: release, month: challan.month })
     .from(release)
     .innerJoin(challan, eq(challan.id, release.challanID))
+    .innerJoin(agent, eq(agent.id, release.agentID))
     .where(
       and(
         filter.challanId ? eq(release.challanID, filter.challanId) : undefined,
@@ -58,7 +59,8 @@ const matching = (db: KoshaDb, filter: ReleaseFilter, status?: ReleaseRecord['st
         status ? eq(release.status, status) : undefined
       )
     )
-    .orderBy(asc(release.createdAt), asc(release.id));
+    // The close's order: by payer identity, then by the month closed
+    .orderBy(asc(challan.month), asc(agent.identity), asc(release.id));
 
 const setStatus = (db: KoshaDb, id: string, fields: Partial<ReleaseRecord>) =>
   db.update(release).set(fields).where(eq(release.id, id));
