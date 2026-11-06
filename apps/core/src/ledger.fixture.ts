@@ -77,6 +77,7 @@ export type PaymentSeed = {
   inrValuePaise?: bigint;
   rateBps?: number;
   reason?: string;
+  sample?: boolean;
 };
 
 let sequence = 0;
@@ -125,7 +126,8 @@ export const addPayment = async (db: KoshaDb, seed: PaymentSeed): Promise<string
       reserveAccountID: tdsMicro > 0n ? '0.0.6101' : null,
       inrValuePaise: seed.inrValuePaise ?? 884n,
       fy: FY,
-      status: seed.status ?? 'settled'
+      status: seed.status ?? 'settled',
+      sample: seed.sample ?? false
     })
     .returning({ id: payment.id });
   return paid?.id ?? '';

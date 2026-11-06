@@ -75,7 +75,7 @@ A refused quote returns `403` with `{ error: "policy_…", message }` and stores
 - `agentLabel` is the agent's `ownerRef`, or its identity when it has none.
 - `consensusAt` falls back to the recorded time until the Mirror Node's consensus time is stored.
 - `flags` is `["fema_review"]` exactly when the reason is `receiver_non_resident` or `non_resident`.
-- `sample` is `false` until A14.
+- `sample` marks seeded demo history (A14): never on chain, so its HashScan link leads nowhere.
 
 **`/v1/aggregates`** returns the current financial year (IST) unless `fy` is given, and accepts an optional `agentId`. `thresholdPaise` comes from the receiver (₹50,000 for a specified person). `tolerancePaise` is set only for an unverified payer under a `threshold_tolerant` receiver. `pct` is the share of the nearer of the two, to two decimals.
 

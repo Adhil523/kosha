@@ -44,7 +44,8 @@ describe('GET /v1/ledger', () => {
       at: minutesAgo(5),
       tdsMicro: 22_624n,
       rateBps: 2000,
-      reason: 'tolerance_exceeded'
+      reason: 'tolerance_exceeded',
+      sample: true
     });
     for (const status of ['pending', 'failed'] as const) {
       await addPayment(handle.db, {
@@ -93,8 +94,9 @@ describe('GET /v1/ledger', () => {
       reason: 'tolerance_exceeded',
       flags: [],
       reserveAccountId: '0.0.6101',
-      sample: false
+      sample: true
     });
+    expect(body.rows[1]?.sample).toBe(false);
     expect(newest?.hashscanUrl).toMatch(/^https:\/\/hashscan\.io\/testnet\/transaction\//);
     expect(body.rows[1]?.agentLabel).toBe('agent-resident');
   });
