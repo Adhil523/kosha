@@ -98,15 +98,23 @@ Repeat until your queue is finished.
    - Normally: `git switch -c a/09-quote origin/main`.
    - When stacking: `git switch -c a/09-quote a/08-hedera-io`, and open the PR with `--base a/08-hedera-io`.
 5. **Build in small commits**, pushing after each one (§6). Open a **draft PR** after your first push, with the template filled in, including *Unblocks*.
-6. **Finish.**
+6. **Continue the batch or finish it** (§6, "Batching"). When a task's work is done, either start your next task on the same branch, or finish the PR:
    - Run `pnpm turbo run typecheck lint test --filter=...[origin/main]`. This covers changed packages and everything that depends on them.
    - Fill in *How it was tested*, then run `gh pr ready <n>`.
-   - Put a **READY line** (§9) in your next report.
+   - Put a **READY line** (§9) in your next report, naming every task in the PR.
 7. **After a parent PR merges**, rebase every branch stacked on it: `git fetch origin && git rebase origin/main && git push --force-with-lease`. GitHub retargets stacked PRs to `main` automatically when the parent branch is deleted on merge (H0 turns this on).
 
 ## 6. Commits and PRs (the hackathon rewards frequent, small commits)
 
-- **One task is one PR.** Keep a PR to about **400 changed lines**, not counting generated files and the lockfile. If a task grows past that, split it into `A09` and a follow-up PR on a branch named `a/09-quote-2` that references the same task. `tasks.sh` treats both as `A09`, so finish both before marking the task done.
+- **Batching: one PR may hold several consecutive tasks**, so the human merges less often. A PR has no line cap; the commits inside it stay small. A task never spans two PRs.
+  - **Branch name lists every task in it**, joined with `+`: `a/10+11-settle-seed`. A single task keeps `a/10-settle`. `tasks.sh` counts a task as done when any merged PR's branch lists it.
+  - **Title and body** name every task too: `A10 + A11 · Settle and seed`, with one *What* section and one *Unblocks* line per task.
+  - **Keep adding the next task in your queue to the open batch, until one of these happens; then finish the PR (§5 step 6):**
+    1. **The task you just finished unblocks the other agent** (a **bold** ID in its *Unblocks*). Ship it now, so the other agent never waits on your batch.
+    2. **The next task's dependencies aren't met.** Finish the batch, then follow §5 step 3.
+    3. **The task you just finished passes a Gate** (§11), so the human can check it.
+    4. **The batch has been open for about 3 hours of work.** Reviews stay manageable and `main` doesn't fall far behind.
+  - **Stacking** (§5 step 2) still counts PRs, at most 2 deep.
 - **Keep each commit to about 150 changed lines.** Each one must typecheck and pass the touched package's tests, so the history stays bisectable.
 - **Commit at least every 30 to 45 minutes of work, and push immediately.** The public history should show steady progress.
 - **Message format:** Conventional Commits, `type(scope): subject`.
@@ -145,7 +153,7 @@ If you need something in the other agent's area (a schema field, an endpoint, a 
 End every turn with whichever of these lines apply, so the human can act without reading the whole transcript:
 
 ```
-READY:   #12 A09 quote service (unblocks A10; Agent B waits on nothing)
+READY:   #12 A10 + A11 settle and seed (unblocks Agent B's B12)
 BLOCKED: next task A10 needs B03 (PR #9 open, needs merge) — waiting in background on: tasks.sh wait B03
 HUMAN:   H2 — run `pnpm bootstrap` needs CORE_ACCOUNT_ID/CORE_PRIVATE_KEY in ../kosha.env
 DONE:    queue finished except optional tasks A19–A22
