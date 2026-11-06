@@ -1,10 +1,10 @@
 import { decide } from './decide';
-import { decideInput, IN_2026_1, OTHER_THRESHOLD } from './decide.fixture';
+import { decideInput, IN_2026_2, OTHER_THRESHOLD } from './decide.fixture';
 import { describe, expect, it } from 'vitest';
 
 // Each 0.10 USDC payment is worth 884 paise: 1% is 9 paise, 20% is 177 paise (= 20,023 micro-USDC).
 const PAST_THRESHOLD = OTHER_THRESHOLD;
-const EXCESS_PACK = { ...IN_2026_1, crossing: 'excess' as const };
+const EXCESS_PACK = { ...IN_2026_2, crossing: 'excess' as const };
 
 describe('decide: rates', () => {
   it('withholds 1% from a resident with a PAN', () => {
@@ -28,7 +28,7 @@ describe('decide: rates', () => {
   });
 
   it('uses the rates from the rule pack', () => {
-    const pack = { ...IN_2026_1, rates: { standardBps: 200, noPanBps: 3000 } };
+    const pack = { ...IN_2026_2, rates: { standardBps: 200, noPanBps: 3000 } };
 
     expect(decide(decideInput({ pack, aggregatePaise: PAST_THRESHOLD })).tdsPaise).toBe(18n);
   });
@@ -98,7 +98,7 @@ describe('decide: non-resident receiver (a foreign API)', () => {
   it('still reports the INR value and rule pack', () => {
     const decision = decide(decideInput({ receiver: { residency: 'non_resident' } }));
 
-    expect(decision).toMatchObject({ valuePaise: 884n, rulepack: 'in-2026.1' });
+    expect(decision).toMatchObject({ valuePaise: 884n, rulepack: 'in-2026.2' });
   });
 });
 

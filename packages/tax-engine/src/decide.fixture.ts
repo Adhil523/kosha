@@ -2,11 +2,11 @@ import { type DecideInput } from './decide';
 import { loadBuiltInRulePack } from './load-rule-pack';
 import { type RulePack } from './rule-pack';
 
-const loaded = loadBuiltInRulePack('in-2026.1');
+const loaded = loadBuiltInRulePack('in-2026.2');
 if (!loaded.ok) {
-  throw new Error('[decide.fixture]: in-2026.1 failed to load');
+  throw new Error('[decide.fixture]: in-2026.2 failed to load');
 }
-export const IN_2026_1: RulePack = loaded.data;
+export const IN_2026_2: RulePack = loaded.data;
 
 export const INR_88_40 = 88_400_000n;
 // ₹10,000 and ₹50,000 in paise
@@ -26,7 +26,7 @@ export const decideInput = (overrides: Overrides = {}): DecideInput => ({
   inrPerUsdMicro: INR_88_40,
   aggregatePaise: 0n,
   mode: 'threshold',
-  pack: IN_2026_1,
+  pack: IN_2026_2,
   ...overrides,
   payer: { residency: 'resident', panOnFile: true, specifiedPerson: false, ...overrides.payer },
   receiver: { residency: 'resident', ...overrides.receiver }
