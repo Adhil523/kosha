@@ -17,6 +17,8 @@ import { and, eq } from 'drizzle-orm';
 
 // A payer may sign a little before Core's clock says the quote was issued
 export const CLOCK_SKEW_SECONDS = 30;
+// Time Core needs between verifying and submitting: payer key lookup, quote claim, the send
+const SUBMIT_MARGIN_MS = 10_000;
 
 export type VerifyDeps = {
   db: KoshaDb;
@@ -110,6 +112,15 @@ export const verifyPayment = async (
       });
   if (!checked.ok) return fail(checked.data.code);
   const { transaction, payer } = checked.data;
+
+  // The network takes a transaction only within its own valid duration. Refused here, before the
+  // quote is claimed, the payer can sign again instead of losing the quote to a doomed submission.
+  const validStart = transaction.transactionId?.validStart?.toDate();
+  const lastSubmitMs =
+    (validStart?.getTime() ?? 0) + transaction.transactionValidDuration * 1000 - SUBMIT_MARGIN_MS;
+  if (!validStart || validStart > now || now.getTime() > lastSubmitMs) {
+    return fail('valid_start_out_of_window');
+  }
 
   const transactionId = transaction.transactionId?.toString() ?? '';
   const [spent] = await deps.db

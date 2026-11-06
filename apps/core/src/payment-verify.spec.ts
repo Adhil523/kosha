@@ -5,7 +5,7 @@ import { testDb } from './db/test-db';
 import { EXPIRES_AT, payloadFor, QUOTE_ID, seedQuotedPayment, verifyDeps } from './payment.fixture';
 import { verifyPayment } from './payment-verify';
 import { PrivateKey, Transaction } from '@hiero-ledger/sdk';
-import { signedVariant } from '@kosha/hedera/transfer-verifier.fixture';
+import { signedVariant, VALID_START } from '@kosha/hedera/transfer-verifier.fixture';
 import { amountSchema } from '@kosha/shared/money';
 import { exactRequirementsSchema, paymentRequirementsSchema } from '@kosha/shared/x402-payment';
 import { exactEntry } from '@kosha/shared/x402-payment.fixture';
@@ -72,6 +72,14 @@ describe('verifyPayment', () => {
       const result = await verifyPayment(verifyDeps(handle.db), receiverId, { ...base, accepted });
       expect(codeOf(result)).toBe('amount_mismatch');
     }
+  });
+
+  it('refuses a transaction the network would no longer take, or not take yet', async () => {
+    const signed = await signedVariant();
+    const nearlyExpired = { now: () => new Date(VALID_START.getTime() + 112_000) };
+    expect(codeOf(await verify(signed, nearlyExpired))).toBe('valid_start_out_of_window');
+    const early = { now: () => new Date(VALID_START.getTime() - 1_000) };
+    expect(codeOf(await verify(signed, early))).toBe('valid_start_out_of_window');
   });
 
   it('refuses a used quote', async () => {
