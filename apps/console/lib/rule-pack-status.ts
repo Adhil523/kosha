@@ -14,9 +14,12 @@ export const FALLBACK_RULE_PACK: RulePackStatus = {
   source: 'fixture'
 };
 
-// Only the part of GET /v1/supported the badge needs. The full shape comes from @kosha/shared (A02).
+// Only the part of GET /v1/supported the badge needs: Kosha's extension, kosha.rulepack (A02's
+// supportedResponseSchema)
 const supportedSchema = z.object({
-  rulepack: z.object({ id: z.string().min(1), reviewedBy: z.string().nullable() })
+  kosha: z.object({
+    rulepack: z.object({ id: z.string().min(1), reviewedBy: z.string().nullable() })
+  })
 });
 
 export const parseRulePackStatus = (body: unknown): RulePackStatus | null => {
@@ -24,6 +27,6 @@ export const parseRulePackStatus = (body: unknown): RulePackStatus | null => {
   if (!parsed.success) {
     return null;
   }
-  const { id, reviewedBy } = parsed.data.rulepack;
+  const { id, reviewedBy } = parsed.data.kosha.rulepack;
   return { id, reviewed: reviewedBy !== null, source: 'core' };
 };
