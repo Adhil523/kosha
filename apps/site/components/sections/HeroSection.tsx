@@ -10,10 +10,10 @@ export const HeroSection = () => (
   <section
     id={SECTION_IDS.top}
     aria-labelledby={`${SECTION_IDS.top}-h`}
-    className="relative min-h-svh overflow-hidden pt-[calc(var(--nav)+48px)] pb-16"
+    className="relative overflow-hidden pt-[calc(var(--nav)+48px)] pb-10 md:min-h-svh lg:pb-16"
   >
-    <div className="wrap grid gap-10 lg:grid-cols-12 lg:gap-x-6">
-      <div className="flex flex-col gap-8 lg:col-span-5">
+    <div className="wrap grid gap-8 lg:grid-cols-12 lg:gap-x-6 lg:gap-y-10">
+      <div className="flex flex-col gap-6 lg:col-span-5 lg:gap-8">
         <h1 id={`${SECTION_IDS.top}-h`} className="text-h1">
           {TAGLINE}
         </h1>
@@ -34,7 +34,7 @@ export const HeroSection = () => (
 
       <Loop
         label="the receipt"
-        className="lit frame-enter relative h-[380px] overflow-hidden rounded-lg sm:h-[560px] lg:col-span-6 lg:col-start-7 lg:h-[716px]"
+        className="lit frame-enter relative h-[280px] overflow-hidden rounded-lg sm:h-[460px] lg:col-span-6 lg:col-start-7 lg:h-[clamp(520px,calc(100svh-184px),716px)]"
       >
         <ConsoleWindow className="absolute top-4 left-4 w-[calc(100%-16px)] sm:top-16 sm:left-16 sm:w-[calc(100%-64px+28px)]" />
         <ReceiptCard className="absolute bottom-8 left-8 hidden sm:block" />

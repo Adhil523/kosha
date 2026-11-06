@@ -134,7 +134,7 @@ const ProductCard = ({ name, title, body, href, tools, visual }: Product) => (
       ))}
     </ul>
     {/* The panel: one soft light, the window cut by its right and bottom edges */}
-    <div className="lit relative mt-6 h-[336px] overflow-hidden rounded-md">
+    <div className="lit relative mt-6 h-[300px] overflow-hidden rounded-md xl:h-[336px]">
       <div className="absolute top-7 left-7 w-[calc(100%-28px+40px)] min-w-[420px]">{visual}</div>
     </div>
   </a>
@@ -148,7 +148,7 @@ export const ProductsSection = () => (
       lead="Gate for the API owner, Pay for the agent, Core between them, and the Console for the people who file."
     />
     {/* Two screens as two groups: the second row starts a screen down (layout-v4 .g2) */}
-    <div className="mt-12 grid gap-6 md:grid-cols-2 lg:gap-y-56">
+    <div className="mt-12 grid gap-6 md:grid-cols-2 xl:gap-y-56">
       {PRODUCTS.map((product) => (
         <ProductCard key={product.name} {...product} />
       ))}
