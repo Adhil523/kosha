@@ -19,7 +19,7 @@ Errors are `errorResponseSchema` (`{ error: ErrorCode }`, from `error-codes`). T
 | `POST /v1/quote` | receiver | `facilitator-api` `quoteRequestSchema` | `facilitator-api` `quoteResponseSchema` (= `x402-payment` `paymentRequiredSchema`) | A09, A23 |
 | `POST /v1/verify` | receiver | `facilitator-api` `facilitatorRequestSchema` | `facilitator-api` `verifyResponseSchema` | A10 |
 | `POST /v1/settle` | receiver | `facilitator-api` `facilitatorRequestSchema` | `facilitator-api` `settleResponseSchema` (= `x402-payment` `settlementResponseSchema`) | A10 |
-| `POST /v1/decide` | receiver | `facilitator-api` `decideRequestSchema` | `facilitator-api` `decideResponseSchema` | A24 |
+| `POST /v1/decide` | receiver | `facilitator-api` `decideRequestSchema` | `facilitator-api` `decideResponseSchema`; see below | A24 |
 | `POST /v1/decisions/:id/confirm` | receiver | `facilitator-api` `decisionConfirmSchema` | `facilitator-api` `decideResponseSchema` | A24 |
 
 The quote's `kosha-split` entry must pass `split-quote` `checkSplitQuote()`; Kosha Pay runs the same check before signing.
@@ -58,6 +58,29 @@ The quote ID comes from `accepted.extra.kosha.quoteId`; a payload without one is
 - An attempt that timed out is resolved through the Mirror Node, never resubmitted. A refused attempt, or one still unseen after 4 minutes, is replaced by a new transaction.
 
 **Smoke test (opt-in, testnet):** `pnpm smoke-compat [url]` pays demo-api-in with stock `@x402/fetch` and `@x402/hedera`. Stock clients pay only default assets (Circle USDC), so the script allows `SETTLEMENT_TOKEN_ID` through `spendControls.allowedAssets` for development on tUSDC.
+
+### Tax engine for other facilitators (A24)
+
+A facilitator that settles on its own rail (another chain, or its own Hedera flow) can use Kosha for the tax decision and the audit trail alone. Core never sees or signs that payment. Both calls use the receiver's API key, like `/v1/quote`.
+
+**1. `POST /v1/decide`** before the payment. The body is `decideRequestSchema`:
+- `payer`: either
+  - `{ identity }`, a Kosha agent's UAID or CAIP-10 account. An unknown CAIP-10 account is registered at Level 0 and an unknown UAID is `400 payer_not_declared`. Its pair total is the one quotes use, so decisions and Kosha payments add up together.
+  - `{ claims: { residency, panOnFile }, reference }`, for a payer the facilitator profiles itself. Its pair is tracked by `(receiver, reference)` on the decisions alone and never becomes a Kosha agent.
+- `priceMicroUsdc`: the API's net price.
+- `chain`: where the payment will settle, e.g. `eip155:8453`.
+- `inrPerUsdMicro` (optional): the facilitator's own FX rate. Core uses its own when it is left out.
+- `resource` (optional).
+
+The answer is `decideResponseSchema`: the rule pack, rate, INR value, TDS in paise and micro-USDC, reason, flags, and the decision ID. The facilitator withholds `tdsMicroUsdc` on its rail. Core queues an HCS `decision` message (`did`, `chain`, price, TDS, rate, HMAC pair ID, FY, and `agg` including this payment); `hcsSequence` is `null` until the outbox publishes it.
+
+An unconfirmed decision is held against the pair for 15 minutes, as an open quote is, so two decisions near the threshold can't both skip TDS.
+
+**2. `POST /v1/decisions/:id/confirm`** once the payment settles. The body is `{ chain, transactionRef }`.
+- The decision's value is added to the pair's total for good, and an HCS `decision_confirmed` message (`did`, `chain`, `ref`) ties the log to that transaction.
+- Confirming again with the same reference returns the same decision; another reference is `409`.
+- The wrong chain is `400`, and another receiver's decision is `404`.
+- A decision confirmed after its 15 minutes still counts: the payment happened.
 
 ## Registry
 
