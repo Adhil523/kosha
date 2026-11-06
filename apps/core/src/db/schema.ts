@@ -181,8 +181,12 @@ export const aggregate = pgTable(
       .notNull()
       .references(() => receiver.id),
     fy: text('fy').notNull(),
-    valuePaise: money('valuePaise').notNull().default(0n),
-    outsideValuePaise: money('outsideValuePaise').notNull().default(0n),
+    valuePaise: money('valuePaise')
+      .notNull()
+      .default(sql`0`),
+    outsideValuePaise: money('outsideValuePaise')
+      .notNull()
+      .default(sql`0`),
     paymentsCount: integer('paymentsCount').notNull().default(0),
     createdAt: base.createdAt,
     updatedAt: base.updatedAt
