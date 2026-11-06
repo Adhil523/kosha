@@ -14,8 +14,8 @@ export const rulePackSchema = z.strictObject({
   id: z.string().regex(/^[a-z]{2}-\d{4}\.\d+$/),
   law: z.string().min(1),
   effectiveFrom: z.iso.date(),
-  // "MM-DD", the first day of the financial year
-  financialYearStart: z.string().regex(/^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/),
+  // "MM-01": financial years start on the 1st of a month, so quarters are whole months
+  financialYearStart: z.string().regex(/^(0[1-9]|1[0-2])-01$/),
   rates: z.strictObject({
     standardBps: bpsSchema,
     noPanBps: bpsSchema
