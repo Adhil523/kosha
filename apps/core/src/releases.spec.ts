@@ -106,7 +106,7 @@ describe('releases', () => {
       failed: 0
     });
     expect(await stored()).toMatchObject([
-      { status: 'executed', executedAt: new Date('2026-12-01T04:06:00Z') },
+      { status: 'executed', executedAt: new Date('2026-12-06T04:06:00Z') },
       { status: 'scheduled' }
     ]);
 
