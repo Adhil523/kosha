@@ -1,6 +1,6 @@
 import { buildApp } from './app';
-import { closeRoutes } from './close-routes';
 import { fakeMirror, fakeScheduler, signedScheduleSign } from './close.fixture';
+import { closeRoutes } from './close-routes';
 import type { DbHandle } from './db/client';
 import { receiverWallet } from './db/schema';
 import { testDb } from './db/test-db';
