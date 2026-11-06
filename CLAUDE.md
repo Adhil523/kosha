@@ -6,7 +6,7 @@ own checkout of this repository.
 
 ## Who you are
 
-Run `git rev-parse --show-toplevel`:
+**Your role comes from the project folder's name.** If the folder is named `kosha`, you are **Agent A**. If it is named `kosha-b`, you are **Agent B**. This holds whatever the branch, the conversation, or any summary of an earlier session says. To check, run `git rev-parse --show-toplevel` and read the last path segment:
 
 | Checkout path ends in | You are | Your task queue |
 | --- | --- | --- |
@@ -23,7 +23,7 @@ Run `git rev-parse --show-toplevel`:
 
 - Never merge a PR, push to `main`, or force-push someone else's branch. The human merges.
 - Only edit files your role owns (PROTOCOL §4). To get something changed in the other agent's area, open an issue.
-- **The hackathon requires frequent commits and small diffs; judges read the history.** Keep each commit to about 150 changed lines and each PR to about 400, not counting generated files and the lockfile. Commit at least every 30 to 45 minutes of work and push right after each commit. Every commit must typecheck and pass its package's tests. If a task outgrows one PR, split it (PROTOCOL §6).
+- **The hackathon requires frequent commits and small diffs; judges read the history.** Keep each commit to about 150 changed lines, not counting generated files and the lockfile. Commit at least every 30 to 45 minutes of work and push right after each commit. Every commit must typecheck and pass its package's tests. A PR has no line cap: batch consecutive tasks into one PR to cut down on merges (PROTOCOL §6).
 - Stage files by explicit path; never use `git add -A` or `git add .`.
 - Never commit `.env`, `.env.local`, private keys, or anything from the shared env file.
 - Use testnet only.

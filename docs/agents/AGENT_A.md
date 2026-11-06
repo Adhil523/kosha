@@ -25,8 +25,7 @@ Each card reads: **branch** · **depends on** (a **bold** ID belongs to Agent B)
 ### A02 · Shared wire contracts
 `a/02-contracts` · depends on: A01, **B00** · unblocks: A03, A05, **B04, B07, B10**
 
-Read `docs/research/x402.md` and spec Component 1 first. Every request and response that crosses a package boundary becomes a Zod schema (Zod `4.6.7`, pinned exactly) with an inferred type. Agent B builds against these, so get the names right and keep them stable. Reuse `@x402/core`'s types where they exist and mirror them in Zod. This task is likely to pass 400 lines: split it into `a/02-contracts` (commits 1–4) and `a/02-contracts-2` (5–7).
-
+Read `docs/research/x402.md` and spec Component 1 first. Every request and response that crosses a package boundary becomes a Zod schema (Zod `4.6.7`, pinned exactly) with an inferred type. Agent B builds against these, so get the names right and keep them stable. Reuse `@x402/core`'s types where they exist and mirror them in Zod.
 1. `chore(repo): plan v2 env keys`
    - `.env.example`: drop `ESCROW_ACCOUNT_ID`; add `COMPAT_SETTLEMENT_ACCOUNT_ID`, `POOL_RESERVE_ACCOUNT_ID` and `HCS_AUDIT_TOPIC`.
    - If the human has confirmed **H0b** (Node 24.22.1 or later), set `engines.node` to `>=24.22.1`. Otherwise leave it and say so in the PR.
