@@ -60,7 +60,9 @@ describe('wireCore', () => {
     ['POST', '/v1/agents', 401],
     ['POST', '/v1/quote', 401],
     ['POST', '/v1/verify', 401],
-    ['POST', '/v1/settle', 401]
+    ['POST', '/v1/settle', 401],
+    ['GET', '/v1/close?month=2026-11', 401],
+    ['POST', '/v1/challans', 401]
   ] as const)('mounts %s %s', async (method, url, status) => {
     const payload = method === 'POST' ? { x402Version: 2 } : undefined;
     const response = await app.inject({ method, url, payload });

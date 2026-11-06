@@ -2,6 +2,8 @@ import type { ActiveRulePack } from './active-rule-pack';
 import { agentRoutes } from './agent-routes';
 import type { RegisterRoutes } from './app';
 import { createChallengeStore } from './challenges';
+import type { PrepareDeps } from './close-prepare';
+import { closeRoutes } from './close-routes';
 import type { ForwarderDeps } from './compat-forwarder';
 import { type CoreConfig, SETTLEMENT_NODE_ACCOUNT_IDS } from './config';
 import type { KoshaDb } from './db/client';
@@ -19,6 +21,7 @@ import { policyRoutes } from './policy-routes';
 import { quoteRoutes } from './quote-routes';
 import { receiverRoutes } from './receiver-routes';
 import { mirrorReconciler } from './reconcile';
+import type { ReleaseDeps } from './releases';
 import { createPayerResolver } from './resolve-payer';
 import { announceSettlement } from './settlement-events';
 import { streamRoutes } from './stream-routes';
@@ -40,6 +43,7 @@ export type CoreWiring = {
   outbox: OutboxDeps;
   forwarder: ForwarderDeps;
   watcher: WatcherDeps;
+  close: PrepareDeps;
 };
 export type WiringResult =
   { ok: true; data: CoreWiring } | { ok: false; data: { problem: string } };
@@ -85,6 +89,17 @@ export const wireCore = (
   const keyLookup = async (accountId: string) => {
     const key = await payerKey(accountId);
     return key.ok ? key.data : null;
+  };
+
+  // Reserve releases: Core creates each schedule and pays its fees; the agent operator co-signs
+  const releases: ReleaseDeps = {
+    db,
+    execute,
+    mirror,
+    coreAccountId: config.coreAccountId,
+    coreKey: operator.key.publicKey,
+    settlementTokenId: config.settlementTokenId,
+    maxTransactionFeeHbar: config.maxTxFeeHbar
   };
 
   const settlement = {
@@ -151,6 +166,16 @@ export const wireCore = (
       pairSecret: config.pairHmacSecret,
       paymentsTopicId: config.paymentsTopicId
     }),
+    closeRoutes({
+      db,
+      adminToken: config.adminToken,
+      challan: {
+        db,
+        pairSecret: config.pairHmacSecret,
+        paymentsTopicId: config.paymentsTopicId,
+        releases
+      }
+    }),
     facilitatorRoutes({
       ...settlement,
       payerKey,
@@ -183,6 +208,7 @@ export const wireCore = (
         pairSecret: config.pairHmacSecret,
         paymentsTopicId: config.paymentsTopicId
       },
+      close: { db, releases },
       forwarder: {
         db,
         execute: (transaction) => execute(transaction),
