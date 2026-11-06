@@ -29,6 +29,9 @@
   --radius-lg: 8px;
   --radius-xl: 12px;
 
+  --text-hero: clamp(2.75rem, 1rem + 5.4vw, 5.75rem); /* 44 to 92: the hero's one headline */
+  --text-hero--line-height: 0.98;
+  --text-hero--letter-spacing: -0.045em;
   --text-h1: clamp(2.5rem, 1.1rem + 3.6vw, 4rem); /* 40 to 64 */
   --text-h1--line-height: 1.02;
   --text-h1--letter-spacing: -0.035em;
@@ -355,6 +358,19 @@
 }
 
 @layer utilities {
+  /* The hero's accent words: the accent lit from the top-left, clipped to the letters */
+  .text-sheen {
+    background: linear-gradient(
+      100deg,
+      color-mix(in oklab, var(--color-accent) 55%, var(--color-ink)) 0%,
+      var(--color-accent) 45%,
+      color-mix(in oklab, var(--color-accent) 70%, var(--color-ground)) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
   /* A black third-party mark (GitHub, Express) reads white on the dark ground (icons.md) */
   .ic-ink {
     filter: invert(1) hue-rotate(180deg);

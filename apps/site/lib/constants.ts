@@ -1,6 +1,9 @@
 export const SITE_NAME = 'Kosha';
 
-export const TAGLINE = 'Every agent payment, tax-ready.';
+/** The hero sets the tagline on two lines, the second in the accent */
+export const TAGLINE_LINES = ['Every agent payment,', 'tax-ready.'] as const;
+
+export const TAGLINE = TAGLINE_LINES.join(' ');
 
 /** The one main action: the same words in the nav, the hero and the close */
 export const MAIN_ACTION = 'See a settled payment';
