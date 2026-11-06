@@ -88,7 +88,7 @@ describe('createPayerResolver', () => {
     expect(saved?.reserveAccountID).toBe('0.0.91');
   });
 
-  it('finds an agent that moved to a UAID by its old CAIP-10 identity, and the reverse', async () => {
+  it('finds an agent that moved to a UAID by its old CAIP-10 identity', async () => {
     const uaid = 'uaid:aid:z6Mk6001;uid=0;nativeId=hedera:testnet:0.0.6001';
     const [row] = await handle.db
       .insert(agent)
