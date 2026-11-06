@@ -9,7 +9,7 @@ import {
   TransactionId
 } from '@hiero-ledger/sdk';
 import type { Executed, Executor, ReceiptLike } from '@kosha/hedera/executor';
-import type { MirrorResult, MirrorSchedule } from '@kosha/hedera/mirror';
+import type { MirrorResult, MirrorSchedule, MirrorTransaction } from '@kosha/hedera/mirror';
 
 // A recorded challan with its releases, as POST /v1/challans leaves them, for the release specs
 
@@ -79,21 +79,38 @@ export const IDENTICAL_SCHEDULE: Executed = {
   data: { status: 'IDENTICAL_SCHEDULE_ALREADY_CREATED', receipt: receipt('0.0.8001') }
 };
 
-export const fakeMirror = (answers: Record<string, MirrorSchedule['status'] | 'missing'>) => ({
+// executed_failed: the schedule ran, but the transfer inside it failed
+type ScheduleAnswer = MirrorSchedule['status'] | 'missing' | 'executed_failed';
+const RAN_AT = '1796529960.000000000';
+const RAN_AND_FAILED_AT = '1796529961.000000000';
+
+export const fakeMirror = (answers: Record<string, ScheduleAnswer>) => ({
   scheduleStatus: async (scheduleId: string): Promise<MirrorResult<MirrorSchedule>> => {
     const answer = answers[scheduleId];
     if (!answer || answer === 'missing') return { ok: false, data: { reason: 'not_found' } };
+    const failed = answer === 'executed_failed';
     return {
       ok: true,
       data: {
         scheduleId,
-        status: answer,
-        executedAt: answer === 'executed' ? '1796529960.000000000' : null,
+        status: failed ? 'executed' : answer,
+        executedAt: answer === 'executed' ? RAN_AT : failed ? RAN_AND_FAILED_AT : null,
         expiresAt: '1765166400.000000000',
         payerAccountId: '0.0.4000'
       }
     };
-  }
+  },
+  transactionAt: async (timestamp: string): Promise<MirrorResult<MirrorTransaction>> => ({
+    ok: true,
+    data: {
+      transactionId: '0.0.4000-1796529900-000000000',
+      consensusTimestamp: timestamp,
+      result: timestamp === RAN_AT ? 'SUCCESS' : 'TOKEN_NOT_ASSOCIATED_TO_ACCOUNT',
+      name: 'CRYPTOTRANSFER',
+      memo: '',
+      tokenTransfers: []
+    }
+  })
 });
 
 const AGENT_KEY = PrivateKey.generateED25519();

@@ -6,6 +6,7 @@ import { type QuoteRow, verifiableQuote } from './quote-terms';
 import { checkSpendPolicy } from './spend-policy';
 import type { TransferTransaction } from '@hiero-ledger/sdk';
 import { verifyExactTransfer } from '@kosha/hedera/exact-verifier';
+import type { MirrorClient } from '@kosha/hedera/mirror';
 import type { PayerKeyLookup } from '@kosha/hedera/payer-key';
 import { verifyPayerSignature, verifyTransfer } from '@kosha/hedera/transfer-verifier';
 import type { ErrorCode } from '@kosha/shared/error-codes';
@@ -17,6 +18,8 @@ import { and, eq } from 'drizzle-orm';
 
 // A payer may sign a little before Core's clock says the quote was issued
 export const CLOCK_SKEW_SECONDS = 30;
+// Time Core needs between verifying and submitting: payer key lookup, quote claim, the send
+const SUBMIT_MARGIN_MS = 10_000;
 
 export type VerifyDeps = {
   db: KoshaDb;
@@ -27,6 +30,7 @@ export type VerifyDeps = {
   // payTo of the exact compatibility entry
   compatSettlementAccountId: string;
   payerKey: PayerKeyLookup;
+  tokenBalance: MirrorClient['tokenBalance'];
   now?: () => Date;
 };
 
@@ -52,7 +56,8 @@ export const walletOwner = async (db: KoshaDb, accountId: string): Promise<strin
 
 // Everything Core checks before it signs as fee payer: the stored quote (the receiver's own, unexpired,
 // unused), the transaction against that quote, the payer as a declared wallet of the quoted agent,
-// the agent's spending policy, and the payer's signature with its key from the Mirror Node.
+// the agent's spending policy, the payer's signature with its key from the Mirror Node, and the
+// payer's balance of the settlement token.
 export const verifyPayment = async (
   deps: VerifyDeps,
   receiverId: string,
@@ -75,6 +80,16 @@ export const verifyPayment = async (
   if (row.usedTransactionID) return fail('replay');
   // A quote made for an unidentified caller has only the compatibility entry
   if (split && row.scheme !== 'kosha_split') return fail('unsupported_scheme');
+  // The echoed entry must carry the terms Core issued. Gate prices the route from accepted.amount,
+  // so a quote for a cheaper route must not pass by raising that amount.
+  const issued = split
+    ? { amount: row.priceMicro, payTo: row.payToAccountID }
+    : { amount: row.totalMicro, payTo: deps.compatSettlementAccountId };
+  const echoed =
+    accepted.amount === issued.amount.toString() &&
+    accepted.payTo === issued.payTo &&
+    accepted.asset === deps.settlementTokenId;
+  if (!echoed) return fail('amount_mismatch');
 
   const window = {
     notBefore: new Date(row.createdAt.getTime() - CLOCK_SKEW_SECONDS * 1000),
@@ -100,6 +115,15 @@ export const verifyPayment = async (
       });
   if (!checked.ok) return fail(checked.data.code);
   const { transaction, payer } = checked.data;
+
+  // The network takes a transaction only within its own valid duration. Refused here, before the
+  // quote is claimed, the payer can sign again instead of losing the quote to a doomed submission.
+  const validStart = transaction.transactionId?.validStart?.toDate();
+  const lastSubmitMs =
+    (validStart?.getTime() ?? 0) + transaction.transactionValidDuration * 1000 - SUBMIT_MARGIN_MS;
+  if (!validStart || validStart > now || now.getTime() > lastSubmitMs) {
+    return fail('valid_start_out_of_window');
+  }
 
   const transactionId = transaction.transactionId?.toString() ?? '';
   const [spent] = await deps.db
@@ -143,6 +167,12 @@ export const verifyPayment = async (
     return fail(key.data.reason === 'unavailable' ? 'core_unavailable' : 'bad_signature');
   const signed = verifyPayerSignature(transaction, key.data);
   if (!signed.ok) return fail(signed.data.code);
+
+  // Core pays the network fee even when the transfer fails, so a payer who can't cover the debit
+  // is refused before Core signs, as the official exact facilitator's preflight does
+  const funds = await deps.tokenBalance(payer, deps.settlementTokenId);
+  if (!funds.ok) return fail('core_unavailable');
+  if (funds.data === null || funds.data < row.totalMicro) return fail('insufficient_funds');
 
   return { ok: true, data: { quote: row, transaction, payer, scheme: accepted.scheme } };
 };

@@ -4,8 +4,9 @@ import { testDb } from './db/test-db';
 import { pairTotalPaise } from './pair-total';
 import { ISSUED_AT, payloadFor, QUOTE_ID, seedQuotedPayment, verifyDeps } from './payment.fixture';
 import { type SettleDeps, settlePayment } from './payment-settle';
+import { PrivateKey } from '@hiero-ledger/sdk';
 import { type Executed, UNKNOWN_EXECUTION_STATUS } from '@kosha/hedera/executor';
-import { signedVariant } from '@kosha/hedera/transfer-verifier.fixture';
+import { signedVariant, VALID_START } from '@kosha/hedera/transfer-verifier.fixture';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -82,17 +83,27 @@ describe('settlePayment', () => {
     expect(await handle.db.select().from(hcsOutbox)).toHaveLength(1);
   });
 
-  it('refuses to settle the same payment twice, even concurrently', async () => {
+  it('executes the same payment once, even concurrently, and resends its result to a retry', async () => {
     const signed = await signedVariant();
     const deps = depsWith(SETTLED);
     const results = await Promise.all([settle(deps, signed), settle(deps, signed)]);
 
-    expect(results.filter((result) => result.ok)).toHaveLength(1);
-    expect(results.find((result) => !result.ok)).toMatchObject({ data: { code: 'replay' } });
+    expect(results.filter((result) => result.ok && !result.resent)).toHaveLength(1);
     expect(executions).toBe(1);
 
     const retry = await settle(deps, signed);
-    expect(retry).toMatchObject({ ok: false, data: { code: 'replay' } });
+    expect(retry).toMatchObject({ ok: true, resent: true, data: { payer: '0.0.6001' } });
+    expect(executions).toBe(1);
+  });
+
+  it('still refuses another transaction on a used quote, and a copy not signed by the payer', async () => {
+    const deps = depsWith(SETTLED);
+    await settle(deps, await signedVariant());
+
+    const later = await signedVariant({ validStart: new Date(VALID_START.getTime() + 1_000) });
+    expect(await settle(deps, later)).toMatchObject({ ok: false, data: { code: 'replay' } });
+    const forged = await signedVariant({ key: PrivateKey.generateED25519() });
+    expect(await settle(deps, forged)).toMatchObject({ ok: false, data: { code: 'replay' } });
     expect(executions).toBe(1);
   });
 

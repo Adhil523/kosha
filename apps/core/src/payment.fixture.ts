@@ -93,6 +93,7 @@ export const verifyDeps = (db: KoshaDb, overrides: Partial<PaymentDeps> = {}): P
   network: 'testnet',
   poolReserveAccountId: '0.0.4300',
   payerKey: fixedPayerKey,
+  tokenBalance: async () => ({ ok: true, data: 1_000_000_000n }),
   now: () => VALID_START,
   ...overrides
 });

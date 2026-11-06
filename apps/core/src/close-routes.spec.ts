@@ -48,7 +48,10 @@ describe('monthly close routes', () => {
     const releases = {
       db: handle.db,
       execute: fakeScheduler().execute,
-      mirror: { scheduleStatus: (id: string) => mirror.scheduleStatus(id) },
+      mirror: {
+        scheduleStatus: (id: string) => mirror.scheduleStatus(id),
+        transactionAt: (timestamp: string) => mirror.transactionAt(timestamp)
+      },
       coreAccountId: '0.0.4000',
       coreKey: CORE_KEY,
       settlementTokenId: '0.0.429274',

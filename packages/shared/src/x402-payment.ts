@@ -105,6 +105,21 @@ export const paymentRequiredSchema = z.object({
 });
 export type PaymentRequired = z.output<typeof paymentRequiredSchema>;
 
+// A 402 as a client reads it: a server may also offer schemes or networks Kosha doesn't model
+// (an eip155 or `upto` entry). Those entries are dropped rather than failing the whole 402, and it
+// is refused only when no entry is left. Servers build theirs with paymentRequiredSchema.
+export const offeredPaymentRequiredSchema = paymentRequiredSchema.extend({
+  accepts: z
+    .array(z.unknown())
+    .transform((entries) =>
+      entries.flatMap((entry) => {
+        const parsed = paymentRequirementsSchema.safeParse(entry);
+        return parsed.success ? [parsed.data] : [];
+      })
+    )
+    .refine((entries) => entries.length > 0, 'no accepts entry Kosha can pay')
+});
+
 // Sent in PAYMENT-SIGNATURE. `accepted` echoes the chosen accepts[] entry.
 export const paymentPayloadSchema = z.object({
   x402Version: z.literal(X402_VERSION),

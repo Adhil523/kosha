@@ -1,6 +1,7 @@
 import {
   decideRequestSchema,
   decideResponseSchema,
+  decisionConfirmSchema,
   facilitatorRequestSchema,
   quoteRequestSchema,
   supportedResponseSchema,
@@ -67,6 +68,20 @@ describe('facilitator API', () => {
     };
     expect(decideRequestSchema.safeParse(byIdentity).success).toBe(true);
     expect(decideRequestSchema.safeParse(byClaims).success).toBe(true);
+  });
+
+  it('refuses a chain that is not a CAIP-2 ID, and an oversized transaction reference', () => {
+    const request = { payer: { identity: 'hedera:testnet:0.0.6001' }, priceMicroUsdc: '1' };
+    expect(decideRequestSchema.safeParse({ ...request, chain: 'x'.repeat(700) }).success).toBe(
+      false
+    );
+    expect(decideRequestSchema.safeParse({ ...request, chain: 'hedera' }).success).toBe(false);
+
+    const confirm = { chain: 'eip155:8453', transactionRef: `0x${'a'.repeat(64)}` };
+    expect(decisionConfirmSchema.safeParse(confirm).success).toBe(true);
+    expect(
+      decisionConfirmSchema.safeParse({ ...confirm, transactionRef: 'a'.repeat(950) }).success
+    ).toBe(false);
   });
 
   it('parses a decision with its HCS sequence still pending', () => {

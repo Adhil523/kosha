@@ -6,7 +6,8 @@ const MINOR_UNITS_PATTERN = /^(0|[1-9]\d*)$/;
 const MICRO_PER_USDC = 1_000_000n;
 const PAISE_PER_RUPEE = 100n;
 const MIN_USDC_DECIMALS = 2;
-const USDC_DECIMALS = 6;
+// Every settlement token Kosha moves (tUSDC, Circle USDC) has 6 decimals
+export const USDC_DECIMALS = 6;
 
 export const amountSchema = z
   .string()

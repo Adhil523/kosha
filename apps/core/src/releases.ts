@@ -4,6 +4,7 @@ import { Hbar, type Key, TokenId, TransferTransaction } from '@hiero-ledger/sdk'
 import type { Executor } from '@kosha/hedera/executor';
 import type { MirrorClient } from '@kosha/hedera/mirror';
 import { createScheduledTransfer } from '@kosha/hedera/schedule';
+import { USDC_DECIMALS } from '@kosha/shared/money';
 import { type ReleaseRow, releaseRowSchema } from '@kosha/shared/tax-reports';
 import { and, asc, eq } from 'drizzle-orm';
 
@@ -18,7 +19,7 @@ export type ReleaseDeps = {
   db: KoshaDb;
   // Core's operator: ScheduleCreate's payer, and the inner transfer's fee payer
   execute: Executor;
-  mirror: Pick<MirrorClient, 'scheduleStatus'>;
+  mirror: Pick<MirrorClient, 'scheduleStatus' | 'transactionAt'>;
   coreAccountId: string;
   // Admin key on every schedule, so Core can delete a bad one
   coreKey: Key;
@@ -42,8 +43,8 @@ export const buildReleaseTransfer = (deps: ReleaseDeps, due: Due): TransferTrans
   return new TransferTransaction()
     .setTransactionMemo(releaseMemo(due.month, due.agentID))
     .setMaxTransactionFee(new Hbar(deps.maxTransactionFeeHbar))
-    .addTokenTransfer(token, due.reserveAccountID, -due.micro)
-    .addTokenTransfer(token, due.toAccountID, due.micro);
+    .addTokenTransferWithDecimals(token, due.reserveAccountID, -due.micro, USDC_DECIMALS)
+    .addTokenTransferWithDecimals(token, due.toAccountID, due.micro, USDC_DECIMALS);
 };
 
 const matching = (db: KoshaDb, filter: ReleaseFilter, status?: ReleaseRecord['status']) =>
@@ -106,7 +107,9 @@ export const scheduleDue = async (
   return report;
 };
 
-// Reads each scheduled release's fate from the Mirror Node: executed, deleted, or expired unsigned
+// Reads each scheduled release's fate from the Mirror Node: executed, failed, deleted, or expired
+// unsigned. A schedule counts as executed even when the transfer it ran failed (for example the
+// deductor dropped the token), so the transfer's own result decides between executed and failed.
 export const refreshReleases = async (
   deps: ReleaseDeps,
   filter: ReleaseFilter
@@ -122,9 +125,18 @@ export const refreshReleases = async (
       continue;
     }
     const { status, executedAt } = seen.data;
-    if (status === 'executed') {
-      const at = executedAt ? new Date(Number(executedAt) * 1000) : now;
-      await setStatus(deps.db, row.id, { status: 'executed', executedAt: at });
+    if (status === 'executed' && executedAt) {
+      const ran = await deps.mirror.transactionAt(executedAt);
+      if (!ran.ok) {
+        if (ran.data.reason !== 'not_found') report.failed += 1;
+        continue;
+      }
+      const succeeded = ran.data.result === 'SUCCESS';
+      await setStatus(deps.db, row.id, {
+        status: succeeded ? 'executed' : 'failed',
+        executedAt: new Date(Number(executedAt) * 1000)
+      });
+      if (!succeeded) console.error(`[releases]: ${row.id} ran but failed: ${ran.data.result}`);
       report.changed += 1;
     } else if (status === 'deleted') {
       await setStatus(deps.db, row.id, { status: 'deleted' });

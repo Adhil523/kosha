@@ -15,6 +15,11 @@ import {
 import { z } from 'zod';
 
 const MAX_BPS = 10_000;
+// Both values are copied into an HCS message, which must stay within one 1,024-byte chunk
+const MAX_TRANSACTION_REF_LENGTH = 128;
+
+// A CAIP-2 chain ID, e.g. "hedera:testnet" or "eip155:8453"
+export const chainIdSchema = z.string().regex(/^[-a-z0-9]{3,8}:[-_a-zA-Z0-9]{1,32}$/);
 
 export const residencySchema = z.enum(['resident', 'non_resident']);
 // A payer with no verified profile is "unknown" until it reaches Level 1
@@ -84,8 +89,7 @@ export const decideRequestSchema = z.object({
   ]),
   priceMicroUsdc: amountSchema,
   inrPerUsdMicro: amountSchema.optional(),
-  // e.g. "hedera:testnet" or "eip155:8453"
-  chain: z.string().min(1),
+  chain: chainIdSchema,
   resource: z.url().optional()
 });
 
@@ -103,8 +107,8 @@ export const decideResponseSchema = z.object({
 
 // POST /v1/decisions/:id/confirm, once the payment has settled on its rail
 export const decisionConfirmSchema = z.object({
-  chain: z.string().min(1),
-  transactionRef: z.string().min(1)
+  chain: chainIdSchema,
+  transactionRef: z.string().min(1).max(MAX_TRANSACTION_REF_LENGTH)
 });
 
 export type QuoteRequest = z.output<typeof quoteRequestSchema>;

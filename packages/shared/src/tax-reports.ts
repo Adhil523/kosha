@@ -67,7 +67,8 @@ export const releaseRowSchema = z.object({
   reserveAccountId: accountIdSchema,
   micro: amountSchema,
   scheduleId: scheduleIdSchema.nullable(),
-  status: z.enum(['pending', 'scheduled', 'executed', 'expired', 'deleted']),
+  // failed: the schedule ran but its transfer did not, so the TDS is still in the reserve
+  status: z.enum(['pending', 'scheduled', 'executed', 'failed', 'expired', 'deleted']),
   cosignedBy: z.string().nullable()
 });
 

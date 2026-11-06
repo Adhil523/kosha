@@ -1,4 +1,4 @@
-import { demoSigner, releaseArgument, signedScheduleSign } from './cosign-release';
+import { demoSigner, releaseArgument, releaseSigner, signedScheduleSign } from './cosign-release';
 import { PrivateKey, ScheduleSignTransaction, Transaction } from '@hiero-ledger/sdk';
 import { describe, expect, it } from 'vitest';
 
@@ -12,7 +12,10 @@ const ENV = {
   AGENT_NONRESIDENT_ACCOUNT_ID: '0.0.6002',
   AGENT_NONRESIDENT_PRIVATE_KEY: 'x',
   AGENT_UNKNOWN_ACCOUNT_ID: '0.0.6003',
-  AGENT_UNKNOWN_PRIVATE_KEY: 'y'
+  AGENT_UNKNOWN_PRIVATE_KEY: 'y',
+  POOL_RESERVE_ACCOUNT_ID: '0.0.6400',
+  COMPLIANCE_ACCOUNT_ID: '0.0.3003',
+  COMPLIANCE_PRIVATE_KEY: 'z'
 };
 
 describe('cosign-release', () => {
@@ -26,6 +29,15 @@ describe('cosign-release', () => {
     expect(demoSigner(ENV, 'hedera:testnet:0.0.6003')?.accountId).toBe('0.0.6003');
     expect(demoSigner(ENV, 'uaid:aid:0.0.6001')?.accountId).toBe('0.0.6001');
     expect(demoSigner(ENV, 'hedera:testnet:0.0.9999')).toBeNull();
+  });
+
+  it('signs a pooled-reserve release with the compliance key, and others with the agent key', () => {
+    expect(releaseSigner(ENV, '0.0.6400', null)).toEqual({
+      accountId: '0.0.3003',
+      privateKey: 'z'
+    });
+    expect(releaseSigner(ENV, '0.0.6101', 'hedera:testnet:0.0.6001')?.accountId).toBe('0.0.6001');
+    expect(releaseSigner(ENV, '0.0.6101', null)).toBeNull();
   });
 
   it('serializes a ScheduleSign the agent paid for and signed', async () => {

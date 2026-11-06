@@ -77,7 +77,7 @@ describe('POST /v1/verify and /v1/settle', () => {
     });
   });
 
-  it('settles with the HashScan link and the TDS, then refuses a replay', async () => {
+  it('settles with the HashScan link and the TDS, and resends that result to a retry', async () => {
     const signed = await signedVariant();
     const settled = await call('/v1/settle', signed);
     expect(settled.statusCode).toBe(200);
@@ -96,8 +96,8 @@ describe('POST /v1/verify and /v1/settle', () => {
       }
     });
 
-    const replayed = await call('/v1/settle', signed);
-    expect(replayed.json()).toMatchObject({ success: false, errorReason: 'replay' });
+    const retried = await call('/v1/settle', signed);
+    expect(retried.json()).toEqual(settled.json());
   });
 
   it('puts the Kosha code in errorReason when the network rejects the settlement', async () => {

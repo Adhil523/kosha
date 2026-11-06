@@ -301,7 +301,14 @@ export const challan = pgTable(
   (table) => [unique('challanReceiverMonth').on(table.receiverID, table.month)]
 );
 
-export const RELEASE_STATUSES = ['pending', 'scheduled', 'executed', 'expired', 'deleted'] as const;
+export const RELEASE_STATUSES = [
+  'pending',
+  'scheduled',
+  'executed',
+  'failed',
+  'expired',
+  'deleted'
+] as const;
 
 // One scheduled transfer per payer reserve for a challan: the month's TDS goes back from the
 // agent's 2-of-2 reserve to the deductor's wallet as reimbursement. Core signs at creation; the
@@ -354,5 +361,13 @@ export const hcsOutbox = pgTable('HcsOutbox', {
   attempts: integer('attempts').notNull().default(0),
   lastError: text('lastError'),
   hcsSequence: integer('hcsSequence'),
-  publishedAt: utc('publishedAt')
+  // The topic's running hash after this message (hex): it chains the message to every earlier
+  // one, so the record can be checked against the topic without trusting Core's database
+  hcsRunningHash: text('hcsRunningHash'),
+  publishedAt: utc('publishedAt'),
+  // Assigned before each submit and kept while the outcome is unknown: a retry asks the Mirror
+  // Node whether that transaction reached consensus before it posts the message again
+  transactionID: text('transactionID'),
+  // Set when the message can never be published (over one 1,024-byte chunk); the outbox skips it
+  abandonedAt: utc('abandonedAt')
 });

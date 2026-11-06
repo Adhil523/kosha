@@ -1,0 +1,1632 @@
+{
+  "id": "8ff02428-00ca-4bbb-be7d-d4d9e41fd080",
+  "prevId": "46989113-7f9e-4559-957a-b2eec30875df",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.Agent": {
+      "name": "Agent",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "identity": {
+          "name": "identity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ownerRef": {
+          "name": "ownerRef",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "level": {
+          "name": "level",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "residency": {
+          "name": "residency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unknown'"
+        },
+        "panOnFile": {
+          "name": "panOnFile",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "credentialIssuer": {
+          "name": "credentialIssuer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "credentialHash": {
+          "name": "credentialHash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reserveAccountID": {
+          "name": "reserveAccountID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verifiedAt": {
+          "name": "verifiedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "profileTopicID": {
+          "name": "profileTopicID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "profileCheckedAt": {
+          "name": "profileCheckedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "Agent_identity_unique": {
+          "name": "Agent_identity_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "identity"
+          ]
+        },
+        "Agent_reserveAccountID_unique": {
+          "name": "Agent_reserveAccountID_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "reserveAccountID"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "agentLevelRange": {
+          "name": "agentLevelRange",
+          "value": "\"Agent\".\"level\" between 0 and 2"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.AgentWallet": {
+      "name": "AgentWallet",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "agentID": {
+          "name": "agentID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "accountID": {
+          "name": "accountID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "AgentWallet_agentID_Agent_id_fk": {
+          "name": "AgentWallet_agentID_Agent_id_fk",
+          "tableFrom": "AgentWallet",
+          "tableTo": "Agent",
+          "columnsFrom": [
+            "agentID"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "AgentWallet_accountID_unique": {
+          "name": "AgentWallet_accountID_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "accountID"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.Aggregate": {
+      "name": "Aggregate",
+      "schema": "",
+      "columns": {
+        "agentID": {
+          "name": "agentID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "receiverID": {
+          "name": "receiverID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fy": {
+          "name": "fy",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valuePaise": {
+          "name": "valuePaise",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        },
+        "outsideValuePaise": {
+          "name": "outsideValuePaise",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        },
+        "paymentsCount": {
+          "name": "paymentsCount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "Aggregate_agentID_Agent_id_fk": {
+          "name": "Aggregate_agentID_Agent_id_fk",
+          "tableFrom": "Aggregate",
+          "tableTo": "Agent",
+          "columnsFrom": [
+            "agentID"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "Aggregate_receiverID_Receiver_id_fk": {
+          "name": "Aggregate_receiverID_Receiver_id_fk",
+          "tableFrom": "Aggregate",
+          "tableTo": "Receiver",
+          "columnsFrom": [
+            "receiverID"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "Aggregate_agentID_receiverID_fy_pk": {
+          "name": "Aggregate_agentID_receiverID_fy_pk",
+          "columns": [
+            "agentID",
+            "receiverID",
+            "fy"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.Challan": {
+      "name": "Challan",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "receiverID": {
+          "name": "receiverID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "month": {
+          "name": "month",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tdsPaise": {
+          "name": "tdsPaise",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "challanRefHash": {
+          "name": "challanRefHash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recordedAt": {
+          "name": "recordedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "Challan_receiverID_Receiver_id_fk": {
+          "name": "Challan_receiverID_Receiver_id_fk",
+          "tableFrom": "Challan",
+          "tableTo": "Receiver",
+          "columnsFrom": [
+            "receiverID"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "challanReceiverMonth": {
+          "name": "challanReceiverMonth",
+          "nullsNotDistinct": false,
+          "columns": [
+            "receiverID",
+            "month"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.Decision": {
+      "name": "Decision",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "receiverID": {
+          "name": "receiverID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agentID": {
+          "name": "agentID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "payerReference": {
+          "name": "payerReference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "chain": {
+          "name": "chain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resource": {
+          "name": "resource",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "priceMicro": {
+          "name": "priceMicro",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "inrPerUsdMicro": {
+          "name": "inrPerUsdMicro",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valuePaise": {
+          "name": "valuePaise",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tdsPaise": {
+          "name": "tdsPaise",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tdsMicro": {
+          "name": "tdsMicro",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rateBps": {
+          "name": "rateBps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "flags": {
+          "name": "flags",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rulepack": {
+          "name": "rulepack",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fy": {
+          "name": "fy",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expiresAt": {
+          "name": "expiresAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "confirmedAt": {
+          "name": "confirmedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "transactionRef": {
+          "name": "transactionRef",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "Decision_receiverID_Receiver_id_fk": {
+          "name": "Decision_receiverID_Receiver_id_fk",
+          "tableFrom": "Decision",
+          "tableTo": "Receiver",
+          "columnsFrom": [
+            "receiverID"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "Decision_agentID_Agent_id_fk": {
+          "name": "Decision_agentID_Agent_id_fk",
+          "tableFrom": "Decision",
+          "tableTo": "Agent",
+          "columnsFrom": [
+            "agentID"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "decisionPayer": {
+          "name": "decisionPayer",
+          "value": "(\"Decision\".\"agentID\" is null) <> (\"Decision\".\"payerReference\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.HcsOutbox": {
+      "name": "HcsOutbox",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "topicID": {
+          "name": "topicID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "paymentID": {
+          "name": "paymentID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "lastError": {
+          "name": "lastError",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hcsSequence": {
+          "name": "hcsSequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "publishedAt": {
+          "name": "publishedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "transactionID": {
+          "name": "transactionID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "abandonedAt": {
+          "name": "abandonedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "HcsOutbox_paymentID_Payment_id_fk": {
+          "name": "HcsOutbox_paymentID_Payment_id_fk",
+          "tableFrom": "HcsOutbox",
+          "tableTo": "Payment",
+          "columnsFrom": [
+            "paymentID"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.OutsidePayment": {
+      "name": "OutsidePayment",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "receiverID": {
+          "name": "receiverID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agentID": {
+          "name": "agentID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fromWallet": {
+          "name": "fromWallet",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "toWallet": {
+          "name": "toWallet",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transactionID": {
+          "name": "transactionID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consensusAt": {
+          "name": "consensusAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amountMicro": {
+          "name": "amountMicro",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valuePaise": {
+          "name": "valuePaise",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "shortfallPaise": {
+          "name": "shortfallPaise",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fy": {
+          "name": "fy",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "classification": {
+          "name": "classification",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "classifiedAt": {
+          "name": "classifiedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "OutsidePayment_receiverID_Receiver_id_fk": {
+          "name": "OutsidePayment_receiverID_Receiver_id_fk",
+          "tableFrom": "OutsidePayment",
+          "tableTo": "Receiver",
+          "columnsFrom": [
+            "receiverID"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "OutsidePayment_agentID_Agent_id_fk": {
+          "name": "OutsidePayment_agentID_Agent_id_fk",
+          "tableFrom": "OutsidePayment",
+          "tableTo": "Agent",
+          "columnsFrom": [
+            "agentID"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "OutsidePayment_transactionID_unique": {
+          "name": "OutsidePayment_transactionID_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "transactionID"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.Payment": {
+      "name": "Payment",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "quoteID": {
+          "name": "quoteID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transactionID": {
+          "name": "transactionID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "forwardTransactionID": {
+          "name": "forwardTransactionID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "forwardedAt": {
+          "name": "forwardedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "consensusAt": {
+          "name": "consensusAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "receiverID": {
+          "name": "receiverID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agentID": {
+          "name": "agentID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "priceMicro": {
+          "name": "priceMicro",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tdsMicro": {
+          "name": "tdsMicro",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reserveAccountID": {
+          "name": "reserveAccountID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "inrValuePaise": {
+          "name": "inrValuePaise",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fy": {
+          "name": "fy",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hcsSequence": {
+          "name": "hcsSequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "sample": {
+          "name": "sample",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "Payment_quoteID_Quote_id_fk": {
+          "name": "Payment_quoteID_Quote_id_fk",
+          "tableFrom": "Payment",
+          "tableTo": "Quote",
+          "columnsFrom": [
+            "quoteID"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "Payment_receiverID_Receiver_id_fk": {
+          "name": "Payment_receiverID_Receiver_id_fk",
+          "tableFrom": "Payment",
+          "tableTo": "Receiver",
+          "columnsFrom": [
+            "receiverID"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "Payment_agentID_Agent_id_fk": {
+          "name": "Payment_agentID_Agent_id_fk",
+          "tableFrom": "Payment",
+          "tableTo": "Agent",
+          "columnsFrom": [
+            "agentID"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "Payment_quoteID_unique": {
+          "name": "Payment_quoteID_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "quoteID"
+          ]
+        },
+        "Payment_transactionID_unique": {
+          "name": "Payment_transactionID_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "transactionID"
+          ]
+        },
+        "Payment_forwardTransactionID_unique": {
+          "name": "Payment_forwardTransactionID_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "forwardTransactionID"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.Policy": {
+      "name": "Policy",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "agentID": {
+          "name": "agentID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "perPaymentMicro": {
+          "name": "perPaymentMicro",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dailyMicro": {
+          "name": "dailyMicro",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fyBudgetMicro": {
+          "name": "fyBudgetMicro",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "allowlist": {
+          "name": "allowlist",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "thresholdAction": {
+          "name": "thresholdAction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "acceptRulepacks": {
+          "name": "acceptRulepacks",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "Policy_agentID_Agent_id_fk": {
+          "name": "Policy_agentID_Agent_id_fk",
+          "tableFrom": "Policy",
+          "tableTo": "Agent",
+          "columnsFrom": [
+            "agentID"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "Policy_agentID_unique": {
+          "name": "Policy_agentID_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "agentID"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.Quote": {
+      "name": "Quote",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "scheme": {
+          "name": "scheme",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "receiverID": {
+          "name": "receiverID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agentID": {
+          "name": "agentID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resource": {
+          "name": "resource",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payToAccountID": {
+          "name": "payToAccountID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reserveAccountID": {
+          "name": "reserveAccountID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "priceMicro": {
+          "name": "priceMicro",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tdsMicro": {
+          "name": "tdsMicro",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "totalMicro": {
+          "name": "totalMicro",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "inrValuePaise": {
+          "name": "inrValuePaise",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rateBps": {
+          "name": "rateBps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rulepack": {
+          "name": "rulepack",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "inrPerUsdMicro": {
+          "name": "inrPerUsdMicro",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nodeAccountIDs": {
+          "name": "nodeAccountIDs",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fy": {
+          "name": "fy",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expiresAt": {
+          "name": "expiresAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "usedTransactionID": {
+          "name": "usedTransactionID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "Quote_receiverID_Receiver_id_fk": {
+          "name": "Quote_receiverID_Receiver_id_fk",
+          "tableFrom": "Quote",
+          "tableTo": "Receiver",
+          "columnsFrom": [
+            "receiverID"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "Quote_agentID_Agent_id_fk": {
+          "name": "Quote_agentID_Agent_id_fk",
+          "tableFrom": "Quote",
+          "tableTo": "Agent",
+          "columnsFrom": [
+            "agentID"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "Quote_usedTransactionID_unique": {
+          "name": "Quote_usedTransactionID_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "usedTransactionID"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "quoteTotal": {
+          "name": "quoteTotal",
+          "value": "\"Quote\".\"totalMicro\" = \"Quote\".\"priceMicro\" + \"Quote\".\"tdsMicro\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.Receiver": {
+      "name": "Receiver",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "legalName": {
+          "name": "legalName",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "panCommitment": {
+          "name": "panCommitment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tan": {
+          "name": "tan",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "gstin": {
+          "name": "gstin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "residency": {
+          "name": "residency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "specifiedPerson": {
+          "name": "specifiedPerson",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "unverifiedPolicy": {
+          "name": "unverifiedPolicy",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "apiKeyHash": {
+          "name": "apiKeyHash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "Receiver_apiKeyHash_unique": {
+          "name": "Receiver_apiKeyHash_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "apiKeyHash"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ReceiverWallet": {
+      "name": "ReceiverWallet",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "receiverID": {
+          "name": "receiverID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "accountID": {
+          "name": "accountID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "proofSignature": {
+          "name": "proofSignature",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verifiedAt": {
+          "name": "verifiedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "ReceiverWallet_receiverID_Receiver_id_fk": {
+          "name": "ReceiverWallet_receiverID_Receiver_id_fk",
+          "tableFrom": "ReceiverWallet",
+          "tableTo": "Receiver",
+          "columnsFrom": [
+            "receiverID"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ReceiverWallet_accountID_unique": {
+          "name": "ReceiverWallet_accountID_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "accountID"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.Release": {
+      "name": "Release",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "challanID": {
+          "name": "challanID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agentID": {
+          "name": "agentID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reserveAccountID": {
+          "name": "reserveAccountID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "toAccountID": {
+          "name": "toAccountID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "micro": {
+          "name": "micro",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expiresAt": {
+          "name": "expiresAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scheduleID": {
+          "name": "scheduleID",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "cosignedBy": {
+          "name": "cosignedBy",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "executedAt": {
+          "name": "executedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "Release_challanID_Challan_id_fk": {
+          "name": "Release_challanID_Challan_id_fk",
+          "tableFrom": "Release",
+          "tableTo": "Challan",
+          "columnsFrom": [
+            "challanID"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "Release_agentID_Agent_id_fk": {
+          "name": "Release_agentID_Agent_id_fk",
+          "tableFrom": "Release",
+          "tableTo": "Agent",
+          "columnsFrom": [
+            "agentID"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "Release_scheduleID_unique": {
+          "name": "Release_scheduleID_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "scheduleID"
+          ]
+        },
+        "releaseChallanAgent": {
+          "name": "releaseChallanAgent",
+          "nullsNotDistinct": false,
+          "columns": [
+            "challanID",
+            "agentID"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.WatcherCursor": {
+      "name": "WatcherCursor",
+      "schema": "",
+      "columns": {
+        "accountID": {
+          "name": "accountID",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "cursor": {
+          "name": "cursor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

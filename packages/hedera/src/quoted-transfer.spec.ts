@@ -23,6 +23,14 @@ const buildSigned = async (key: PrivateKey) => {
 };
 
 describe('buildQuotedTransfer', () => {
+  it('gives two payers signing in the same millisecond different transaction IDs', async () => {
+    const key = PrivateKey.generateED25519();
+    const ids = await Promise.all(
+      Array.from({ length: 5 }, async () => (await buildSigned(key)).transactionId?.toString())
+    );
+    expect(new Set(ids).size).toBe(5);
+  });
+
   it('survives a bytes round trip with every quoted field intact', async () => {
     const parsed = await buildSigned(PrivateKey.generateED25519());
 
@@ -36,6 +44,8 @@ describe('buildQuotedTransfer', () => {
       '0.0.5'
     ]);
     expect(parsed.transactionMemo).toBe('kosha:q_7f3a');
+    // Declared decimals make the network refuse a token that isn't 6-decimal
+    expect([...parsed.tokenIdDecimals.values()]).toEqual([6]);
     expect(parsed.maxTransactionFee?.toTinybars().toString()).toBe(
       new Hbar(2).toTinybars().toString()
     );

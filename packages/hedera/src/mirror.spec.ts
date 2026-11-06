@@ -88,8 +88,62 @@ describe('mirror client', () => {
     ]);
   });
 
-  it('collects credits across pages and returns the last timestamp as the cursor', async () => {
-    const first = `/api/v1/transactions?account.id=0.0.5001&transactiontype=CRYPTOTRANSFER&timestamp=gt:100.0&order=asc&limit=100`;
+  it("reads an account's balance of one token, or null when it is not associated", async () => {
+    const { fetchImpl } = fakeFetch({
+      '/api/v1/accounts/0.0.6001/tokens?token.id=0.0.429274': {
+        body: { tokens: [{ token_id: '0.0.429274', balance: 250000 }] }
+      },
+      '/api/v1/accounts/0.0.6002/tokens?token.id=0.0.429274': { body: { tokens: [] } }
+    });
+    const mirror = createMirrorClient(BASE, fetchImpl);
+    expect(await mirror.tokenBalance('0.0.6001', '0.0.429274')).toEqual({
+      ok: true,
+      data: 250000n
+    });
+    expect(await mirror.tokenBalance('0.0.6002', '0.0.429274')).toEqual({ ok: true, data: null });
+  });
+
+  it('reads the result of the transaction at a consensus timestamp', async () => {
+    const ran = { ...transfer('0.0.4000-1796529900-000000000', '1796529960.000000000', []) };
+    const { fetchImpl } = fakeFetch({
+      '/api/v1/transactions?timestamp=1796529960.000000000': {
+        body: { transactions: [{ ...ran, result: 'INSUFFICIENT_PAYER_BALANCE' }] }
+      },
+      '/api/v1/transactions?timestamp=1796529961.000000000': { body: { transactions: [] } }
+    });
+    const mirror = createMirrorClient(BASE, fetchImpl);
+    const found = await mirror.transactionAt('1796529960.000000000');
+    expect(found.ok && found.data.result).toBe('INSUFFICIENT_PAYER_BALANCE');
+    expect(await mirror.transactionAt('1796529961.000000000')).toEqual({
+      ok: false,
+      data: { reason: 'not_found' }
+    });
+  });
+
+  it('finds the HCS message a transaction posted by its consensus timestamp', async () => {
+    const { fetchImpl } = fakeFetch({
+      '/api/v1/topics/messages/1794911401.000000001': {
+        body: {
+          topic_id: '0.0.7100',
+          sequence_number: 42,
+          consensus_timestamp: '1794911401.0',
+          running_hash: Buffer.from('ab'.repeat(48), 'hex').toString('base64')
+        }
+      }
+    });
+    const mirror = createMirrorClient(BASE, fetchImpl);
+    expect(await mirror.topicMessageAt('1794911401.000000001')).toEqual({
+      ok: true,
+      data: { topicId: '0.0.7100', sequence: 42, runningHash: 'ab'.repeat(48) }
+    });
+    expect(await mirror.topicMessageAt('1794911402.000000001')).toEqual({
+      ok: false,
+      data: { reason: 'not_found', status: 404 }
+    });
+  });
+
+  it('collects credits of any transaction type across pages, with the last timestamp as the cursor', async () => {
+    const first = `/api/v1/transactions?account.id=0.0.5001&timestamp=gt:100.0&order=asc&limit=100`;
     const second = '/api/v1/transactions?account.id=0.0.5001&timestamp=gt:200.0&page=2';
     const { fetchImpl, requested } = fakeFetch({
       [first]: {
@@ -115,10 +169,14 @@ describe('mirror client', () => {
       [second]: {
         body: {
           transactions: [
-            transfer('c', '250.0', [
-              ['0.0.6002', -9],
-              ['0.0.5001', 9]
-            ])
+            // An airdrop credits an associated account directly, like a transfer
+            {
+              ...transfer('c', '250.0', [
+                ['0.0.6002', -9],
+                ['0.0.5001', 9]
+              ]),
+              name: 'TOKENAIRDROP'
+            }
           ],
           links: { next: null }
         }

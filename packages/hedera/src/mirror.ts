@@ -47,7 +47,20 @@ const scheduleSchema = z.object({
   payer_account_id: z.string().nullable()
 });
 
+const accountTokensSchema = z.object({
+  tokens: z.array(z.object({ token_id: z.string(), balance: z.number().int() }))
+});
+
+const topicMessageSchema = z.object({
+  topic_id: z.string(),
+  sequence_number: z.number().int(),
+  // base64
+  running_hash: z.string()
+});
+
 export type MirrorAccountKey = { type: string; hex: string };
+// runningHash is hex, as Core stores it
+export type MirrorTopicMessage = { topicId: string; sequence: number; runningHash: string };
 export type MirrorTokenTransfer = { tokenId: string; account: string; amount: bigint };
 export type MirrorTransaction = {
   transactionId: string;
@@ -127,6 +140,18 @@ export const createMirrorClient = (baseUrl: string, fetchImpl: FetchLike = fetch
     return { ok: true, data: { type: result.data.key._type, hex: result.data.key.key } };
   };
 
+  // One token's balance on an account, or null when the account is not associated with it
+  const tokenBalance = async (
+    accountId: string,
+    tokenId: string
+  ): Promise<MirrorResult<bigint | null>> => {
+    const path = `/api/v1/accounts/${accountId}/tokens?token.id=${tokenId}`;
+    const result = await getJson(path, accountTokensSchema);
+    if (!result.ok) return result;
+    const held = result.data.tokens.find((token) => token.token_id === tokenId);
+    return { ok: true, data: held ? BigInt(held.balance) : null };
+  };
+
   // The account memo; an agent's points at its HCS-11 profile (hcs11-profile.ts)
   const accountMemo = async (accountId: string): Promise<MirrorResult<string>> => {
     const result = await getJson(`/api/v1/accounts/${accountId}`, accountMemoSchema);
@@ -145,6 +170,19 @@ export const createMirrorClient = (baseUrl: string, fetchImpl: FetchLike = fetch
     return { ok: true, data: toTransaction(first) };
   };
 
+  // The transaction that reached consensus at a timestamp, e.g. the transfer a schedule ran:
+  // the schedule shows as executed even when that transfer failed, so its result is read here
+  const transactionAt = async (
+    consensusTimestamp: string
+  ): Promise<MirrorResult<MirrorTransaction>> => {
+    const path = `/api/v1/transactions?timestamp=${consensusTimestamp}`;
+    const result = await getJson(path, transactionsPageSchema);
+    if (!result.ok) return result;
+    const [first] = result.data.transactions;
+    if (!first) return { ok: false, data: { reason: 'not_found' } };
+    return { ok: true, data: toTransaction(first) };
+  };
+
   // Credits of one token to one account after the cursor (a consensus timestamp), oldest first,
   // across every page. The watcher stores the returned cursor and resumes from it.
   const tokenCreditsSince = async (
@@ -154,8 +192,10 @@ export const createMirrorClient = (baseUrl: string, fetchImpl: FetchLike = fetch
   ): Promise<MirrorResult<{ credits: TokenCredit[]; cursor: string }>> => {
     const credits: TokenCredit[] = [];
     let latest = cursor;
+    // Every transaction type: a payer can also credit the account by airdrop, by claiming an
+    // airdrop, or through a contract call to the token
     let path: string | null =
-      `/api/v1/transactions?account.id=${account}&transactiontype=CRYPTOTRANSFER` +
+      `/api/v1/transactions?account.id=${account}` +
       `&timestamp=gt:${cursor}&order=asc&limit=${PAGE_LIMIT}`;
 
     while (path) {
@@ -199,7 +239,33 @@ export const createMirrorClient = (baseUrl: string, fetchImpl: FetchLike = fetch
     };
   };
 
-  return { accountKey, accountMemo, transactionById, tokenCreditsSince, scheduleStatus };
+  // The HCS message a transaction posted, found by that transaction's consensus timestamp
+  const topicMessageAt = async (
+    consensusTimestamp: string
+  ): Promise<MirrorResult<MirrorTopicMessage>> => {
+    const path = `/api/v1/topics/messages/${consensusTimestamp}`;
+    const result = await getJson(path, topicMessageSchema);
+    if (!result.ok) return result;
+    return {
+      ok: true,
+      data: {
+        topicId: result.data.topic_id,
+        sequence: result.data.sequence_number,
+        runningHash: Buffer.from(result.data.running_hash, 'base64').toString('hex')
+      }
+    };
+  };
+
+  return {
+    accountKey,
+    accountMemo,
+    tokenBalance,
+    transactionById,
+    transactionAt,
+    tokenCreditsSince,
+    scheduleStatus,
+    topicMessageAt
+  };
 };
 
 export type MirrorClient = ReturnType<typeof createMirrorClient>;

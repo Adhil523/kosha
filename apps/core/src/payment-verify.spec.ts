@@ -5,7 +5,7 @@ import { testDb } from './db/test-db';
 import { EXPIRES_AT, payloadFor, QUOTE_ID, seedQuotedPayment, verifyDeps } from './payment.fixture';
 import { verifyPayment } from './payment-verify';
 import { PrivateKey, Transaction } from '@hiero-ledger/sdk';
-import { signedVariant } from '@kosha/hedera/transfer-verifier.fixture';
+import { signedVariant, VALID_START } from '@kosha/hedera/transfer-verifier.fixture';
 import { amountSchema } from '@kosha/shared/money';
 import { exactRequirementsSchema, paymentRequirementsSchema } from '@kosha/shared/x402-payment';
 import { exactEntry } from '@kosha/shared/x402-payment.fixture';
@@ -57,6 +57,37 @@ describe('verifyPayment', () => {
     );
     const late = { now: () => new Date(EXPIRES_AT.getTime() + 1_000) };
     expect(codeOf(await verify(await signedVariant(), late))).toBe('quote_expired');
+  });
+
+  it("refuses an entry whose amount, payTo or asset differs from the quote's terms", async () => {
+    const signed = await signedVariant();
+    const base = payloadFor(signed);
+    const changed = [
+      { amount: amountSchema.parse((BigInt(base.accepted.amount) * 100n).toString()) },
+      { payTo: '0.0.9999' },
+      { asset: '0.0.9998' }
+    ];
+    for (const change of changed) {
+      const accepted = paymentRequirementsSchema.parse({ ...base.accepted, ...change });
+      const result = await verifyPayment(verifyDeps(handle.db), receiverId, { ...base, accepted });
+      expect(codeOf(result)).toBe('amount_mismatch');
+    }
+  });
+
+  it('refuses a transaction the network would no longer take, or not take yet', async () => {
+    const signed = await signedVariant();
+    const nearlyExpired = { now: () => new Date(VALID_START.getTime() + 112_000) };
+    expect(codeOf(await verify(signed, nearlyExpired))).toBe('valid_start_out_of_window');
+    const early = { now: () => new Date(VALID_START.getTime() - 1_000) };
+    expect(codeOf(await verify(signed, early))).toBe('valid_start_out_of_window');
+  });
+
+  it('refuses a payer who cannot cover the debit or holds no association with the token', async () => {
+    const signed = await signedVariant();
+    const broke = { tokenBalance: async () => ({ ok: true as const, data: 1n }) };
+    expect(codeOf(await verify(signed, broke))).toBe('insufficient_funds');
+    const unassociated = { tokenBalance: async () => ({ ok: true as const, data: null }) };
+    expect(codeOf(await verify(signed, unassociated))).toBe('insufficient_funds');
   });
 
   it('refuses a used quote', async () => {

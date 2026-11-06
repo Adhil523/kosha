@@ -97,6 +97,10 @@ describe('forwardDue', () => {
     ]);
     expect(forward?.transactionId?.accountId?.toString()).toBe('0.0.4000');
     expect(forward?.transactionMemo).toMatch(/^kosha-fwd:q_/);
+    // Declared decimals: the network refuses the forward if the token isn't 6-decimal
+    expect(forward instanceof TransferTransaction && [...forward.tokenIdDecimals.values()]).toEqual(
+      [6]
+    );
     expect(await stored(paymentId)).toMatchObject({
       forwardTransactionID: forward?.transactionId?.toString(),
       forwardedAt: NOW

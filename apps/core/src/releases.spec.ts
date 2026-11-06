@@ -9,7 +9,13 @@ import type { DbHandle } from './db/client';
 import { release } from './db/schema';
 import { testDb } from './db/test-db';
 import { type LedgerSeed, seedParties } from './ledger.fixture';
-import { listReleases, refreshReleases, type ReleaseDeps, scheduleDue } from './releases';
+import {
+  buildReleaseTransfer,
+  listReleases,
+  refreshReleases,
+  type ReleaseDeps,
+  scheduleDue
+} from './releases';
 import { PrivateKey, ScheduleCreateTransaction } from '@hiero-ledger/sdk';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -61,6 +67,10 @@ describe('releases', () => {
     expect(first.getScheduleMemo).toBe(`kosha-release:2026-11:${seed.agents.resident}`);
     expect(first.expirationTime?.toDate()).toEqual(RELEASE_EXPIRES_AT);
     expect(first.payerAccountId?.toString()).toBe('0.0.4000');
+    const [row] = await stored();
+    if (!row) throw new Error('release missing');
+    const inner = buildReleaseTransfer(deps(scheduler), { ...row, month: '2026-11' });
+    expect([...inner.tokenIdDecimals.values()]).toEqual([6]);
     expect(await stored()).toMatchObject([
       { status: 'scheduled', scheduleID: '0.0.901' },
       { status: 'scheduled', scheduleID: '0.0.902' }
@@ -92,6 +102,18 @@ describe('releases', () => {
       failed: 0
     });
     expect((await stored())[1]).toMatchObject({ status: 'expired' });
+  });
+
+  it('marks a release failed when its schedule ran but the transfer inside it failed', async () => {
+    ({ challanId } = await seedChallan(handle.db, seed.receivers.in, [
+      { agentId: seed.agents.resident, micro: 2_038n, status: 'scheduled' }
+    ]));
+    const mirror = fakeMirror({ '0.0.800': 'executed_failed' });
+    expect(await refreshReleases(deps(fakeScheduler(), mirror), { challanId })).toEqual({
+      changed: 1,
+      failed: 0
+    });
+    expect(await stored()).toMatchObject([{ status: 'failed' }]);
   });
 
   it('refreshes scheduled releases from the Mirror Node', async () => {
