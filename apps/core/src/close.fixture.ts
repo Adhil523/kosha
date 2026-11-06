@@ -1,6 +1,13 @@
 import type { KoshaDb } from './db/client';
 import { challan, release } from './db/schema';
-import { ScheduleCreateTransaction, type Transaction } from '@hiero-ledger/sdk';
+import {
+  AccountId,
+  PrivateKey,
+  ScheduleCreateTransaction,
+  ScheduleSignTransaction,
+  type Transaction,
+  TransactionId
+} from '@hiero-ledger/sdk';
 import type { Executed, Executor, ReceiptLike } from '@kosha/hedera/executor';
 import type { MirrorResult, MirrorSchedule } from '@kosha/hedera/mirror';
 
@@ -88,3 +95,17 @@ export const fakeMirror = (answers: Record<string, MirrorSchedule['status'] | 'm
     };
   }
 });
+
+const AGENT_KEY = PrivateKey.generateED25519();
+
+// What scripts/cosign-release.ts sends: a ScheduleSign frozen with the agent as payer and signed
+// by its key, serialized
+export const signedScheduleSign = async (scheduleId: string): Promise<string> => {
+  const transaction = new ScheduleSignTransaction()
+    .setScheduleId(scheduleId)
+    .setTransactionId(TransactionId.generate(AccountId.fromString('0.0.6001')))
+    .setNodeAccountIds([AccountId.fromString('0.0.3')])
+    .freeze();
+  await transaction.sign(AGENT_KEY);
+  return Buffer.from(transaction.toBytes()).toString('base64');
+};
