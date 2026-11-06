@@ -139,10 +139,11 @@ A refused quote returns `403` with `{ error: "policy_…", message }` and stores
 | `GET /v1/exports/tds?receiverId=&quarter=` | admin or receiver | `tax-reports` `quarterSchema` | CSV; one row per `tax-reports` `tdsExportRowSchema`, header = its keys | A15 |
 | `GET /v1/outside-payments?receiverId=` | admin or receiver | — | array of `console-api` `outsidePaymentRowSchema`, newest first | A19 (optional) |
 | `POST /v1/outside-payments/:id/classify` | admin or receiver | `tax-reports` `outsideClassifySchema` | `console-api` `outsidePaymentRowSchema`; `409` once classified | A19 (optional) |
-| `GET /v1/close?receiverId=&month=` | admin | `tax-reports` `monthSchema` | `tax-reports` `monthlyCloseSchema` | A20 (optional) |
-| `POST /v1/challans` | admin | `tax-reports` `challanRecordSchema` | `tax-reports` `challanRowSchema` | A20 (optional) |
-| `GET /v1/releases?challanId=` | admin | — | array of `tax-reports` `releaseRowSchema` | A20 (optional) |
-| `POST /v1/releases/:id/cosign` | admin | signed `ScheduleSignTransaction` bytes (base64) | `tax-reports` `releaseRowSchema` | A20 (optional) |
+| `GET /v1/close?receiverId=&month=` | admin or receiver | `tax-reports` `monthSchema` | `tax-reports` `monthlyCloseSchema` | A20 (optional) |
+| `GET /v1/challans?receiverId=` | admin or receiver | — | array of `tax-reports` `challanRowSchema`, newest month first | A20 (optional) |
+| `POST /v1/challans` | admin or receiver | `tax-reports` `challanRecordSchema` | `201` `{ challan: challanRowSchema, releases: releaseRowSchema[] }`; `409` once the month is closed | A20 (optional) |
+| `GET /v1/releases?challanId=&receiverId=` | admin or receiver | — | array of `tax-reports` `releaseRowSchema` | A20 (optional) |
+| `POST /v1/releases/:id/cosign` | admin or receiver | `tax-reports` `releaseCosignSchema` (a signed `ScheduleSignTransaction`, base64) | `tax-reports` `releaseRowSchema` | A20 (optional) |
 | `GET /v1/payers/:id/report` | admin | — | array of `tax-reports` `payerReportRowSchema` | A17 (optional) |
 
 ### Ledger, aggregates and stream (A13)
@@ -201,6 +202,25 @@ A payer can still pay an API directly, outside Kosha. Every 30 seconds (`node-cr
 - `not_consideration_gift`, which needs a `note`, takes it out of the count.
 - Both queue an HCS `outside_resolved` message with the classification.
 - Flagged payments never appear in the TDS export, which lists deductions only.
+
+### Monthly close and reserve release (A20)
+
+The TDS Kosha withholds sits in each payer's 2-of-2 reserve (mode C). The deductor pays the month's TDS in INR on the income-tax portal, and the reserve pays the deductor back. Months are IST calendar months, like the export's quarters. Scope is as above: the admin names a receiver; a receiver key acts for itself.
+
+**`GET /v1/close`** is the payment summary: TDS per payer reserve (paise and micro-USDC), the deductee reference as in the export, the deductor's masked TAN (`MUMD*****E`; `TAN not on file` when it has none), the section, and the total. It counts settled live payments that withheld TDS; sample history is left out. It is computed on demand, so it can be read before and after the challan.
+
+**`POST /v1/challans`** records that the challan was paid. The body carries the reference, but Core stores and logs only its SHA-256 (`challanRefHash`), so the reference can be proved later without being published. In one database transaction Core:
+1. inserts the `Challan` (one per receiver and month; a second call returns `409`);
+2. inserts one `Release` per payer reserve, `pending`, with the month's `tdsMicro` and an `expiresAt` 7 days out;
+3. queues an HCS `challan` message: `cid`, `rcv` (an HMAC of the receiver, never its ID), `month`, `tds` and `hash`.
+
+Then, for each release, Core creates a `ScheduleCreateTransaction` of a `TransferTransaction` reserve → deductor wallet, memo `kosha-release:<month>:<agentId>`, `waitForExpiry(false)`, Core as payer and admin key. Core's signature on the create is its half of the reserve's key list. A refused create leaves the release `pending`; the next `GET /v1/releases` retries it, and the stored expiry keeps the retry identical, so `IDENTICAL_SCHEDULE_ALREADY_CREATED` hands back the existing ID. A month with no TDS, or a receiver without a wallet, returns `400`. In the MVP the INR payment itself is mocked: any reference is accepted.
+
+**`GET /v1/releases`** refreshes before it answers: pending releases are scheduled, and each scheduled one is checked on the Mirror Node (`executed`, `deleted`, or `expired` once `expiresAt` has passed unsigned).
+
+**`POST /v1/releases/:id/cosign`** takes the agent operator's half: a `ScheduleSignTransaction` for the release's schedule, frozen with the agent's account as payer and signed by its key, serialized with `toBytes()` and sent as base64 in `transaction`. Core checks that it is a `ScheduleSignTransaction` for that schedule (`400` otherwise), that the release is `scheduled` (`409` otherwise), relays it as it is, and records the payer account in `cosignedBy`. A network refusal returns `502` with the status. With both signatures the transfer runs in that same transaction; the Mirror Node shows it a few seconds later, so the response may still say `scheduled` and the next read says `executed`. `pnpm cosign-release --release <rel_…>` does this with a seeded agent's key, standing in for HashPack, and prints the HashScan schedule link. Core never holds an agent key.
+
+**Job.** `monthly-close` (`node-cron`, 01:00 UTC on the 1st, 06:30 IST, once the IST month has ended) logs each receiver that withheld TDS in the month just ended, so its challan is due, and settles the fate of earlier releases (retries pending schedules, refreshes scheduled ones).
 
 ## Demo administration (A14)
 
