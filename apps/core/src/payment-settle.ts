@@ -1,14 +1,20 @@
 import { bookCompatPayer } from './compat-payer';
 import type { KoshaDb } from './db/client';
-import { quote } from './db/schema';
+import { payment, quote } from './db/schema';
 import { type LedgerContext, recordSettlement, type SettlementOutcome } from './ledger';
 import { type PaymentFailure, type VerifyDeps, verifyPayment } from './payment-verify';
 import type { QuoteRow } from './quote-terms';
 import type { TransferTransaction } from '@hiero-ledger/sdk';
 import { type Executed, UNKNOWN_EXECUTION_STATUS } from '@kosha/hedera/executor';
+import { decodeSignedTransfer, verifyPayerSignature } from '@kosha/hedera/transfer-verifier';
 import type { ErrorCode } from '@kosha/shared/error-codes';
 import { SCHEMES } from '@kosha/shared/headers';
-import { type AccountId, type HederaNetwork, quoteIdSchema } from '@kosha/shared/ids';
+import {
+  type AccountId,
+  accountIdSchema,
+  type HederaNetwork,
+  quoteIdSchema
+} from '@kosha/shared/ids';
 import type { PaymentPayload } from '@kosha/shared/x402-payment';
 import { and, eq, isNull } from 'drizzle-orm';
 
@@ -33,8 +39,13 @@ export type SettledPayment = {
   // The pair's total for the year right after this payment, read under the pair's lock
   aggregatePaise: bigint;
 };
+// The earlier result, sent again to a retried settle; the payment was announced the first time
+export type ResentPayment = Omit<SettledPayment, 'aggregatePaise'>;
 export type SettleFailure = PaymentFailure & { transactionId?: string; status?: string };
-export type SettleResult = { ok: true; data: SettledPayment } | { ok: false; data: SettleFailure };
+export type SettleResult =
+  | { ok: true; resent: false; data: SettledPayment }
+  | { ok: true; resent: true; data: ResentPayment }
+  | { ok: false; data: SettleFailure };
 
 const isUniqueViolation = (error: unknown): boolean => {
   const codeOf = (value: unknown): unknown =>
@@ -86,13 +97,60 @@ const executeOnce = async (
   return { outcome: seen === 'unknown' ? 'pending' : seen, status: executed.data.status };
 };
 
+// A settle whose response was lost (Gate timed out while the transfer landed) comes back with the
+// same signed transaction. It gets the earlier result instead of `replay`, so a payer who paid is
+// served. Transaction IDs are public, so the payer's signature over this body is checked again.
+const earlierSettlement = async (
+  deps: SettleDeps,
+  receiverId: string,
+  payload: PaymentPayload
+): Promise<SettleResult | null> => {
+  const decoded = decodeSignedTransfer(payload.payload.transaction);
+  if (!decoded.ok) return null;
+  const { transaction } = decoded.data;
+  const transactionId = transaction.transactionId?.toString() ?? '';
+  const [claimed] = await deps.db
+    .select()
+    .from(quote)
+    .where(and(eq(quote.usedTransactionID, transactionId), eq(quote.receiverID, receiverId)));
+  if (!claimed) return null;
+
+  const debits = [...transaction.tokenTransfers.values()]
+    .flatMap((moves) => [...moves])
+    .filter(([, amount]) => BigInt(amount.toString()) < 0n);
+  const [debit] = debits;
+  if (!debit || debits.length > 1) return null;
+  const payer = accountIdSchema.parse(debit[0].toString());
+  const key = await deps.payerKey(payer);
+  if (!key.ok || !verifyPayerSignature(transaction, key.data).ok) return null;
+
+  const fail = (code: ErrorCode): SettleResult => ({
+    ok: false,
+    data: { code, quoteId: quoteIdSchema.parse(claimed.id), transactionId }
+  });
+  const [paid] = await deps.db
+    .select()
+    .from(payment)
+    .where(eq(payment.transactionID, transactionId));
+  if (!paid || paid.status === 'pending') return fail('settlement_pending');
+  if (paid.status === 'failed') return fail('settlement_failed');
+  return {
+    ok: true,
+    resent: true,
+    data: { quote: claimed, payer, transactionId, paymentId: paid.id }
+  };
+};
+
 export const settlePayment = async (
   deps: SettleDeps,
   receiverId: string,
   payload: PaymentPayload
 ): Promise<SettleResult> => {
   const verified = await verifyPayment(deps, receiverId, payload);
-  if (!verified.ok) return verified;
+  if (!verified.ok) {
+    if (verified.data.code !== 'replay') return verified;
+    return (await earlierSettlement(deps, receiverId, payload)) ?? verified;
+  }
   const { quote: row, transaction, payer } = verified.data;
   const transactionId = transaction.transactionId?.toString() ?? '';
   const fail = (code: ErrorCode, status?: string): SettleResult => ({
@@ -116,6 +174,7 @@ export const settlePayment = async (
   if (outcome === 'pending') return fail('settlement_pending', status);
   return {
     ok: true,
+    resent: false,
     data: {
       quote: booked,
       payer,

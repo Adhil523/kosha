@@ -84,7 +84,7 @@ export const facilitatorRoutes =
         const result = await settlePayment(deps, auth.data.id, request.body.paymentPayload);
         if (!result.ok) return failedSettlement(deps.network, result.data);
 
-        if (deps.announce) {
+        if (deps.announce && !result.resent) {
           // The payment is settled and recorded either way; a missed event costs only the live feed
           try {
             await deps.announce(result.data);
