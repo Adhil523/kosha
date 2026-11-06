@@ -91,7 +91,7 @@ export const demoCore = (core: AdminHttp): DemoCore => {
       if (!rows.ok) return rows;
       const row = rows.data.find((agent) => agent.identity === identity);
       return row
-        ? { ok: true, data: row.id }
+        ? { ok: true, data: row.agentId }
         : { ok: false, data: `${identity} is not registered; run pnpm seed --profiles` };
     },
     receiverIdForAgent: async (agentId) => {

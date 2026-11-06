@@ -6,6 +6,7 @@ import { type Receipt } from '@kosha/pay/pay-receipt';
 import { type PreparedPayment } from '@kosha/pay/prepare-payment';
 import { decodeHeader, HEADERS, SCHEMES } from '@kosha/shared/headers';
 import { type AgentIdentity } from '@kosha/shared/ids';
+import { amountSchema } from '@kosha/shared/money';
 import { type AgentRegister, type Policy } from '@kosha/shared/registry';
 import { tdsExportRowSchema } from '@kosha/shared/tax-reports';
 import { paymentRequiredSchema, type QuoteTax, type TaxReason } from '@kosha/shared/x402-payment';
@@ -198,14 +199,14 @@ const stepNonResident: DemoStep = {
 };
 
 const CAP_POLICY: Policy = {
-  perPaymentMicro: '1000000',
-  dailyMicro: '1',
-  fyBudgetMicro: '500000000',
+  perPaymentMicro: amountSchema.parse('1000000'),
+  dailyMicro: amountSchema.parse('1'),
+  fyBudgetMicro: amountSchema.parse('500000000'),
   allowlist: [],
   thresholdAction: 'warn',
   acceptRulepacks: ['in-2026.2']
 };
-const OPEN_POLICY: Policy = { ...CAP_POLICY, dailyMicro: '10000000' };
+const OPEN_POLICY: Policy = { ...CAP_POLICY, dailyMicro: amountSchema.parse('10000000') };
 
 // 5. agent-resident hits its daily cap: Core refuses the quote (A12). The Agent Kit budget policy
 // does the same in-process in `pnpm --filter @kosha/demo-agent start` (B13), which needs an LLM key.
