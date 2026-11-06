@@ -60,7 +60,8 @@ flowchart LR
 ```
 
 The agent only talks to the API. The API's Gate talks to Core. Only Core touches Hedera, as the fee
-payer, so agents and API owners never need HBAR for fees.
+payer, so agents and API owners never need HBAR for fees. Trust boundaries and every check a payment
+passes are in [docs/architecture.md](docs/architecture.md).
 
 ### One paid request
 
