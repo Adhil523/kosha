@@ -6,7 +6,7 @@ own checkout of this repository.
 
 ## Who you are
 
-Run `git rev-parse --show-toplevel`:
+**Your role comes from the project folder's name.** If the folder is named `kosha`, you are **Agent A**. If it is named `kosha-b`, you are **Agent B**. This holds whatever the branch, the conversation, or any summary of an earlier session says. To check, run `git rev-parse --show-toplevel` and read the last path segment:
 
 | Checkout path ends in | You are | Your task queue |
 | --- | --- | --- |
