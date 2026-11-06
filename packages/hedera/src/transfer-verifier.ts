@@ -54,8 +54,17 @@ export const decodeSignedTransfer = (base64: string): DecodedTransfer => {
   return { ok: true, data: { transaction, bodies } };
 };
 
+// The quote fields the verifier checks. Core builds them from its stored quote, never from the
+// request, because the client sends paymentRequirements too. A full KoshaSplitRequirements fits.
+type SplitTerms = KoshaSplitRequirements['extra']['kosha'];
+export type VerifiableQuote = Pick<KoshaSplitRequirements, 'asset'> & {
+  extra: Pick<KoshaSplitRequirements['extra'], 'feePayer'> & {
+    kosha: Pick<SplitTerms, 'memo' | 'nodeAccountIds' | 'totalMicro' | 'transfers'>;
+  };
+};
+
 export type ShapeCheckInput = {
-  requirements: KoshaSplitRequirements;
+  requirements: VerifiableQuote;
   maxTransactionFeeHbar: string;
   // The quote's lifetime; the transaction's valid start must fall inside it
   window: { notBefore: Date; notAfter: Date };
@@ -105,7 +114,7 @@ export const checkTransferShape = (
 };
 
 export type LegsCheckInput = {
-  requirements: KoshaSplitRequirements;
+  requirements: VerifiableQuote;
   // The reserve registered to the agent the quote was issued to (mode C); null if it has none
   expectedReserveAccount: AccountId | null;
 };
