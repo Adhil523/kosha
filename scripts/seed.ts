@@ -254,7 +254,13 @@ export const sampleHistory = (env: SeedEnv, now: Date): SamplePayment[] => {
   const identity = (accountId: string) =>
     agentIdentitySchema.parse(`hedera:${env.HEDERA_NETWORK}:${accountId}`);
   const pairs = [
-    ['resident-in', env.AGENT_RESIDENT_ACCOUNT_ID, env.RECEIVER_IN_ACCOUNT_ID, 'api.demo-in.dev'],
+    // Not agent-resident or agent-unknown with receiver-in: --reset-demo owns those two pairs
+    [
+      'nonresident-global',
+      env.AGENT_NONRESIDENT_ACCOUNT_ID,
+      env.RECEIVER_GLOBAL_ACCOUNT_ID,
+      'api.demo-global.dev'
+    ],
     [
       'resident-solo',
       env.AGENT_RESIDENT_ACCOUNT_ID,
