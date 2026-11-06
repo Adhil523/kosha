@@ -1,4 +1,4 @@
-import { type WatcherDeps,watchOutsidePayments } from '../outside-watcher';
+import { type WatcherDeps, watchOutsidePayments } from '../outside-watcher';
 import cron from 'node-cron';
 
 export const JOB_NAME = 'outside-watch';
