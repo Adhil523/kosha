@@ -142,8 +142,10 @@ export class KoshaPaidFetchTool extends BaseTool<Params, Params> {
     context: Context,
     params: Params
   ): Promise<PaidFetchOutput> {
-    const output = (await super.execute(client, context, params)) as PaidFetchOutput;
-    if (!output.raw.aborted) return output;
+    const result = (await super.execute(client, context, params)) as PaidFetchOutput;
+    if (!result.raw.aborted) return result;
+    // The kit's error handler doesn't see the params; name the URL so the agent and the audit can
+    const output = { ...result, raw: { ...result.raw, url: params.url, paid: false } };
     try {
       await this.postToolExecutionHook({
         context,

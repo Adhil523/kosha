@@ -133,7 +133,12 @@ describe('KoshaBudgetPolicy', () => {
     const second = await run(pay, [policy, audit]);
 
     expect(first.raw.status).toBe('SUCCESS');
-    expect(second.raw).toMatchObject({ status: 'ERROR', aborted: true });
+    expect(second.raw).toMatchObject({
+      status: 'ERROR',
+      aborted: true,
+      url: URL_PAID,
+      paid: false
+    });
     expect(second.raw.error).toContain('blocked by policy: Kosha budget');
     expect(pay.complete).toHaveBeenCalledOnce();
     expect(audit.seen.map((output) => output.raw.status)).toEqual(['SUCCESS', 'ERROR']);
