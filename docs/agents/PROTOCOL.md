@@ -17,29 +17,34 @@ The split is built around contracts. Agent A publishes every wire schema early (
 
 ## 2. Stack decisions (these override the spec)
 
-The spec's tech stack stands except for the changes below.
+Spec v2 already includes most of these; the table records why each one was made. Where the two still differ, this table wins. The design changes in v2 come from [kosha-findings-and-design-updates.md](kosha-findings-and-design-updates.md) ("findings") and a review against `hedera-dev/hedera-skills`. The non-code work is in [docs/hackathon-readiness.md](../hackathon-readiness.md).
 
-| Area | Spec says | Use instead | Why |
+| Area | Spec v1 said | Use instead | Why |
 | --- | --- | --- | --- |
-| Runtime | Node.js 20 LTS | **Node.js 24 LTS** (`.nvmrc`: `24`; `engines.node >= 24`) | Node 20 reached end of life in April 2026. The dev machine already runs 24. |
+| Runtime | Node.js 20 LTS | **Node.js 24 LTS, 24.22.1 or later** (`.nvmrc`: `24`). `engines.node` becomes `>=24.22.1` only after human step **H0b** | Node 20 reached end of life in April 2026. Agent Kit v4 requires `^24.22.1`; pnpm enforces root `engines`, so bumping before the machine is upgraded breaks installs |
+| Hedera SDK | `@hashgraph/sdk` | **`@hiero-ledger/sdk` 2.90+** in every package | `@hashgraph/sdk` stopped at 2.81.0. `@x402/hedera` and Agent Kit v4 use the Hiero SDK; mixing the two breaks `instanceof` checks |
+| Validation | Zod | **Zod `4.6.7`, pinned exactly** | Agent Kit v4 pins it, and `Tool.parameters` is the kit's Zod type. Write `z.url()`, not `z.string().url()` |
+| Agent Kit | `hedera-agent-kit` + a LangChain `tool()` | **`@hashgraph/hedera-agent-kit` v4** + `@hashgraph/hedera-agent-kit-langchain`; `kosha_paid_fetch` is a **`BaseTool`** in a plugin, with a `KoshaBudgetPolicy` (`AbstractPolicy`) and `HcsAuditTrailHook` | The old package is deprecated. The kit runs policies and hooks only for `BaseTool` subclasses |
+| HCS topics | no submit key | **`setSubmitKey(coreKey)`** on every Kosha topic | Without it anyone can post to the "tamper-evident" log |
 | Core server | Fastify 4 + Zod | **Fastify 5 + Zod 4 + `fastify-type-provider-zod`** | Fastify 4 reached end of life in June 2025. The type provider makes routes typed by the shared schemas. |
 | Jobs | BullMQ + Redis, or `node-cron` | **`node-cron` only**, running inside Core | Removes Redis from local dev and from deploy. |
 | Database in tests | Docker Postgres | **PGlite** (in-process Postgres) through Drizzle | Tests need no Docker and no ports, so both agents can run them at once. Dev and deploy still use real Postgres. |
 | Dev database | One Postgres | One Docker container with **one database per agent** (`kosha_a`, `kosha_b`) | Keeps the agents from overwriting each other's ledgers. |
-| Internal packages | Built packages | `@kosha/shared`, `@kosha/hedera` and `@kosha/tax-engine` **export TypeScript source** (`"exports": "./src/index.ts"`). Only `@kosha/gate` and `@kosha/pay` build with `tsup`, bundling the internal packages. | No build-order friction in Turborepo. Next.js consumes them through `transpilePackages`. |
+| Internal packages | Built packages | `@kosha/shared`, `@kosha/hedera` and `@kosha/tax-engine` **export TypeScript source by subpath**: `"exports": { "./*": "./src/*.ts" }`, imported as `@kosha/shared/env`. **No `index.ts` barrels** (company standard). Only `@kosha/gate` and `@kosha/pay` build with `tsup`, bundling the internal packages. | No build-order friction in Turborepo. Next.js consumes them through `transpilePackages`. Subpaths also keep the SDK out of Gate (`@kosha/hedera/mirror` is fetch-only). |
 | Console | Next.js 15 | **Latest stable Next.js** (16 or later), Tailwind v4, shadcn/ui, TanStack Query 5, Recharts | Current versions; Tailwind v4 is what `coding-standards` expects. |
-| Console auth | HashPack WalletConnect + email magic link | **Demo sign-in** (pick API owner, agent owner or CA) behind `DEMO_AUTH=1`. Console calls Core **only from Next.js server code** using `CONSOLE_ADMIN_TOKEN`; the browser never sees Core credentials. SSE is proxied through a route handler. | A magic link needs an email provider and WalletConnect costs a day; judges see neither. The sweep co-sign uses a script (WalletConnect is a stretch goal). |
-| Settlement token | Circle testnet USDC | `SETTLEMENT_TOKEN_ID` env. Bootstrap mints a 6-decimal **`tUSDC`** test token for development; switch to **Circle testnet USDC** for the recorded demo | Faucet limits can't block development or burst runs. The code path is the same either way. |
-| Credentials | "Core's test issuer signs" | **Ed25519 signatures** with `@hashgraph/sdk` keys over canonical JSON | No new crypto dependency. |
-| x402 names | v1, `X-PAYMENT` | Whatever B00 confirms is current. Every header and field name lives in `packages/shared/src/headers.ts` | The spec is still moving; this makes a change one line. |
+| Console auth | HashPack WalletConnect + email magic link | **Demo sign-in** (pick API owner, agent owner or CA) behind `DEMO_AUTH=1`. Console calls Core **only from Next.js server code** using `CONSOLE_ADMIN_TOKEN`; the browser never sees Core credentials. SSE is proxied through a route handler. | A magic link needs an email provider and WalletConnect costs a day; judges see neither. The reserve-release co-sign uses a demo signer or a script (HashPack via WalletConnect is a stretch goal that raises the Integration score). |
+| Settlement token | Circle testnet USDC | `SETTLEMENT_TOKEN_ID` env. Bootstrap mints a 6-decimal **`tUSDC`** test token for development; switch to **Circle testnet USDC `0.0.429274`** for the recorded demo | The faucet gives 20 USDC per 2 h, so it can't feed development or burst runs. The code path is the same either way. |
+| Credentials | "Core's test issuer signs" | **Ed25519 signatures** with `@hiero-ledger/sdk` keys over canonical JSON | No new crypto dependency. |
+| x402 | v1, `X-PAYMENT` | **x402 v2** per `docs/research/x402.md`: `PAYMENT-REQUIRED` / `PAYMENT-SIGNATURE` / `PAYMENT-RESPONSE`, `hedera:testnet`, `amount`, `extra.feePayer`. Two `accepts[]` entries: **`kosha-split`** (Kosha's scheme, atomic split) and **`exact`** (compatibility). Use `@x402/core` codecs and types; Pay registers `kosha-split` into `x402Client`. Every name lives in `packages/shared/src/headers.ts` | The official Hedera `exact` scheme rejects any credit except `payTo`, so the split needs its own scheme name; otherwise a standard client picks the entry and fails |
+| Signing nodes | node `0.0.3` | The quote names **three** node IDs; the payer signs for each | One busy node can't block settlement |
 | Demo agent LLM | `@langchain/openai` | Chosen by env: `LLM_PROVIDER=anthropic\|openai` | Use whichever API key is available. |
 | Tax engine tests | 30+ cases | 30+ cases **plus `fast-check` property tests** (never under-deducts; TDS never decreases as value rises) | Catches rounding edge cases that hand-written examples miss. |
 
 ### Design fixes to the spec (all serve "never under-deduct")
 
 1. **Concurrent quotes.** Two quotes issued for one pair just under the threshold would both see the old yearly total, and both would skip TDS. Fix: the total used for a decision is the settled value, plus outside payments, plus the value of the pair's **open quotes** (not expired, not used). An abandoned quote can cause over-deduction, which the spec allows.
-2. **Receiver residency.** `decide()` also takes `receiver.residency`. A non-resident receiver (a foreign API) means no TDS and a `fema_review` flag; the spec's "payments to foreign APIs" row requires this, but its `decide()` code doesn't check it.
-3. **Payer identification.** The payer is the **only debiting account** in the signed transaction. For a registered agent, that account must be one of its declared wallets. The payer's public key comes from the Mirror Node for that account.
+2. **Receiver residency.** `decide()` also takes `receiver.residency`. A non-resident receiver (a foreign API) means no TDS and a `fema_review` flag.
+3. **Payer identification.** The payer is the **only debiting account** in the signed transaction. For a registered agent, that account must be one of its declared wallets, and the `tds_reserve` leg must credit **that agent's own reserve account**. The payer's public key comes from the Mirror Node for that account.
 4. **Fee-payer protection** (on top of the spec's checks):
    - `maxTransactionFee` must not exceed `MAX_TX_FEE_HBAR`.
    - The quote names `nodeAccountIds`, and the transaction must use exactly those.
@@ -47,8 +52,12 @@ The spec's tech stack stands except for the changes below.
    - The transaction must have no NFT transfers and no approved (allowance) transfers.
 5. **Receipt timeouts.** If execution succeeded but the receipt times out, reconcile through the Mirror Node using the transaction ID. Never execute the transaction again.
 6. **HCS outbox.** Settlement writes an `hcs_outbox` row in the same database transaction as the payment. A loop publishes the rows and records the sequence numbers. This implements the spec's "retried until it succeeds".
-7. **Funding split** lives in the tax engine as `applyFunding()`. With `payer` funding, the API gets the full price and the payer pays price plus TDS. With `price_inclusive`, the API gets price minus TDS.
-8. **Money** is always stored as integer minor units (`bigint`: micro-USDC and paise) and sent over the wire as decimal strings. It is never a float.
+7. **Funding split (mode C)** lives in the tax engine as `applyFunding()`: the API gets exactly its price, and the TDS goes to the payer's own reserve. `price_inclusive` is **removed** (findings §2: it makes the API bear the tax, which brings back tax on tax).
+8. **Money** is always stored as integer minor units (`bigint`: micro-USDC and paise) and sent over the wire as decimal strings. It is never a float. The SDK takes `bigint` amounts directly; no `Long`.
+9. **Threshold keyed to the buyer.** The ₹50,000 / ₹10,000 threshold comes from `receiver.specifiedPerson` (the API owner is the buyer and deductor). The payer decides only the rate (PAN or not) and non-resident status (findings §3.1).
+10. **Unverified payers follow the receiver's policy:** `strict` (20% from the first rupee) or `threshold_tolerant` (default; no tax up to `toleranceLimitPaise`, then 20% until Level 1).
+11. **One memo per transaction.** Hedera has one 100-byte memo per transaction, so it stays `kosha:<quoteId>`; leg labels (`consideration`, `tds_reserve`) live in the quote, the HCS record and the export.
+12. **Reserve accounts.** Core creates one per agent (`KeyList([agentKey, coreKey], 2)`, `maxAutomaticTokenAssociations: 1`), at registration or, for a Level 0 agent, at its first quote.
 
 ## 3. Read order for an agent
 
@@ -63,12 +72,12 @@ Edit only what you own. If you need a change in the other agent's area, file a r
 
 | Owner | Paths |
 | --- | --- |
-| **Agent A** | Root config (`package.json`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig.base.json`, lint, format and Vitest config), `.github/`, `.gitignore`, `.env.example` (Agent B may add lines only under its `# --- Agent B ---` section), `packages/shared/`, `packages/hedera/`, `apps/core/`, `scripts/package.json`, `scripts/seed.ts`, `scripts/smoke-settle.ts`, `scripts/cosign-sweep.ts`, `docs/core-api.md` |
+| **Agent A** | Root config (`package.json`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig.base.json`, lint, format and Vitest config), `.github/`, `.gitignore`, `.env.example` (Agent B may add lines only under its `# --- Agent B ---` section), `packages/shared/`, `packages/hedera/`, `apps/core/`, `scripts/package.json`, `scripts/seed.ts`, `scripts/smoke-settle.ts`, `scripts/cosign-release.ts`, `docs/core-api.md` |
 | **Agent B** | `docs/research/`, `docs/architecture.md`, `docs/testnet-accounts.md`, `rulepacks/`, `packages/tax-engine/`, `packages/gate/`, `packages/pay/`, `apps/demo-api-in/`, `apps/demo-api-global/`, `apps/demo-agent/`, `apps/console/`, `scripts/bootstrap.ts`, `scripts/lib/` (env-file helpers), `scripts/register-agents.ts`, `scripts/pay-once.ts`, `scripts/burst.ts`, `scripts/demo.ts`, `README.md` |
 | **Both** | `pnpm-lock.yaml`: never edit it by hand; regenerate it (§7) |
-| **Human only** | `Kosha Execution Plan.md`, `CLAUDE.md`, `docs/agents/`, `scripts/agent/`. To change one of these, propose it in your PR description or your report. |
+| **Human only** | `Kosha Execution Plan.md`, `CLAUDE.md`, `docs/agents/` (including the findings doc), `docs/hackathon-readiness.md`, `scripts/agent/`. To change one of these, propose it in your PR description or your report. |
 
-A01 creates package skeletons (`package.json`, `tsconfig.json`, `src/index.ts`) for every package, including Agent B's, and root `pnpm` scripts for every script in the table. Once A01 is merged, ownership of each skeleton passes to the owner listed above, and neither agent needs to edit root files again.
+A01 created the workspace, `@kosha/shared`, `@kosha/scripts` and root `pnpm` scripts for every script in the table. **Each owner creates its own packages** (`package.json`, `tsconfig.json` extending `../../tsconfig.base.json`, the lint/test/typecheck scripts copied from `packages/shared/package.json`, subpath exports, no `index.ts`) in its first task for that package. The workspace globs pick them up, so neither agent needs to edit root files.
 
 ## 5. The task loop
 
@@ -165,22 +174,25 @@ Never print, log, commit or paste private keys, including in PR descriptions. Ac
 | ID | When | What the human does |
 | --- | --- | --- |
 | **H0** | Before starting the agents | See the preflight in §12 |
+| **H0b** | Before A02 merges | Upgrade the machine to Node 24.22.1 or later (`nvm install 24 && nvm alias default 24`), restart both agent sessions, and tell Agent A. A02 then bumps `engines.node` to `>=24.22.1`. |
 | **H1** | First PRs ready (A01, B00) | Merge them. Everything else waits on these two. |
+| **H1b** | Plan v2 PRs ready | Merge the plan v2 docs PRs, then tell Agent B to re-read its queue: B01 and B02 merge as built, and the v2 tax changes land in **B27**. |
 | **H-merge** | Whenever a READY line appears | Merge with **Create a merge commit**, bottom of a stack first. A PR whose *Unblocks* names the other agent comes first. **Never merge a PR whose base is not `main`**; wait for GitHub to retarget it. |
 | **H2** | Before B03 runs | `CORE_ACCOUNT_ID` and `CORE_PRIVATE_KEY` (a portal.hedera.com testnet account with HBAR) are in `kosha.env` |
-| **H3** | B12 READY (**Gate 2**) | Open the HashScan link and confirm two token transfers (API and escrow) and one HCS message. This meets the Hedera track minimum. |
+| **H3** | B12 READY (**Gate 2**) | Open the HashScan link and confirm two token transfers (API and the agent's reserve) and one HCS message. This meets the Hedera track minimum. |
 | **H4** | Before B13 | Add `LLM_PROVIDER` and the matching API key to `kosha.env` |
-| **H5** | Before recording | Get Circle testnet USDC for the agent accounts, set `SETTLEMENT_TOKEN_ID` to Circle's token, and re-run bootstrap's association step |
+| **H5** | Before recording | Get Circle testnet USDC (`0.0.429274`) for the agent accounts, set `SETTLEMENT_TOKEN_ID` to it, and re-run bootstrap's association step |
 | **H6** | A16 and B19 READY | Log in to Fly or Railway and Vercel, set secrets, run the deploy commands from `docs/core-api.md` and the README, then run `pnpm demo` against the deployed stack twice |
-| **H7** | End | Record the video in your own voice, then submit |
+| **H-val** | From Gate 2 on | The validation actions V1–V5 in `docs/hackathon-readiness.md` §2; only people can do them |
+| **H7** | End | Run the `hedera-skills` submission validator, record the video in your own voice, then submit |
 
 ### Gates (from the spec's action plan)
 
 | Gate | Passes when merged | Meaning |
 | --- | --- | --- |
-| Gate 1: foundations | A04, A07, B02, B05, B08 | Tax engine, verifier, Gate and Pay are unit-tested against the shared contracts |
+| Gate 1: foundations | A04, A07, B27, B05, B08 | Tax engine (v2), verifier, Gate and Pay are unit-tested against the shared contracts |
 | Gate 2: first split payment | B12 | Price and TDS settled in one transaction, visible on HashScan |
-| Gate 3: demo-complete | A14, A15, B13, B14, B15, B17 | `pnpm demo` passes locally, end to end |
+| Gate 3: demo-complete | A14, A15, A23, B13, B14, B15, B17 | `pnpm demo` passes locally, end to end |
 | Gate 4: shipped | A16, B19, B18 | Deployed, demo run twice, README links in place |
 
 If Gate 2 slips badly, tell both agents to skip every *optional* task.
@@ -225,17 +237,18 @@ flowchart LR
     A01 --> A02 --> A03 --> A04
     A02 --> A05 --> A06 --> A07
     A03 --> A08
-    A07 --> A09 --> A10 --> A11
-    A10 --> A12 & A13
+    A07 & A08 --> A09 --> A10 --> A11
+    A10 --> A12 & A13 & A23 & A24
     A11 & A13 --> A14
     A13 --> A15
   end
   subgraph B[Agent B]
     B00
-    B01 --> B02
+    B01 --> B02 --> B27
     B01 --> B07
     B03
     B04 --> B05 --> B06
+    B05 --> B28
     B07 --> B08
     B09 --> B10 --> B11
     B12 --> B13 & B17 & B18
@@ -246,10 +259,12 @@ flowchart LR
   A01 --> B01 & B03 & B09
   A02 --> B04 & B07 & B10
   A03 --> B08
-  B02 --> A09
+  A08 --> B28
+  B27 --> A09 & A24
   B03 --> A10
   B06 & B08 & A11 --> B12
   A12 --> B16 & B17
+  A23 --> B17
   A13 & A14 --> B14
   A15 --> B15
 ```
@@ -258,10 +273,10 @@ The expected flow, in waves. The agents don't follow it literally; the task loop
 
 | Wave | Agent A | Agent B | Human |
 | --- | --- | --- | --- |
-| 0 | A01 scaffold | B00 research | H1: merge both |
-| 1 | A02 contracts → A03 builder → A04 verifier | B01 rule pack → B02 `decide()` → B03 bootstrap | Merge B02 and B03 quickly; A needs them next |
+| 0 | A01 scaffold | B00 research | H1: merge both; H1b: merge plan v2 |
+| 1 | A02 contracts → A03 builder → A04 verifier | B01 rule pack → B02 `decide()` → **B27 tax engine v2** → B03 bootstrap | H0b Node upgrade. Merge B27 and B03 quickly; A needs them next |
 | 2 | A05 → A06 → A07 → A08 | B04 → B05 → B06 (Gate, demo APIs), B07 → B08 (Pay) | Gate 1 |
-| 3 | A09 quote → A10 settle → A11 seed | B09 → B10 → B11 (Console on fixtures) | |
+| 3 | A09 quote → A10 settle → A11 seed | B09 → B10 → B11 (Console on fixtures), B28 reserve proof | |
 | 4 | | B12 first split payment | **H3: Gate 2** |
-| 5 | A12 → A13 → A14 → A15 | B13 agent → B14 wiring → B15 → B16 → B17 → B18 | H4 |
+| 5 | A12 → A13 → A14 → A15 → A23 compat → A24 decide | B13 agent → B14 wiring → B15 → B16 → B17 → B18 | H4, H-val |
 | 6 | A16 deploy, then optional tasks | B19 → B20, then optional tasks | H5, H6 |
