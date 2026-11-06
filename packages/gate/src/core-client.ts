@@ -23,8 +23,9 @@ export type CoreFailure =
   | { reason: 'core_unavailable'; status?: number }
   // Core rejected Gate's API key
   | { reason: 'unauthorized'; status: number }
-  // Core refused the quote under the agent's spending policy (403 with a policy_* code)
-  | { reason: 'policy_refused'; status: number; error: PolicyCode; message?: string }
+  // Core refused the request and said why: a 403 with a policy_* code (the agent's spending
+  // policy), or another 4xx with Core's error body (e.g. 400 invalid_payload)
+  | { reason: 'refused'; status: number; error: ErrorCode; message?: string }
   // Core answered, but not with the shape the contract promises
   | { reason: 'invalid_response'; status: number };
 
@@ -32,8 +33,11 @@ export type PolicyCode = Extract<ErrorCode, `policy_${string}`>;
 
 const isPolicyCode = (code: ErrorCode): code is PolicyCode => code.startsWith('policy_');
 
-// A 403 is a policy refusal only when its body says so; anything else keeps meaning a bad API key
-const readPolicyRefusal = async (response: Response): Promise<CoreFailure | null> => {
+const FORBIDDEN = 403;
+
+// A 4xx carrying Core's error body is Core's answer to the agent's request, so Gate passes it on.
+// A 403 counts only with a policy code; otherwise it keeps meaning a bad API key.
+const readRefusal = async (response: Response): Promise<CoreFailure | null> => {
   let json: unknown;
   try {
     json = await response.json();
@@ -41,10 +45,11 @@ const readPolicyRefusal = async (response: Response): Promise<CoreFailure | null
     return null;
   }
   const parsed = errorResponseSchema.safeParse(json);
-  if (!parsed.success || !isPolicyCode(parsed.data.error)) return null;
+  if (!parsed.success) return null;
+  if (response.status === FORBIDDEN && !isPolicyCode(parsed.data.error)) return null;
   const { error, message } = parsed.data;
   return {
-    reason: 'policy_refused',
+    reason: 'refused',
     status: response.status,
     error,
     ...(message ? { message } : {})
@@ -98,7 +103,8 @@ export const createCoreClient = (options: CoreClientOptions): CoreClient => {
     }
 
     const { status } = response;
-    const refusal = status === 403 ? await readPolicyRefusal(response) : null;
+    const refusal =
+      status >= 400 && status < 500 && status !== 401 ? await readRefusal(response) : null;
     if (refusal) {
       return { ok: false, data: refusal } satisfies CoreResult<T>;
     }

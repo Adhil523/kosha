@@ -26,7 +26,6 @@ const STATUS = {
   ok: 200,
   noContent: 204,
   paymentRequired: 402,
-  forbidden: 403,
   unavailable: 503
 } as const;
 type X402Network = (typeof X402_NETWORKS)[keyof typeof X402_NETWORKS];
@@ -114,13 +113,14 @@ const failure = (
   };
 };
 
-// Core's policy refusals reach the agent as Core sent them; every other failure is a 503
+// Core's refusals (a spending policy, a bad request) reach the agent with Core's status and body;
+// every other failure is a 503
 const unavailable = (data: CoreFailure): SettledResult => {
-  if (data.reason === 'policy_refused') {
-    const { error, message } = data;
+  if (data.reason === 'refused') {
+    const { status, error, message } = data;
     return {
       action: 'respond',
-      status: STATUS.forbidden,
+      status,
       headers: EXPOSE_HEADERS,
       body: { error, ...(message ? { message } : {}) }
     };
