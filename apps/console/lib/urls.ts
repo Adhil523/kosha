@@ -14,11 +14,15 @@ export const URLS = {
     stream: (base: string, receiverId: string) => coreUrl(base, '/v1/stream', { receiverId }),
     agents: (base: string) => coreUrl(base, '/v1/agents'),
     agentPolicy: (base: string, agentId: string) =>
-      coreUrl(base, `/v1/agents/${encodeURIComponent(agentId)}/policy`)
+      coreUrl(base, `/v1/agents/${encodeURIComponent(agentId)}/policy`),
+    tdsExport: (base: string, receiverId: string, quarter: string) =>
+      coreUrl(base, '/v1/exports/tds', { receiverId, quarter })
   },
   mirror: {
     accountTokens: (base: string, accountId: string, tokenId: string) =>
-      coreUrl(base, `/api/v1/accounts/${accountId}/tokens`, { 'token.id': tokenId })
+      coreUrl(base, `/api/v1/accounts/${accountId}/tokens`, { 'token.id': tokenId }),
+    topicMessages: (base: string, topicId: string) =>
+      coreUrl(base, `/api/v1/topics/${topicId}/messages`, { order: 'asc', limit: '100' })
   },
   // Browser-facing: the route handlers that call Core with the admin token
   console: {
@@ -27,6 +31,8 @@ export const URLS = {
     overview: '/api/overview',
     stream: '/api/stream',
     agents: '/api/agents',
+    tax: (quarter: string) => `/api/tax?quarter=${encodeURIComponent(quarter)}`,
+    tdsExport: (quarter: string) => `/api/exports/tds?quarter=${encodeURIComponent(quarter)}`,
     agentSpend: (agentId: string) => `/api/agents/${encodeURIComponent(agentId)}/spend`,
     agentPolicy: (agentId: string) => `/api/agents/${encodeURIComponent(agentId)}/policy`
   },

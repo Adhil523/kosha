@@ -6,6 +6,7 @@ import {
   parseRulePackStatus,
   type RulePackStatus
 } from '@/lib/rule-pack-status';
+import { toCsv } from '@/lib/tax-report';
 import { URLS } from '@/lib/urls';
 import {
   type AggregateRow,
@@ -13,11 +14,14 @@ import {
   type LedgerPage,
   ledgerPageSchema
 } from '@kosha/shared/console-api';
+import { type SupportedResponse, supportedResponseSchema } from '@kosha/shared/facilitator-api';
 import {
   AGENTS_FIXTURE,
   AGGREGATES_FIXTURE,
   LEDGER_PAGE_FIXTURE,
-  POLICY_FIXTURE
+  POLICY_FIXTURE,
+  SUPPORTED_FIXTURE,
+  TDS_EXPORT_FIXTURE
 } from '@kosha/shared/fixtures';
 import { type AgentRow, agentRowSchema, type Policy, policySchema } from '@kosha/shared/registry';
 import { z } from 'zod';
@@ -167,6 +171,33 @@ export const putPolicy = async (agentId: string, policy: Policy): Promise<CoreRe
   if (parsed.success) return { ok: true, status: response.status, data: parsed.data };
   console.error(`[core]: PUT policy broke its schema: ${parsed.error.message}`);
   return { ok: false, status: BAD_GATEWAY, data: { message: 'Core answered in an unknown shape' } };
+};
+
+// Core's quarterly TDS file for this receiver, as Core streams it (RFC 4180 CSV)
+export const openTdsExport = async (
+  quarter: string
+): Promise<CoreResult<ReadableStream<Uint8Array>>> => {
+  if (isMockMode()) {
+    const body = new Response(toCsv(TDS_EXPORT_FIXTURE)).body;
+    return body ? { ok: true, status: 200, data: body } : notConfigured;
+  }
+  const base = coreBase();
+  if (!base) return notConfigured;
+  const { headers } = coreOptions();
+  return api.stream(URLS.core.tdsExport(base, consoleReceiverId(), quarter), {
+    headers: { ...headers, accept: 'text/csv' }
+  });
+};
+
+// The active rule pack: its ID, the hash Core publishes to HCS, and who reviewed it
+export const getRulePack = async (): Promise<
+  CoreResult<SupportedResponse['kosha']['rulepack']>
+> => {
+  if (isMockMode()) return { ok: true, status: 200, data: SUPPORTED_FIXTURE.kosha.rulepack };
+  const base = coreBase();
+  if (!base) return notConfigured;
+  const supported = await getParsed(URLS.core.supported(base), supportedResponseSchema);
+  return supported.ok ? { ...supported, data: supported.data.kosha.rulepack } : supported;
 };
 
 export const openCoreStream = async (
