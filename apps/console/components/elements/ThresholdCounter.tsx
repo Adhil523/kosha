@@ -51,6 +51,7 @@ export const PayerCounter = ({
           variant={state.crossed ? 'default' : 'outline'}
           className={cn(state.near && !state.crossed && 'border-warning text-warning')}
           data-testid={TEST_IDS.thresholdStatus(row.agentId)}
+          data-threshold={state.crossed ? 'crossed' : state.near ? 'near' : 'under'}
         >
           {state.status}
         </Badge>
