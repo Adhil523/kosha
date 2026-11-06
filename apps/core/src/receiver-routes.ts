@@ -50,7 +50,11 @@ export const receiverRoutes =
         ...admin,
         schema: {
           body: receiverCreateSchema,
-          response: { 201: receiverCreatedSchema, 400: errorResponseSchema }
+          response: {
+            201: receiverCreatedSchema,
+            400: errorResponseSchema,
+            409: errorResponseSchema
+          }
         }
       },
       async (request, reply) => {
@@ -74,8 +78,9 @@ export const receiverRoutes =
           .select({ accountID: receiverWallet.accountID })
           .from(receiverWallet)
           .where(inArray(receiverWallet.accountID, accountIds));
+        // 409, so the seed can tell "already onboarded" from a bad request and run again safely
         if (taken.length > 0) {
-          return reply.status(400).send(invalid('a wallet is already registered'));
+          return reply.status(409).send(invalid('a wallet is already registered'));
         }
 
         const apiKey = body.apiKey ?? generateApiKey();

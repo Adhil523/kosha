@@ -87,7 +87,7 @@ describe('receiver onboarding', () => {
   it('refuses a wallet that is already registered', async () => {
     const nonce = await challenge();
     const response = await onboard(business(nonce, sign(walletKey, nonce)));
-    expect(response.statusCode).toBe(400);
+    expect(response.statusCode).toBe(409);
   });
 
   it('refuses a signature by another key and an account with no key', async () => {
