@@ -36,6 +36,8 @@ export const ERROR_CODES = [
   'invalid_payload',
   'unsupported_scheme',
   'unauthorized',
+  'not_found',
+  'internal_error',
   'core_unavailable'
 ] as const;
 
