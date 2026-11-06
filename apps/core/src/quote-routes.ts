@@ -3,6 +3,7 @@ import { loadPolicy } from './agent-policy';
 import { committedSpend, lockAgentSpend } from './agent-spend';
 import type { RegisterRoutes } from './app';
 import { authenticateReceiver } from './auth';
+import { compatEntry, decideUnidentified } from './compat-quote';
 import type { KoshaDb } from './db/client';
 import { quote, receiverWallet } from './db/schema';
 import type { FxSource } from './fx';
@@ -10,7 +11,7 @@ import { pairTotalPaise, withPairLock } from './pair-total';
 import { quoteTransfers } from './quote-terms';
 import type { ResolvePayer } from './resolve-payer';
 import { checkSpendPolicy } from './spend-policy';
-import { type ErrorResponse, errorResponseSchema } from '@kosha/shared/error-codes';
+import { errorResponseSchema } from '@kosha/shared/error-codes';
 import { quoteRequestSchema } from '@kosha/shared/facilitator-api';
 import { SCHEMES, X402_NETWORKS, X402_VERSION } from '@kosha/shared/headers';
 import type { HederaNetwork } from '@kosha/shared/ids';
@@ -36,12 +37,14 @@ export type QuoteRouteDeps = {
   settlementTokenId: string;
   // Three nodes, so one busy node can't block settlement
   nodeAccountIds: string[];
+  // Compatibility mode: payTo of the exact entry, and where its TDS is pooled
+  compatSettlementAccountId: string;
+  poolReserveAccountId: string;
   // Shown to Level 0 payers: how to verify and drop from 20% to 1%
   registerUrl?: string;
   now?: () => Date;
 };
 
-const invalid = (message: string): ErrorResponse => ({ error: 'invalid_payload', message });
 
 export const quoteRoutes =
   (deps: QuoteRouteDeps): RegisterRoutes =>
@@ -69,21 +72,68 @@ export const quoteRoutes =
         const receiver = auth.data;
 
         const { agent: identity, priceMicroUsdc, resource } = request.body;
-        if (!identity) {
-          return reply
-            .status(400)
-            .send(invalid('X-KOSHA-AGENT is required until compatibility mode is available'));
-        }
-        const payer = await deps.resolvePayer(identity);
-        if (!payer.ok)
-          return reply.status(payer.data.error === 'core_unavailable' ? 503 : 400).send(payer.data);
-
         const [payTo] = await deps.db
           .select({ accountID: receiverWallet.accountID })
           .from(receiverWallet)
           .where(eq(receiverWallet.receiverID, receiver.id))
           .orderBy(asc(receiverWallet.createdAt));
         if (!payTo) return reply.status(400).send({ error: 'unknown_receiver' });
+
+        const compat = (quoteId: string, totalMicro: bigint) =>
+          compatEntry({
+            quoteId,
+            totalMicro,
+            network: deps.network,
+            asset: deps.settlementTokenId,
+            feePayer: deps.feePayer,
+            compatSettlementAccountId: deps.compatSettlementAccountId,
+            maxTimeoutSeconds: QUOTE_TTL_SECONDS
+          });
+
+        // No X-KOSHA-AGENT: only the compatibility entry, priced for an unverified payer
+        if (!identity) {
+          const issuedAt = now();
+          const rate = await deps.fx.current();
+          const price = amountToBigint(priceMicroUsdc);
+          const decision = decideUnidentified(pack, receiver, price, rate.inrPerUsdMicro);
+          const split = applyFunding({
+            priceMicroUsdc: price,
+            tdsMicroUsdc: decision.tdsMicroUsdc
+          });
+          const [row] = await deps.db
+            .insert(quote)
+            .values({
+              scheme: 'exact_compat',
+              receiverID: receiver.id,
+              agentID: null,
+              resource: resource.url,
+              payToAccountID: payTo.accountID,
+              reserveAccountID: deps.poolReserveAccountId,
+              priceMicro: split.receiverMicro,
+              tdsMicro: split.reserveMicro,
+              totalMicro: split.payerTotalMicro,
+              inrValuePaise: decision.valuePaise,
+              rateBps: decision.rateBps,
+              reason: decision.reason,
+              rulepack: decision.rulepack,
+              inrPerUsdMicro: rate.inrPerUsdMicro,
+              nodeAccountIDs: deps.nodeAccountIds,
+              fy: financialYear(issuedAt, pack.financialYearStart),
+              expiresAt: new Date(issuedAt.getTime() + QUOTE_TTL_SECONDS * 1000)
+            })
+            .returning({ id: quote.id });
+          if (!row) throw new Error('[quote]: the compat quote was not saved');
+          return paymentRequiredSchema.parse({
+            x402Version: X402_VERSION,
+            error: 'PAYMENT-SIGNATURE header is required',
+            resource,
+            accepts: [compat(row.id, split.payerTotalMicro)]
+          });
+        }
+
+        const payer = await deps.resolvePayer(identity);
+        if (!payer.ok)
+          return reply.status(payer.data.error === 'core_unavailable' ? 503 : 400).send(payer.data);
 
         const rules = await loadPolicy(deps.db, payer.data.agentId);
         const issuedAt = now();
@@ -201,7 +251,8 @@ export const quoteRoutes =
                     : {})
                 }
               }
-            }
+            },
+            compat(row.id, split.payerTotalMicro)
           ]
         });
 

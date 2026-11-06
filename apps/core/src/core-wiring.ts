@@ -2,6 +2,7 @@ import type { ActiveRulePack } from './active-rule-pack';
 import { agentRoutes } from './agent-routes';
 import type { RegisterRoutes } from './app';
 import { createChallengeStore } from './challenges';
+import type { ForwarderDeps } from './compat-forwarder';
 import { type CoreConfig, SETTLEMENT_NODE_ACCOUNT_IDS } from './config';
 import type { KoshaDb } from './db/client';
 import { demoRoutes } from './demo-routes';
@@ -31,7 +32,7 @@ import { createReserveAccount } from '@kosha/hedera/reserve';
 // How long Core asks the Mirror Node about a settlement whose receipt timed out
 const RECONCILE = { attempts: 5, delayMs: 2_000 };
 
-export type CoreWiring = { routes: RegisterRoutes[]; outbox: OutboxDeps };
+export type CoreWiring = { routes: RegisterRoutes[]; outbox: OutboxDeps; forwarder: ForwarderDeps };
 export type WiringResult =
   { ok: true; data: CoreWiring } | { ok: false; data: { problem: string } };
 
@@ -82,7 +83,9 @@ export const wireCore = (
     db,
     feePayer: config.coreAccountId,
     settlementTokenId: config.settlementTokenId,
-    maxTransactionFeeHbar: config.maxTxFeeHbar
+    maxTransactionFeeHbar: config.maxTxFeeHbar,
+    compatSettlementAccountId: config.compatSettlementAccountId,
+    poolReserveAccountId: config.poolReserveAccountId
   };
 
   const routes: RegisterRoutes[] = [
@@ -145,7 +148,18 @@ export const wireCore = (
     ok: true,
     data: {
       routes,
-      outbox: { db, submit: (topicId, message) => submitMessage(execute, topicId, message) }
+      outbox: { db, submit: (topicId, message) => submitMessage(execute, topicId, message) },
+      // The compat settlement account has Core's key, so the operator's signature covers it
+      forwarder: {
+        db,
+        execute: (transaction) => execute(transaction),
+        reconcile: mirrorReconciler(mirror, RECONCILE),
+        coreAccountId: config.coreAccountId,
+        compatSettlementAccountId: config.compatSettlementAccountId,
+        poolReserveAccountId: config.poolReserveAccountId,
+        settlementTokenId: config.settlementTokenId,
+        maxTransactionFeeHbar: config.maxTxFeeHbar
+      }
     }
   };
 };

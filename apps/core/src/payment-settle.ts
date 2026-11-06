@@ -1,3 +1,4 @@
+import { bookCompatPayer } from './compat-payer';
 import type { KoshaDb } from './db/client';
 import { quote } from './db/schema';
 import { type LedgerContext, recordSettlement, type SettlementOutcome } from './ledger';
@@ -6,13 +7,17 @@ import type { QuoteRow } from './quote-terms';
 import type { TransferTransaction } from '@hiero-ledger/sdk';
 import { type Executed, UNKNOWN_EXECUTION_STATUS } from '@kosha/hedera/executor';
 import type { ErrorCode } from '@kosha/shared/error-codes';
-import { type AccountId, quoteIdSchema } from '@kosha/shared/ids';
+import { SCHEMES } from '@kosha/shared/headers';
+import { type AccountId, type HederaNetwork, quoteIdSchema } from '@kosha/shared/ids';
 import type { PaymentPayload } from '@kosha/shared/x402-payment';
 import { and, eq, isNull } from 'drizzle-orm';
 
 const UNIQUE_VIOLATION = '23505';
 
 export type SettleDeps = VerifyDeps & {
+  network: HederaNetwork;
+  // Where compatibility-mode TDS is held, booked to the payer (2-of-2 Core and compliance)
+  poolReserveAccountId: string;
   ledger: LedgerContext;
   // Adds Core's signature as fee payer, submits, and waits for the receipt
   execute: (transaction: TransferTransaction) => Promise<Executed>;
@@ -42,11 +47,20 @@ const isUniqueViolation = (error: unknown): boolean => {
 // Marks the quote used by this transaction before anything executes, so a retried or concurrent
 // settle can't spend it twice. False when another settle got there first, for this quote or with
 // this transaction on another quote.
-const claimQuote = async (db: KoshaDb, quoteId: string, transactionId: string) => {
+const claimQuote = async (
+  db: KoshaDb,
+  quoteId: string,
+  transactionId: string,
+  // A compatibility payment also books the quote to its payer, with the TDS pooled
+  compat?: { agentID: string; reserveAccountID: string }
+) => {
   try {
     const claimed = await db
       .update(quote)
-      .set({ usedTransactionID: transactionId })
+      .set({
+        usedTransactionID: transactionId,
+        ...(compat ? { ...compat, scheme: 'exact_compat' as const } : {})
+      })
       .where(and(eq(quote.id, quoteId), isNull(quote.usedTransactionID)))
       .returning({ id: quote.id });
     return claimed.length === 1;
@@ -86,16 +100,24 @@ export const settlePayment = async (
     data: { code, quoteId: quoteIdSchema.parse(row.id), transactionId, status }
   });
 
-  if (!(await claimQuote(deps.db, row.id, transactionId))) return fail('replay');
+  const compat =
+    verified.data.scheme === SCHEMES.exact
+      ? {
+          agentID: await bookCompatPayer(deps.db, deps.network, row.agentID, payer),
+          reserveAccountID: deps.poolReserveAccountId
+        }
+      : undefined;
+  if (!(await claimQuote(deps.db, row.id, transactionId, compat))) return fail('replay');
+  const booked = compat ? { ...row, ...compat, scheme: 'exact_compat' as const } : row;
 
   const { outcome, status } = await executeOnce(deps, transaction, transactionId);
-  const recorded = await recordSettlement(deps.db, deps.ledger, row, transactionId, outcome);
+  const recorded = await recordSettlement(deps.db, deps.ledger, booked, transactionId, outcome);
   if (outcome === 'failed') return fail('settlement_failed', status);
   if (outcome === 'pending') return fail('settlement_pending', status);
   return {
     ok: true,
     data: {
-      quote: row,
+      quote: booked,
       payer,
       transactionId,
       paymentId: recorded.paymentId,

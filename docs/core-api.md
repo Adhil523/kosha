@@ -24,6 +24,41 @@ Errors are `errorResponseSchema` (`{ error: ErrorCode }`, from `error-codes`). T
 
 The quote's `kosha-split` entry must pass `split-quote` `checkSplitQuote()`; Kosha Pay runs the same check before signing.
 
+### Compatibility mode (A23)
+
+Any x402 v2 client can pay a Kosha endpoint through the plain `exact` entry. Kosha Pay keeps the atomic `kosha-split` path.
+
+**Quote.** `POST /v1/quote` with an agent returns two entries sharing one `quoteId`: `kosha-split` first, then `exact`. Without an agent it returns the `exact` entry alone; it used to answer `400`. The `exact` entry is:
+- `payTo`: `COMPAT_SETTLEMENT_ACCOUNT_ID` (Core's key);
+- `amount`: the all-in total, price plus TDS;
+- `extra`: `{ feePayer, kosha: { quoteId, mode: "compat" } }`.
+
+**Pricing a caller with no agent.** Core can't see this payer's year total until the transaction names it, so it never assumes the payer is still inside a tolerance:
+- `threshold_tolerant` receiver: the tolerance counts as used, and the payment pays the no-PAN rate (`tolerance_exceeded`, 20%);
+- `strict` receiver: 20% from the first rupee;
+- foreign receiver: no TDS.
+
+This can over-deduct, which is a refundable credit in the pooled reserve, but it never under-deducts. A caller that sends `X-KOSHA-AGENT` is priced exactly, against its pair's total.
+
+**Verify** (`@kosha/hedera/exact-verifier`, the official `exact` rules):
+- any memo and any nodes;
+- Core is the fee payer and moves no tokens itself (`fee_payer_transferring`);
+- the fee cap and the valid-start window as for `kosha-split`;
+- exactly one debiting account, and the only credit is `amount` to `payTo`.
+
+The quote ID comes from `accepted.extra.kosha.quoteId`; a payload without one is `quote_not_found`. On a quote made for an agent, the payer must be one of its wallets. A `kosha-split` payment on a quote that offered only `exact` is `unsupported_scheme`.
+
+**Settle.**
+- The payment is booked to the quote's agent, else to the agent that declared the paying account, else to a new Level 0 agent for that account. That agent gets no reserve: its TDS is pooled.
+- The quote becomes `scheme: exact_compat`, with `POOL_RESERVE_ACCOUNT_ID` as its reserve.
+- The HCS `pay` message carries `mode: "compat"`, and the settlement response's `amount` is the all-in total.
+
+**Forward.** A loop in Core runs every few seconds with backoff. For each settled compat payment not yet forwarded, it sends a second transaction, memo `kosha-fwd:<quoteId>`: settlement account → API wallet (the price) and → pooled reserve (the TDS). Core is the fee payer, and its signature also covers the settlement account.
+- The transaction ID is stored in `forwardTransactionID` before it executes, and `forwardedAt` is set once it is confirmed.
+- An attempt that timed out is resolved through the Mirror Node, never resubmitted. A refused attempt, or one still unseen after 4 minutes, is replaced by a new transaction.
+
+**Smoke test (opt-in, testnet):** `pnpm smoke-compat [url]` pays demo-api-in with stock `@x402/fetch` and `@x402/hedera`. Stock clients pay only default assets (Circle USDC), so the script allows `SETTLEMENT_TOKEN_ID` through `spendControls.allowedAssets` for development on tUSDC.
+
 ## Registry
 
 | Method and path | Auth | Request | Response | Task |

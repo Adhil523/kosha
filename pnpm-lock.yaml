@@ -358,6 +358,15 @@ importers:
       '@kosha/shared':
         specifier: workspace:*
         version: link:../packages/shared
+      '@x402/core':
+        specifier: 2.30.0
+        version: 2.30.0
+      '@x402/fetch':
+        specifier: 2.30.0
+        version: 2.30.0
+      '@x402/hedera':
+        specifier: 2.30.0
+        version: 2.30.0(protobufjs@8.6.6)
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -2272,6 +2281,12 @@ packages:
 
   '@x402/core@2.30.0':
     resolution: {integrity: sha512-gvMxCum2QlNI6jI/3NL1jdrmOgtX9sWEWxSIOmeI67/5ndOJvYOtP7JZLSO8o8af+O+A+Vhhjza1NCda0yVppg==}
+
+  '@x402/fetch@2.30.0':
+    resolution: {integrity: sha512-rEC8CHQN5ZFn2W9b1mZ8ZvRyEw9Zkc5LuuVXo1CBU9w3PCtQO3c7+ChS7Ht9MvF66JTicK3ja0KgUF+fpChvNA==}
+
+  '@x402/hedera@2.30.0':
+    resolution: {integrity: sha512-r92oEQiUjTbk0jM5oP/EhCK6XXy7s/rqvAm96Fj07pDPU98cGhhRN6UVr0YkiiTa12zTd+T0V/suGjekHSjJmQ==}
 
   abstract-logging@2.0.1:
     resolution: {integrity: sha512-2BjRTZxTPvheOvGbBslFSYOUkr+SjPtOnrLP33f+VIWLzezQpZcqVg7ja3L4dBXmzzgwT+a029jRx5PCi3JuiA==}
@@ -6251,6 +6266,21 @@ snapshots:
   '@x402/core@2.30.0':
     dependencies:
       zod: 4.6.7
+
+  '@x402/fetch@2.30.0':
+    dependencies:
+      '@x402/core': 2.30.0
+
+  '@x402/hedera@2.30.0(protobufjs@8.6.6)':
+    dependencies:
+      '@hiero-ledger/proto': 2.32.0(protobufjs@8.6.6)
+      '@hiero-ledger/sdk': 2.90.1
+      '@x402/core': 2.30.0
+    transitivePeerDependencies:
+      - bufferutil
+      - expo-crypto
+      - protobufjs
+      - utf-8-validate
 
   abstract-logging@2.0.1: {}
 

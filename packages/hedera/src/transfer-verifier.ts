@@ -99,11 +99,21 @@ export const checkTransferShape = (
   if (bodies.length !== nodeAccountIds.length || sortedIds(nodes) !== sortedIds(nodeAccountIds)) {
     return failure('wrong_nodes');
   }
+  return checkTransferLimits({ transaction, bodies }, { maxTransactionFeeHbar, window });
+};
+
+// What every scheme Core pays the fee for must respect: the fee cap, a valid start inside the
+// quote window, and no HBAR, NFT or allowance movement
+export const checkTransferLimits = (
+  { transaction, bodies }: { transaction: TransferTransaction; bodies: proto.ITransactionBody[] },
+  { maxTransactionFeeHbar, window }: Pick<ShapeCheckInput, 'maxTransactionFeeHbar' | 'window'>
+): { ok: true } | VerifierFailure => {
+  const transactionId = transaction.transactionId;
   const fee = transaction.maxTransactionFee;
   if (!fee || fee.toTinybars().greaterThan(new Hbar(maxTransactionFeeHbar).toTinybars())) {
     return failure('fee_too_high');
   }
-  const validStart = transactionId.validStart?.toDate();
+  const validStart = transactionId?.validStart?.toDate();
   if (!validStart || validStart < window.notBefore || validStart > window.notAfter) {
     return failure('valid_start_out_of_window');
   }
@@ -114,7 +124,9 @@ export const checkTransferShape = (
 };
 
 export type LegsCheckInput = {
-  requirements: VerifiableQuote;
+  requirements: Pick<VerifiableQuote, 'asset'> & {
+    extra: { kosha: Pick<SplitTerms, 'totalMicro' | 'transfers'> };
+  };
   // The reserve registered to the agent the quote was issued to (mode C); null if it has none
   expectedReserveAccount: AccountId | null;
 };

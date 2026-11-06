@@ -1,6 +1,7 @@
 import { hashApiKey } from './auth';
 import type { KoshaDb } from './db/client';
 import { agent, agentWallet, quote, receiver, receiverWallet } from './db/schema';
+import type { SettleDeps } from './payment-settle';
 import type { VerifyDeps } from './payment-verify';
 import type { PayerKeyLookup } from '@kosha/hedera/payer-key';
 import { PAYER_KEY, QUOTE, VALID_START } from '@kosha/hedera/transfer-verifier.fixture';
@@ -80,11 +81,17 @@ export const payloadFor = (transaction: string): PaymentPayload => ({
 
 export const fixedPayerKey: PayerKeyLookup = async () => ({ ok: true, data: PAYER_KEY.publicKey });
 
-export const verifyDeps = (db: KoshaDb, overrides: Partial<VerifyDeps> = {}): VerifyDeps => ({
+// Verify's dependencies, plus the two settle adds for compatibility mode
+type PaymentDeps = VerifyDeps & Pick<SettleDeps, 'network' | 'poolReserveAccountId'>;
+
+export const verifyDeps = (db: KoshaDb, overrides: Partial<PaymentDeps> = {}): PaymentDeps => ({
   db,
   feePayer: '0.0.4000',
   settlementTokenId: '0.0.429274',
   maxTransactionFeeHbar: '2',
+  compatSettlementAccountId: '0.0.4200',
+  network: 'testnet',
+  poolReserveAccountId: '0.0.4300',
   payerKey: fixedPayerKey,
   now: () => VALID_START,
   ...overrides

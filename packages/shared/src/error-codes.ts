@@ -18,6 +18,8 @@ export const ERROR_CODES = [
   'multiple_debits',
   'amount_mismatch',
   'reserve_not_payers',
+  // The fee payer's own account moves tokens (compatibility mode: the payer must be someone else)
+  'fee_payer_transferring',
   'bad_signature',
   // Quote lifecycle
   'quote_not_found',
@@ -64,6 +66,7 @@ const X402_REASON_BY_CODE = new Map<ErrorCode, string>([
   ['wrong_token', `${HEDERA_REASON_PREFIX}asset_mismatch`],
   ['amount_mismatch', `${HEDERA_REASON_PREFIX}amount_mismatch`],
   ['bad_signature', `${HEDERA_REASON_PREFIX}signature_invalid`],
+  ['fee_payer_transferring', `${HEDERA_REASON_PREFIX}fee_payer_transferring_funds`],
   ['unsupported_scheme', 'unsupported_scheme']
 ]);
 const DEFAULT_X402_REASON = 'invalid_payload';

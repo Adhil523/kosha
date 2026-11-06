@@ -31,6 +31,8 @@ export type PayMessageInput = {
   pair: string;
   fy: string;
   aggregatePaise: bigint;
+  // Compatibility mode: paid to Kosha's settlement account and forwarded in a second transaction
+  compat?: boolean;
 };
 
 export const payMessage = (input: PayMessageInput): HcsJson => ({
@@ -45,7 +47,8 @@ export const payMessage = (input: PayMessageInput): HcsJson => ({
   bps: input.rateBps,
   pair: input.pair,
   fy: input.fy,
-  agg: input.aggregatePaise.toString()
+  agg: input.aggregatePaise.toString(),
+  ...(input.compat ? { mode: 'compat' } : {})
 });
 
 // Published once per rule pack, so every pay message's `rph` points at a full hash on the topic

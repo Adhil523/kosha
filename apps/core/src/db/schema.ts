@@ -160,6 +160,8 @@ export const payment = pgTable('Payment', {
   transactionID: text('transactionID').notNull().unique(),
   // Compatibility mode only: Core's second transaction to the API and the pooled reserve
   forwardTransactionID: text('forwardTransactionID').unique(),
+  // Set once the forward is confirmed; until then a set forwardTransactionID is an attempt in flight
+  forwardedAt: utc('forwardedAt'),
   consensusAt: utc('consensusAt'),
   receiverID: text('receiverID')
     .notNull()

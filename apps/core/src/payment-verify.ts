@@ -5,11 +5,13 @@ import { agentWallet, quote } from './db/schema';
 import { type QuoteRow, verifiableQuote } from './quote-terms';
 import { checkSpendPolicy } from './spend-policy';
 import type { TransferTransaction } from '@hiero-ledger/sdk';
+import { verifyExactTransfer } from '@kosha/hedera/exact-verifier';
 import type { PayerKeyLookup } from '@kosha/hedera/payer-key';
 import { verifyPayerSignature, verifyTransfer } from '@kosha/hedera/transfer-verifier';
 import type { ErrorCode } from '@kosha/shared/error-codes';
 import { SCHEMES } from '@kosha/shared/headers';
-import { type AccountId, accountIdSchema, type QuoteId } from '@kosha/shared/ids';
+import { type AccountId, accountIdSchema, type QuoteId, tokenIdSchema } from '@kosha/shared/ids';
+import { bigintToAmount } from '@kosha/shared/money';
 import type { PaymentPayload } from '@kosha/shared/x402-payment';
 import { and, eq } from 'drizzle-orm';
 
@@ -22,18 +24,31 @@ export type VerifyDeps = {
   feePayer: string;
   settlementTokenId: string;
   maxTransactionFeeHbar: string;
+  // payTo of the exact compatibility entry
+  compatSettlementAccountId: string;
   payerKey: PayerKeyLookup;
   now?: () => Date;
 };
 
 export type VerifiedPayment = {
   quote: QuoteRow;
+  // kosha-split, or exact for compatibility mode
+  scheme: PaymentPayload['accepted']['scheme'];
   transaction: TransferTransaction;
   payer: AccountId;
 };
 export type PaymentFailure = { code: ErrorCode; quoteId: QuoteId | null };
 export type PaymentCheck =
   { ok: true; data: VerifiedPayment } | { ok: false; data: PaymentFailure };
+
+// The agent that declared this account as a wallet, if any
+export const walletOwner = async (db: KoshaDb, accountId: string): Promise<string | null> => {
+  const [owner] = await db
+    .select({ agentID: agentWallet.agentID })
+    .from(agentWallet)
+    .where(eq(agentWallet.accountID, accountId));
+  return owner?.agentID ?? null;
+};
 
 // Everything Core checks before it signs as fee payer: the stored quote (the receiver's own, unexpired,
 // unused), the transaction against that quote, the payer as a declared wallet of the quoted agent,
@@ -44,10 +59,10 @@ export const verifyPayment = async (
   payload: PaymentPayload
 ): Promise<PaymentCheck> => {
   const { accepted } = payload;
-  if (accepted.scheme !== SCHEMES.koshaSplit) {
-    return { ok: false, data: { code: 'unsupported_scheme', quoteId: null } };
-  }
-  const { quoteId } = accepted.extra.kosha;
+  const split = accepted.scheme === SCHEMES.koshaSplit;
+  // A stock exact client echoes the accepted entry verbatim, so the quote ID rides along in extra
+  const quoteId = split ? accepted.extra.kosha.quoteId : (accepted.extra.kosha?.quoteId ?? null);
+  if (!quoteId) return { ok: false, data: { code: 'quote_not_found', quoteId: null } };
   const fail = (code: ErrorCode): PaymentCheck => ({ ok: false, data: { code, quoteId } });
 
   const [row] = await deps.db
@@ -58,19 +73,31 @@ export const verifyPayment = async (
   const now = deps.now?.() ?? new Date();
   if (now > row.expiresAt) return fail('quote_expired');
   if (row.usedTransactionID) return fail('replay');
+  // A quote made for an unidentified caller has only the compatibility entry
+  if (split && row.scheme !== 'kosha_split') return fail('unsupported_scheme');
 
-  const checked = verifyTransfer(payload.payload.transaction, {
-    requirements: verifiableQuote(row, {
-      feePayer: deps.feePayer,
-      asset: deps.settlementTokenId
-    }),
-    maxTransactionFeeHbar: deps.maxTransactionFeeHbar,
-    window: {
-      notBefore: new Date(row.createdAt.getTime() - CLOCK_SKEW_SECONDS * 1000),
-      notAfter: row.expiresAt
-    },
-    expectedReserveAccount: accountIdSchema.nullable().parse(row.reserveAccountID)
-  });
+  const window = {
+    notBefore: new Date(row.createdAt.getTime() - CLOCK_SKEW_SECONDS * 1000),
+    notAfter: row.expiresAt
+  };
+  const checked = split
+    ? verifyTransfer(payload.payload.transaction, {
+        requirements: verifiableQuote(row, {
+          feePayer: deps.feePayer,
+          asset: deps.settlementTokenId
+        }),
+        maxTransactionFeeHbar: deps.maxTransactionFeeHbar,
+        window,
+        expectedReserveAccount: accountIdSchema.nullable().parse(row.reserveAccountID)
+      })
+    : verifyExactTransfer(payload.payload.transaction, {
+        asset: tokenIdSchema.parse(deps.settlementTokenId),
+        payTo: accountIdSchema.parse(deps.compatSettlementAccountId),
+        amount: bigintToAmount(row.totalMicro),
+        feePayer: accountIdSchema.parse(deps.feePayer),
+        maxTransactionFeeHbar: deps.maxTransactionFeeHbar,
+        window
+      });
   if (!checked.ok) return fail(checked.data.code);
   const { transaction, payer } = checked.data;
 
@@ -81,23 +108,28 @@ export const verifyPayment = async (
     .where(eq(quote.usedTransactionID, transactionId));
   if (spent) return fail('replay');
 
-  if (!row.agentID) return fail('payer_not_declared');
-  const [declared] = await deps.db
-    .select({ id: agentWallet.id })
-    .from(agentWallet)
-    .where(and(eq(agentWallet.accountID, payer), eq(agentWallet.agentID, row.agentID)));
-  if (!declared) return fail('payer_not_declared');
+  // A quote made for an agent is paid from one of its wallets. A compatibility quote made for an
+  // unidentified caller is paid by whoever signs; settle books it to that account's agent.
+  if (split && !row.agentID) return fail('payer_not_declared');
+  if (row.agentID) {
+    const [declared] = await deps.db
+      .select({ id: agentWallet.id })
+      .from(agentWallet)
+      .where(and(eq(agentWallet.accountID, payer), eq(agentWallet.agentID, row.agentID)));
+    if (!declared) return fail('payer_not_declared');
+  }
+  const agentId = row.agentID ?? (await walletOwner(deps.db, payer));
 
   // Checked again here, so a cap the owner tightened after the quote still holds
-  const rules = await loadPolicy(deps.db, row.agentID);
-  if (rules) {
+  const rules = agentId ? await loadPolicy(deps.db, agentId) : null;
+  if (rules && agentId) {
     const allowed = checkSpendPolicy({
       rules,
       resourceUrl: row.resource,
       totalMicro: row.totalMicro,
       reason: row.reason,
       spent: await committedSpend(deps.db, {
-        agentId: row.agentID,
+        agentId,
         fy: row.fy,
         now,
         excludeQuoteId: row.id
@@ -112,5 +144,5 @@ export const verifyPayment = async (
   const signed = verifyPayerSignature(transaction, key.data);
   if (!signed.ok) return fail(signed.data.code);
 
-  return { ok: true, data: { quote: row, transaction, payer } };
+  return { ok: true, data: { quote: row, transaction, payer, scheme: accepted.scheme } };
 };
