@@ -63,7 +63,7 @@ describe('POST /v1/verify and /v1/settle', () => {
     expect(valid.json()).toEqual({
       isValid: true,
       payer: '0.0.6001',
-      extra: { kosha: { quoteId: 'q_7f3a' } }
+      extra: { kosha: { quoteId: 'q_7f3a', priceMicroUsdc: '100000' } }
     });
 
     const forged = await call(
@@ -91,7 +91,8 @@ describe('POST /v1/verify and /v1/settle', () => {
         kosha: {
           hashscanUrl: 'https://hashscan.io/testnet/transaction/0.0.4000-1793961000-000000000',
           hcsSequence: null,
-          tdsMicroUsdc: '1019'
+          tdsMicroUsdc: '1019',
+          priceMicroUsdc: '100000'
         }
       }
     });

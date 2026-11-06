@@ -32,6 +32,7 @@ const ROWS: Row[] = [
     envKey: 'POOL_RESERVE_ACCOUNT_ID',
     kind: 'account'
   },
+  { role: 'audit (submit key of the audit topic)', envKey: 'AUDIT_ACCOUNT_ID', kind: 'account' },
   { role: 'HCS payments topic', envKey: 'HCS_PAYMENTS_TOPIC', kind: 'topic' },
   { role: 'HCS profiles topic', envKey: 'HCS_PROFILES_TOPIC', kind: 'topic' },
   { role: 'HCS audit topic', envKey: 'HCS_AUDIT_TOPIC', kind: 'topic' }

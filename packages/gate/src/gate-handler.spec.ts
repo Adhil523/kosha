@@ -14,6 +14,9 @@ import { describe, expect, it, vi } from 'vitest';
 const URL_GST = 'https://api.demo-in.dev/v1/gst-lookup?gstin=29ABCDE1234F1Z5';
 const AGENT = 'hedera:testnet:0.0.6001';
 
+// Core's quote for the payment priced the route at exactly 0.10 USDC
+const VERIFIED_EXTRA = { kosha: { quoteId: 'q_7f3a', priceMicroUsdc: '100000' } };
+
 const SETTLED = {
   success: true,
   payer: '0.0.6001',
@@ -24,7 +27,8 @@ const SETTLED = {
     kosha: {
       hashscanUrl: 'https://hashscan.io/testnet/transaction/1762424000.000000001',
       hcsSequence: 42,
-      tdsMicroUsdc: '1019'
+      tdsMicroUsdc: '1019',
+      priceMicroUsdc: '100000'
     }
   }
 };
@@ -40,7 +44,7 @@ const json = (body: unknown, status = 200) => Response.json(body, { status });
 const setup = (replies: CoreReplies = {}, overrides: Partial<GateOptions> = {}) => {
   const defaults: Required<CoreReplies> = {
     quote: () => json(paymentRequired),
-    verify: () => json({ isValid: true, payer: '0.0.6001' }),
+    verify: () => json({ isValid: true, payer: '0.0.6001', extra: VERIFIED_EXTRA }),
     settle: () => json(SETTLED)
   };
   const fetchMock = vi.fn<typeof fetch>(async (input) => {
@@ -135,14 +139,11 @@ describe('createGateHandler: unpaid request', () => {
 });
 
 describe('createGateHandler: paid request', () => {
-  it.each([
-    ['PAYMENT-SIGNATURE', 'payment-signature'],
-    ['the legacy X-PAYMENT', 'x-payment']
-  ])('verifies, settles and passes through with %s', async (_label, header) => {
+  it('verifies, settles and passes through with PAYMENT-SIGNATURE', async () => {
     const { handle, calls } = setup();
     const payment = paymentFor(splitEntry);
 
-    const result = await handle(request({ [header]: payment, 'x-kosha-agent': AGENT }));
+    const result = await handle(request({ 'payment-signature': payment, 'x-kosha-agent': AGENT }));
 
     if (result.action !== 'pass') {
       throw new Error(`expected pass, got ${result.action}`);
@@ -166,6 +167,16 @@ describe('createGateHandler: paid request', () => {
     const facilitatorBody = { x402Version: 2, paymentRequirements: splitEntry };
     expect(calls(CORE_PATHS.verify)).toEqual([expect.objectContaining(facilitatorBody)]);
     expect(calls(CORE_PATHS.settle)).toEqual([expect.objectContaining(facilitatorBody)]);
+  });
+
+  it('quotes a request that sends only the v1 X-PAYMENT, since Gate speaks v2 alone', async () => {
+    const { handle, calls } = setup();
+
+    const result = expectRespond(await handle(request({ 'x-payment': paymentFor(splitEntry) })));
+
+    expect(result.status).toBe(402);
+    expect(result.headers).toHaveProperty(HEADERS.paymentRequired);
+    expect(calls(CORE_PATHS.verify)).toEqual([]);
   });
 
   it('accepts the compatibility entry, whose all-in total covers the price', async () => {
@@ -223,18 +234,26 @@ describe('createGateHandler: deferred settlement', () => {
 
 const VERIFIER_CODES = ERROR_CODES.slice(0, ERROR_CODES.indexOf('bad_signature') + 1);
 
+const rejectedAs = (code: string) => () =>
+  json({
+    isValid: false,
+    invalidReason: 'invalid_payload',
+    extra: { kosha: { quoteId: 'q_7f3a', errorCode: code } }
+  });
+
+const settledAs = (code: string) => () =>
+  json({
+    success: false,
+    errorReason: code,
+    transaction: SETTLED.transaction,
+    network: 'hedera:testnet'
+  });
+
 describe('createGateHandler: failed payment', () => {
-  it.each([...VERIFIER_CODES, 'quote_expired', 'quote_not_found', 'replay', 'policy_daily'])(
+  it.each([...VERIFIER_CODES, 'quote_expired', 'quote_not_found', 'policy_daily'])(
     'answers 402 with %s when Core rejects the payment, and never settles',
     async (code) => {
-      const { handle, calls } = setup({
-        verify: () =>
-          json({
-            isValid: false,
-            invalidReason: 'invalid_payload',
-            extra: { kosha: { quoteId: 'q_7f3a', errorCode: code } }
-          })
-      });
+      const { handle, calls } = setup({ verify: rejectedAs(code) });
 
       const result = expectRespond(
         await handle(request({ 'payment-signature': paymentFor(splitEntry) }))
@@ -271,6 +290,117 @@ describe('createGateHandler: failed payment', () => {
     );
   });
 
+  describe('a resent payment, which verify calls replay', () => {
+    const replayVerify = () =>
+      json({
+        isValid: false,
+        invalidReason: 'invalid_payload',
+        extra: { kosha: { quoteId: 'q_7f3a', errorCode: 'replay' } }
+      });
+
+    it.each([false, true])(
+      "is settled at once for Core's earlier result (deferred: %s)",
+      async (deferSettle) => {
+        const { handle, calls } = setup({ verify: replayVerify });
+
+        const result = await handle(request({ 'payment-signature': paymentFor(splitEntry) }), {
+          deferSettle
+        });
+
+        expect(result.action).toBe('pass');
+        expect(result.action === 'pass' && result.kosha.txId).toBe(SETTLED.transaction);
+        expect(calls(CORE_PATHS.settle)).toHaveLength(1);
+      }
+    );
+
+    it("isn't served when its earlier result was for a cheaper route", async () => {
+      const cheaper = {
+        ...SETTLED,
+        extensions: { kosha: { ...SETTLED.extensions.kosha, priceMicroUsdc: '1000' } }
+      };
+      const { handle } = setup({ verify: replayVerify, settle: () => json(cheaper) });
+
+      const result = expectRespond(
+        await handle(request({ 'payment-signature': paymentFor(splitEntry) }))
+      );
+
+      expect(result).toMatchObject({ status: 402, body: { error: 'amount_mismatch' } });
+    });
+
+    it('stays replay when settle says so', async () => {
+      const replayed = {
+        success: false,
+        errorReason: 'replay',
+        transaction: '',
+        network: 'hedera:testnet'
+      };
+      const { handle } = setup({ verify: replayVerify, settle: () => json(replayed) });
+
+      const result = expectRespond(
+        await handle(request({ 'payment-signature': paymentFor(splitEntry) }))
+      );
+
+      expect(result).toMatchObject({ status: 402, body: { x402Version: 2, error: 'replay' } });
+    });
+  });
+
+  it.each([
+    ['verify', 'quote_expired', { verify: rejectedAs('quote_expired') }],
+    ['settle', 'settlement_failed', { settle: settledAs('settlement_failed') }]
+  ] as const)(
+    'offers a fresh quote in PAYMENT-REQUIRED when %s fails with %s',
+    async (_label, code, replies) => {
+      const { handle, calls } = setup(replies);
+
+      const result = expectRespond(
+        await handle(
+          request({ 'payment-signature': paymentFor(splitEntry), 'x-kosha-agent': AGENT })
+        )
+      );
+
+      expect(result.body).toEqual({ x402Version: 2, error: code });
+      const offered = decodePaymentRequiredHeader(result.headers[HEADERS.paymentRequired] ?? '');
+      expect(offered).toEqual({ ...paymentRequired, error: code });
+      expect(calls(CORE_PATHS.quote)).toEqual([expect.objectContaining({ agent: AGENT })]);
+    }
+  );
+
+  it.each([
+    [
+      'settlement_pending: the first payment may still land',
+      { settle: settledAs('settlement_pending') }
+    ],
+    ['replay from settle: a payment on this quote already landed', { settle: settledAs('replay') }],
+    [
+      'a policy refusal: the cap would refuse the next one too',
+      { verify: rejectedAs('policy_daily') }
+    ]
+  ] as const)('offers no fresh quote after %s', async (_label, replies) => {
+    const { handle, calls } = setup(replies);
+
+    const result = expectRespond(
+      await handle(request({ 'payment-signature': paymentFor(splitEntry) }))
+    );
+
+    expect(result.status).toBe(402);
+    expect(result.headers).not.toHaveProperty(HEADERS.paymentRequired);
+    expect(calls(CORE_PATHS.quote)).toEqual([]);
+  });
+
+  it('answers the bare failure when Core cannot quote again', async () => {
+    const { handle } = setup({
+      verify: rejectedAs('quote_expired'),
+      quote: () => json({}, 503)
+    });
+
+    const result = expectRespond(
+      await handle(request({ 'payment-signature': paymentFor(splitEntry) }))
+    );
+
+    expect(result).toMatchObject({ status: 402, body: { x402Version: 2, error: 'quote_expired' } });
+    expect(result.headers).not.toHaveProperty(HEADERS.paymentRequired);
+  });
+
   it.each([
     ['a header that is not base64 JSON', 'not-base64!'],
     ['a payload of the wrong shape', encodeHeader({ x402Version: 1 })]
@@ -280,7 +410,26 @@ describe('createGateHandler: failed payment', () => {
     const result = expectRespond(await handle(request({ 'payment-signature': header })));
 
     expect(result.body).toEqual({ x402Version: 2, error: 'invalid_payload' });
+    expect(result.headers).toHaveProperty(HEADERS.paymentRequired);
     expect(calls(CORE_PATHS.verify)).toEqual([]);
+  });
+
+  it('refuses an exact payment whose quote was for a cheaper route, before settling', async () => {
+    // A cheap route's all-in total can still cover this route's price
+    const cheaperQuote = () =>
+      json({
+        isValid: true,
+        payer: '0.0.6001',
+        extra: { kosha: { quoteId: 'q_7f3a', priceMicroUsdc: '90000' } }
+      });
+    const { handle, calls } = setup({ verify: cheaperQuote });
+
+    const result = expectRespond(
+      await handle(request({ 'payment-signature': paymentFor(exactEntry) }))
+    );
+
+    expect(result.body).toMatchObject({ error: 'amount_mismatch' });
+    expect(calls(CORE_PATHS.settle)).toEqual([]);
   });
 
   it('refuses a quote for a different price before calling Core', async () => {
@@ -392,6 +541,7 @@ describe('createGateHandler: on-chain reserve proof', () => {
       errorReason: 'amount_mismatch',
       transaction: SETTLED.transaction
     });
+    expect(result.headers).not.toHaveProperty(HEADERS.paymentRequired);
   });
 
   it('still serves, marked unconfirmed, when the Mirror Node lags past the timeout', async () => {

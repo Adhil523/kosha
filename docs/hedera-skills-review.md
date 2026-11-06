@@ -4,21 +4,15 @@
 
 ## Summary
 
-Five Hedera skills found 31 code findings in `main`, 3 of them high. 12 are fixed in draft [PR #71](https://github.com/Adhil523/kosha/pull/71), including all three high ones. 15 are in Agent B's files, and 1 needs a human decision. The hackathon validator scored the submission 23/35.
+Five Hedera skills found 31 code findings in `main`, 3 of them high. All 31 are fixed, in two draft PRs: [#71](https://github.com/Adhil523/kosha/pull/71) (Core, `@kosha/hedera`, shared) and [#72](https://github.com/Adhil523/kosha/pull/72) (Gate, Pay, demo agent, bootstrap; stacked on #71). Fixing them turned up one more hole, which is fixed too. The hackathon validator scored the submission 23/35.
 
 - **Fixed, high:**
-  - A quote signed for a cheap route could pay for an expensive one (X1).
+  - A quote signed for a cheap route could pay for an expensive one (X1). The fix had two parts: first the client's echoed terms, then Core reporting the quoted price so Gate matches it to the route.
   - One unpublishable HCS message could block the outbox for good (C1).
   - Outbox retries could post the same evidence twice (C2).
-- **Fixed, medium:**
-  - Core's fee payer is now protected from unfunded payers (X2).
-  - A lost settle response no longer strands a paying client (X3).
-  - Failed scheduled releases are no longer recorded as executed (T1).
-  - Pooled-reserve releases can now be signed (T2).
-  - Node failover duplicates are no longer recorded as failures (T3).
-  - Airdrops and contract transfers no longer slip past the outside-payment watcher (T4).
-- **Open:** all 10 Agent Kit findings and 5 Gate and Pay findings are Agent B's to fix. On the submission, the biggest gain is Validation (1/5): outside feedback, a waitlist, a video and a deployed URL.
-- **Checks:** typecheck, lint and tests pass for every changed package and its dependents, 30 of 30 turbo tasks. Two fixes still need one testnet run to confirm Hedera behaviour (see [Fixes applied](#fixes-applied)).
+- **Fixed, medium:** among others, Core's fee payer is protected from unfunded payers (X2), and a lost settle response no longer strands a paying client (X3). Failed scheduled releases are no longer recorded as executed (T1). The Pay tool no longer fetches arbitrary hosts (K2), and it honours the agent's approval mode (K3). The demo agent no longer holds Core's key (C5).
+- **Still open:** what needs people. That means outside feedback, a waitlist, a demo video and a deployed URL for the submission, one testnet bootstrap run, and a merge-order note for Agent B's PR #69.
+- **Checks:** typecheck, lint and tests pass for every changed package and its dependents, 30 of 30 turbo tasks. Every behaviour change has a test that fails against the previous code.
 
 ## Process
 
@@ -28,8 +22,8 @@ The review applied five of the 25 skills in [hedera-dev/hedera-skills](https://g
 2. **Lens selection.** Each skill was matched against what Kosha actually imports (`@x402/*` 2.30.0, `@hiero-ledger/sdk` 2.90.1, `@hashgraph/hedera-agent-kit` 4.2.0). The skills for Solidity system contracts, oracles, cross-chain, harness and dev workflow were skipped because Kosha uses none of those.
 3. **Parallel review.** One reviewer per lens read its skill in full, then checked the code in a clean, detached checkout of `main`. No network calls and no writes.
 4. **Verification.** Each finding had to point at a file and line. Findings were then re-checked against the code before any fix.
-5. **Fixes.** Fixes were limited to Agent A's paths ([PROTOCOL §4](agents/PROTOCOL.md): `packages/shared`, `packages/hedera`, `apps/core`, root config, the seed, smoke-settle and cosign scripts). They went onto a branch from `main` as small commits, each one typechecked and tested.
-6. **Hand-offs.** Findings in Agent B's or the human's paths are listed under [Not fixed](#not-fixed), with the owner.
+5. **Fixes, pass 1.** Fixes were limited to Agent A's paths ([PROTOCOL §4](agents/PROTOCOL.md): `packages/shared`, `packages/hedera`, `apps/core`, root config, the seed, smoke-settle and cosign scripts). They went onto `a/hedera-skills-fixes` as small commits, each one typechecked and tested.
+6. **Fixes, pass 2.** With the human's go-ahead, Agent B's files were fixed too, on `a/hedera-skills-b-fixes`, stacked on pass 1. Agent B's open PR #69 touched none of those files. Gate and Pay went to two agents in separate worktrees, and their commits were reviewed before being cherry-picked. The human chose the topic-key design (C5) and the license.
 
 | Lens | Skill | Kosha code in scope |
 | --- | --- | --- |
@@ -43,7 +37,7 @@ Plan v2 had already been revised once against this skills repo (PROTOCOL §2), s
 
 ## Findings by lens
 
-The four code lenses produced 31 findings: 3 high, 10 medium, 18 low or low-medium. Each one was traced to a file and line in `main`. IDs are used in the Fixes and Not fixed sections.
+The four code lenses produced 31 findings: 3 high, 10 medium, 18 low or low-medium. Each one was traced to a file and line in `main`. IDs are used in the Fixes section.
 
 ### x402 payments
 
@@ -116,7 +110,9 @@ Other blockers it found: `.env.example` contradicted the README's setup steps; R
 
 ## Fixes applied
 
-12 code findings are fixed in Agent A's code, including all three high ones, plus one submission blocker. That took 20 commits on [`a/hedera-skills-fixes`](https://github.com/Adhil523/kosha/tree/a/hedera-skills-fixes). X7 is half done: the shared schema is in, and Pay still has to switch to it. Every commit typechecks and passes its package's tests. Every behaviour change has a test that fails without it.
+All 31 findings are fixed in two passes. Every commit typechecks and passes its package's tests. Every behaviour change has a test that fails without it.
+
+### Pass 1: Agent A's code (PR #71)
 
 | Finding | Fix | Commits |
 | --- | --- | --- |
@@ -132,56 +128,56 @@ Other blockers it found: `.env.example` contradicted the README's setup steps; R
 | X3 | A retried settle with the same signed transaction gets the earlier result instead of `replay`; the payer's signature is re-checked | `65fb7e6` |
 | T4 | The outside-payment scan reads every transaction type, so airdrops and contract transfers count | `c278473` |
 | X4 | Random nanoseconds inside the signing millisecond keep transaction IDs apart | `fa0867f` |
-| X7 (shared half) | `offeredPaymentRequiredSchema` drops 402 entries Kosha doesn't model | `51cdc71` |
-| Submission | `.env.example` now matches the README's setup steps and database name | `ef5d873` |
+| X7 | `offeredPaymentRequiredSchema` drops 402 entries Kosha doesn't model | `51cdc71` |
+| T6 | Quoted transfers, forwards and releases declare the token's 6 decimals, so the network refuses a token with other decimals; the split verifier requires the declaration | `03521b1`, `ecb9cb5` |
+| C6 | The outbox keeps each message's running hash with its sequence number | `bf8c566`, `25e83e6` |
+| Submission | `.env.example` matches the README's setup steps and database name | `ef5d873` |
 | Docs | [`docs/core-api.md`](core-api.md) covers the new refusals, the retried settle, `failed` releases and the outbox | `78ed3b1` |
 
-Two behaviour changes are visible to other code:
+### Pass 2: Agent B's files, with the human's go-ahead (PR #72)
 
-- A settle sent twice with the same payload now returns the first result instead of `replay`. The transfer still runs once.
-- `ERROR_CODES` gains `insufficient_funds` and release statuses gain `failed`. Both were added outside the ranges Gate's tests iterate over.
+Gate and Pay were fixed by two parallel agents in their own worktrees. Their commits were reviewed and cherry-picked; edits they made to human-owned files were dropped.
 
-Two fixes rest on Hedera behaviour that unit tests can't confirm, so check them once on testnet:
-
-- T1 assumes a schedule's `executed_timestamp` is the consensus timestamp of the transfer it ran.
-- T2 needs the compliance account to hold HBAR, because it pays the ScheduleSign fee.
-
-## Not fixed
-
-19 of the 31 findings remain open: 15 are in files Agent B owns, 1 needs a human decision, and 3 were left on purpose. The Agent B table also lists the Gate halves of X1 and X3, which Core now covers. Under PROTOCOL §4 and §8, Agent A doesn't edit Agent B's files and asks through a `for-agent-b` issue instead. Those issues are not filed yet.
-
-### Agent B's files
-
-| ID | What to change | Where |
+| Finding | Fix | Commits |
 | --- | --- | --- |
-| X1 (Gate half) | Build `paymentRequirements` from the route, not the client's `accepted`. Core now refuses a mismatch, so this is defence in depth. | `packages/gate/src/gate-handler.ts:230` |
-| X3 (Gate half) | Raise the 10 s Core timeout above Core's receipt-plus-Mirror wait, so the first response usually arrives | `packages/gate/src/core-client.ts:13` |
-| X5 | Decode legacy `X-PAYMENT` as v1 or drop it; add it to the CORS list if kept | `packages/gate/src/gate-handler.ts:321` |
-| X6 | Include `PAYMENT-REQUIRED` on a failed-payment 402 | `packages/gate/src/gate-handler.ts:96` |
-| X7 (Pay half) | Parse 402s with `offeredPaymentRequiredSchema` | `packages/pay/src/prepare-payment.ts:66,75` |
-| K1 | Let `BaseTool.execute()` run the hooks; report a settled payment as paid even if the body read fails | `packages/pay/src/agent-kit-plugin.ts:133` |
-| K2 | Check the host allowlist before fetching, not only on a 402 | `packages/pay/src/prepare-payment.ts:87` |
-| K3 | Honour `AgentMode`: in `RETURN_BYTES` return the signed bytes, don't settle | `packages/pay/src/agent-kit-plugin.ts:78` |
-| K4 | Declare the tool as a transaction tool | `packages/pay/src/agent-kit-plugin.ts:62` |
-| K5 | Reserve spend before the request, release it on failure | `packages/pay/src/prepare-payment.ts:105` |
-| K6 | Throw with the cap and value; record spend after all policies pass | `packages/pay/src/agent-kit-plugin.ts:189` |
-| K7 | Document pairing the plugin with `RejectToolPolicy` for raw transfer tools | `packages/pay/README.md` |
-| K8 | Rename to `kosha_paid_fetch_tool`, describe `url`, add an output parser | `packages/pay/src/agent-kit-plugin.ts` |
-| K9 | Pin the peer dependency to `4.2.0` | `packages/pay/package.json:48` |
-| K10 | Update the research note for `BaseTool` | `docs/research/agent-kit.md` |
-| C4 | Size each HCS-1 chunk by its serialized bytes and set `setMaxChunks(1)` | `scripts/lib/hcs11-inscribe.ts:27` |
-| T7 | Skip funding when the Mirror Node balance read fails | `scripts/lib/bootstrap-association.ts:68` |
+| X1 (route) | Core reports the quoted API price on verify and settle; Gate serves only the route priced at exactly that. This closes the `exact` case and a hole the retried settle opened: a resent cheap payment serving a dearer route | `f863f15`, `4921f32`, `1d7d67c` |
+| X3 (Gate) | Settle gets 75 s, above Core's receipt-plus-Mirror wait; a resent payment goes to settle for Core's earlier result | `25efa35`, `b26c3d8` |
+| X6 | A failed 402 carries a fresh `PAYMENT-REQUIRED`, but not after `settlement_pending`, `replay`, a reserve-proof mismatch or a `policy_*` refusal | `c6353dc` |
+| X5 | Gate stops reading the v1 `X-PAYMENT` header | `5b8c4a1` |
+| X7 (Pay) | Pay parses 402s with `offeredPaymentRequiredSchema` | `7725205` |
+| K2 | The host allowlist is checked before any fetch; private, loopback, link-local and metadata IPs are always refused; redirects are manual | `a0df543` |
+| K5 | Caps are held when a payment is signed and freed if it doesn't go ahead | `5ad46f8` |
+| K1 | A settled payment stays paid with its transaction ID when the body read or a later hook fails | `5c066ab` |
+| K3, K4 | The tool pays only in `AUTONOMOUS` mode and is typed as a transaction tool | `327ab49` |
+| K6 | The budget policy throws, naming the cap and amounts, and gives back what doesn't go ahead | `873b7bd` |
+| K8 | Renamed to `kosha_paid_fetch_tool`, with a described `url`, a Parameters section and an output parser | `ee278e4`, `08712e8` |
+| K9 | The Agent Kit peer is pinned to `4.2.0` | `9abfa66` |
+| K7, K10 | Pay's README explains the mode and why to reject raw transfer tools; the research note requires `BaseTool` | `5bdb4d3`, `f0001ad` |
+| C5 | An audit account, created by bootstrap, owns the audit topic; the demo agent posts with it and no longer receives `CORE_PRIVATE_KEY` | `acf983c`, `22d80df` |
+| C4 | Each HCS-1 profile chunk fits one HCS message, envelope included | `0f6291f` |
+| T7 | Bootstrap never funds an agent whose balance it couldn't read | `3682bfb` |
+| T8 | tUSDC gets Core's key as admin key; the compliance account gets HBAR for the pooled-reserve ScheduleSign | `0cc8281`, `acf983c` |
+| Submission | MIT LICENSE | `7c5a815` |
 
-### Needs a human decision
+Behaviour changes visible to other code:
 
-- **C5, topic keys.** Topics have no admin key, which keeps them immutable but makes a leaked Core key unrotatable. Separately, the demo agent holds Core's private key to post audit messages. Choose between an admin key on new topics or a separate audit-topic key.
-- **Submission gaps.** Outside feedback for the Validation table, a waitlist, a demo video, a deployed Console URL, a LICENSE, and README updates. The README marks built features as in progress and omits `pnpm register-agents`. The README is Agent B's, and the rest needs people.
+- A settle sent twice with the same payload returns the first result instead of `replay`; the transfer still runs once.
+- `ERROR_CODES` gains `insufficient_funds`; release statuses gain `failed`; verify and settle responses gain `priceMicroUsdc`.
+- The Pay tool is `kosha_paid_fetch_tool` (constant `KOSHA_PAID_FETCH_TOOL`). It refuses outside `AUTONOMOUS` mode and refuses private-address hosts with `blocked_host`. `pay.release(payment)` frees a held payment that won't be sent.
+- Gate's settle can take up to 75 s, and a failed 402 can carry `PAYMENT-REQUIRED`.
 
-### Left on purpose
+## Still open
 
-- **T6, token decimals.** Switching to `addTokenTransferWithDecimals` changes the signed body that Pay builds and both verifiers check, for a token that is fixed at 6 decimals today. It is worth doing only if `SETTLEMENT_TOKEN_ID` might change.
-- **C6, running hash.** Storing the receipt's running hash and consensus time needs a schema change. The Mirror Node already serves both, so the evidence is not lost.
-- **T8.** tUSDC without an admin key is fine for a dev token.
+None of the 31 findings is open. What remains needs people or a merge-order decision:
+
+- **Testnet, once #72 merges:**
+  - Run `pnpm bootstrap`. It creates `AUDIT_ACCOUNT_ID` and `AUDIT_PRIVATE_KEY` and replaces the audit topic.
+  - Copy the env to `kosha-b`.
+  - Top up the existing compliance account with HBAR.
+  - Confirm once that a schedule's `executed_timestamp` matches the consensus timestamp of the transfer it ran (T1).
+- **Agent B's open PR #69:** it adds `RELEASE_STATUS_LABELS` in `apps/console/lib/monthly.ts`. Once #71 is merged too, that map needs a `failed` label, or Console's typecheck fails.
+- **Human-owned docs:** `Kosha Execution Plan.md`, `docs/agents/PROTOCOL.md` and `docs/agents/AGENT_B.md` still name the tool `kosha_paid_fetch`.
+- **Submission:** outside feedback for the Validation table, a waitlist, a demo video, a deployed Console URL, and the README's stale "in progress" labels. Agent B's #69 already edits the README.
 
 ## Where the skills are out of date
 

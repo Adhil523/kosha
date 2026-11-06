@@ -24,6 +24,8 @@ export const ensureSettlementToken = async (context: BootstrapContext): Promise<
     .setSupplyType(TokenSupplyType.Infinite)
     .setTreasuryAccountId(context.coreId)
     .setSupplyKey(context.coreKey.publicKey)
+    // Without an admin key a token can never be updated or deleted; Core, the operator, holds it
+    .setAdminKey(context.coreKey.publicKey)
     .setTokenMemo('kosha dev settlement token');
 
   const created = await context.run(create);

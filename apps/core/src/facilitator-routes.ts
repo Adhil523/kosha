@@ -16,6 +16,7 @@ import {
 import { X402_NETWORKS } from '@kosha/shared/headers';
 import { type HederaNetwork, quoteIdSchema, transactionIdSchema } from '@kosha/shared/ids';
 import { hashscanTransaction } from '@kosha/shared/links';
+import { amountSchema } from '@kosha/shared/money';
 import { type SettlementResponse, settlementResponseSchema } from '@kosha/shared/x402-payment';
 
 export type FacilitatorRouteDeps = SettleDeps & {
@@ -64,7 +65,12 @@ export const facilitatorRoutes =
         return {
           isValid: true,
           payer,
-          extra: { kosha: { quoteId: quoteIdSchema.parse(quote.id) } }
+          extra: {
+            kosha: {
+              quoteId: quoteIdSchema.parse(quote.id),
+              priceMicroUsdc: amountSchema.parse(quote.priceMicro.toString())
+            }
+          }
         };
       }
     );
@@ -110,7 +116,8 @@ export const facilitatorRoutes =
               hashscanUrl: hashscanTransaction(deps.network, settled),
               // The outbox publishes the HCS record moments later; the ledger shows its sequence
               hcsSequence: null,
-              tdsMicroUsdc: quote.tdsMicro.toString()
+              tdsMicroUsdc: quote.tdsMicro.toString(),
+              priceMicroUsdc: quote.priceMicro.toString()
             }
           }
         });

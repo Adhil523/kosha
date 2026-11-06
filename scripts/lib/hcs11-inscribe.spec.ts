@@ -44,9 +44,13 @@ describe('encodeHcs1 and decodeHcs1', () => {
         .repeat(5000)
         .replace(/x/g, () => String.fromCharCode(97 + Math.floor(Math.random() * 26)))
     });
-    const { chunks } = encodeHcs1(big);
+    const { memo, chunks } = encodeHcs1(big);
     expect(chunks.length).toBeGreaterThan(1);
     expect(chunks.map((chunk) => chunk.o)).toEqual(chunks.map((_, index) => index));
+    // Each message as sent, envelope included, fits one HCS chunk
+    const sizes = chunks.map((chunk) => Buffer.byteLength(JSON.stringify(chunk)));
+    expect(Math.max(...sizes)).toBe(HCS1_CHUNK_BYTES);
+    expect(decodeHcs1(memo, chunks)).toEqual({ ok: true, data: big });
   });
 
   it('refuses a file whose hash does not match the memo', () => {

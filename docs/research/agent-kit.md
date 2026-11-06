@@ -1,6 +1,6 @@
 # Hedera Agent Kit
 
-**Answer:** The unscoped `hedera-agent-kit` package is deprecated at 3.8.2. Use v4, which is split into the scoped packages `@hashgraph/hedera-agent-kit` 4.2.0 (core, `AgentMode`, `Plugin`/`Tool`, built-in plugins at `/plugins`) and `@hashgraph/hedera-agent-kit-langchain` 2.1.0 (`HederaLangchainToolkit`). v4 runs on Zod 4, so there is no Zod 3/4 conflict with this repo. **Recommendation:** ship `kosha_paid_fetch` as an Agent Kit **plugin** (`koshaPayPlugin(pay)`). The `Tool` is a plain object, so this takes about as much code as the LangChain `tool()` version. It also qualifies `@kosha/pay` as a "Hedera Agent Kit plugin", works in the AI SDK, MCP and ElizaOS toolkits, and removes `@langchain/core` from `@kosha/pay`.
+**Answer:** The unscoped `hedera-agent-kit` package is deprecated at 3.8.2. Use v4, which is split into the scoped packages `@hashgraph/hedera-agent-kit` 4.2.0 (core, `AgentMode`, `Plugin`/`Tool`, built-in plugins at `/plugins`) and `@hashgraph/hedera-agent-kit-langchain` 2.1.0 (`HederaLangchainToolkit`). v4 runs on Zod 4, so there is no Zod 3/4 conflict with this repo. **Recommendation:** ship `kosha_paid_fetch_tool` as an Agent Kit **plugin** (`koshaPayPlugin(pay)`) whose tool is a **`BaseTool` subclass**, so the kit runs policies and hooks around it. It also qualifies `@kosha/pay` as a "Hedera Agent Kit plugin", works in the AI SDK, MCP and ElizaOS toolkits, and removes `@langchain/core` from `@kosha/pay`.
 
 ## Sources
 - npm metadata (`npm view … version peerDependencies dependencies engines time`), checked 2026-11-06, for every package below
@@ -26,11 +26,14 @@
 - **Plugin type:** `{ name, version?, description?, tools: (context) => Tool[] }`. **Tool type:** `{ method, name, description, parameters: z.ZodObject, execute(client, context, params): Promise<any>, outputParser?, toolType?: 'query'|'transaction'|'other' }`.
   - The LangChain tool's name is `method`; `name` is only a display label.
   - `HederaAgentAPI.run` passes the return value of `execute` through `JSON.stringify` before the LLM sees it, so return an object.
-- **Base classes:** `BaseTool`, `BaseQueryTool` and `BaseTransactionTool` are optional. They are needed only for hooks and policies; plain objects work fine.
+- **Base classes (corrected 2026-11-07):** a plain `Tool` object loads, but the kit runs `context.hooks` (policies and `HcsAuditTrailHook` included) only from `BaseTool.execute()`. A plain object skips every policy, so Kosha's tool must extend `BaseTool`.
+  - `execute()` runs `preToolExecutionHook`, `normalizeParams`, `postParamsNormalizationHook`, `coreAction`, `postCoreActionHook`, then `secondaryAction` if `shouldSecondaryAction` says so, then `postToolExecutionHook`. Anything that throws goes to `handleError`, and the post-execution hooks never run.
+  - `toolType` defaults to `'other'`. `BaseTransactionTool` and `BaseQueryTool` set `'transaction'` and `'query'`; policies with `relevantTools = ['*']` can act on the type. Kosha's tool sets `toolType = TOOL_TYPE.TRANSACTION` because it moves funds.
+  - Kit tool methods end in `_tool` (`transfer_hbar_tool`). `outputParser` is optional, but the LangChain `ResponseParserService` logs an error for every tool without one.
 - **Configuration:** `{ plugins?, tools?: string[] (allow-list of methods), context? }`.
   - **v4 has no implicit defaults:** with an empty `plugins` array the agent gets zero tools.
   - The `context` fields are `accountId?`, `accountPublicKey?`, `mode?`, `transactionStrategy?`, `mirrornodeService?` and `hooks?`.
-- **`AgentMode`:** `AUTONOMOUS` (the default; the kit signs with the client operator), `RETURN_BYTES` (returns unsigned bytes; needs `context.accountId`), `CUSTOM_EXECUTE_TX` and `CUSTOM_RETURN_BYTES`.
+- **`AgentMode`:** `AUTONOMOUS` (the default; the kit signs with the client operator), `RETURN_BYTES` (returns unsigned bytes; needs `context.accountId`), `CUSTOM_EXECUTE_TX` and `CUSTOM_RETURN_BYTES` (both hand the transaction to `context.transactionStrategy`). Kosha's tool pays only in `AUTONOMOUS` and refuses in the others: its payment is co-signed and submitted by the API's facilitator, so there are no bytes to return.
 - **Built-in plugins** (from `@hashgraph/hedera-agent-kit/plugins`):
   - Mutation plugins: `coreAccountPlugin`, `coreTokenPlugin`, `coreConsensusPlugin`, `coreEVMPlugin`.
   - Query plugins: `coreAccountQueryPlugin` (`get_hbar_balance_query_tool`, `get_account_query_tool`, `get_account_token_balances_query_tool`), `coreTokenQueryPlugin`, `coreConsensusQueryPlugin`, `coreEVMQueryPlugin`, `coreMiscQueriesPlugin`, `coreTransactionQueryPlugin`.
@@ -46,23 +49,27 @@
 
 ## Snippet
 ```ts
-// packages/pay/src/agent-kit-plugin.ts: only a type import from the kit (make it an optional peer dependency)
-import type { Plugin, Tool } from '@hashgraph/hedera-agent-kit';
+// packages/pay/src/agent-kit-plugin.ts (sketch; the shipped file adds the mode check, audit and caps)
+import { BaseTool, type Plugin, TOOL_TYPE, type ToolType } from '@hashgraph/hedera-agent-kit';
 import { z } from 'zod';
-import type { KoshaPay } from './client.js';
+import type { KoshaPay } from './kosha-pay';
 
-const paidFetch = (pay: KoshaPay): Tool => ({
-  method: 'kosha_paid_fetch', // this becomes the LangChain tool name
-  name: 'Kosha paid fetch',
-  description: 'Fetch a paid API; pays the x402 402 in USDC on Hedera with Indian TDS handled.',
-  parameters: z.object({ url: z.url() }),
-  execute: async (_client, _context, { url }: { url: string }) => {
-    const res = await pay.fetch(url); // Kosha Pay signs with its own key; the kit client is unused
-    return { raw: { body: await res.json(), receipt: pay.lastReceipt }, humanMessage: `Paid for ${url}` };
-  },
-});
+const params = z.object({ url: z.url().describe('The full URL of the paid API') });
 
-export const koshaPayPlugin = (pay: KoshaPay): Plugin => ({ name: 'kosha-pay', version: '0.1.0', tools: () => [paidFetch(pay)] });
+class KoshaPaidFetchTool extends BaseTool<z.output<typeof params>> {
+  method = 'kosha_paid_fetch_tool'; // this becomes the LangChain tool name
+  name = 'Kosha paid fetch';
+  description = 'This tool pays an x402 API in USDC on Hedera.\n\nParameters:\n- url (string, required)';
+  parameters = params;
+  override toolType: ToolType = TOOL_TYPE.TRANSACTION;
+  constructor(private readonly pay: KoshaPay) { super(); }
+  async normalizeParams(input: z.output<typeof params>) { return params.parse(input); }
+  // Quote and sign without sending; policies run in postCoreActionHook, before secondaryAction
+  async coreAction({ url }: z.output<typeof params>) { return this.pay.prepare(url); }
+  override async secondaryAction(prepared) { return this.pay.complete(prepared.data.payment); }
+}
+
+export const koshaPayPlugin = (pay: KoshaPay): Plugin => ({ name: 'kosha-pay', version: '0.1.0', tools: () => [new KoshaPaidFetchTool(pay)] });
 
 // apps/demo-agent/src/index.ts
 import { Client, PrivateKey } from '@hiero-ledger/sdk';
@@ -72,7 +79,7 @@ import { HederaLangchainToolkit } from '@hashgraph/hedera-agent-kit-langchain';
 import { createAgent } from 'langchain';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatOpenAI } from '@langchain/openai';
-import { koshaPayPlugin } from '@kosha/pay';
+import { koshaPayPlugin } from '@kosha/pay/agent-kit-plugin';
 
 const accountId = process.env.AGENT_ACCOUNT_ID!;
 const client = Client.forTestnet().setOperator(accountId, PrivateKey.fromStringDer(process.env.AGENT_PRIVATE_KEY!));
@@ -86,7 +93,7 @@ const toolkit = new HederaLangchainToolkit({
 const model = process.env.LLM_PROVIDER === 'anthropic'
   ? new ChatAnthropic({ model: 'claude-sonnet-5-5' })
   : new ChatOpenAI({ model: 'gpt-6.1-terra' });
-const agent = createAgent({ model, tools: toolkit.getTools(), systemPrompt: 'Use kosha_paid_fetch to buy data.' });
+const agent = createAgent({ model, tools: toolkit.getTools(), systemPrompt: 'Use kosha_paid_fetch_tool to buy data.' });
 const { messages } = await agent.invoke({
   messages: [{ role: 'user', content: 'Find GST details for these 5 companies and summarise.' }],
 });

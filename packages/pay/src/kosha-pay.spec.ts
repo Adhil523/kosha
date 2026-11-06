@@ -49,13 +49,15 @@ const settled = (settlement: unknown = SETTLED, status = 200) =>
 // A fake paid API: an unpaid call gets `unpaid()`, a paid one gets `paid()`
 const setup = ({
   unpaid = () => quoted(),
-  paid = () => settled()
-}: { unpaid?: () => Response; paid?: () => Response } = {}) => {
+  paid = () => settled(),
+  dailyUsdc = PAY_CONFIG.policy.dailyUsdc
+}: { unpaid?: () => Response; paid?: () => Response; dailyUsdc?: string } = {}) => {
   const fetchMock = vi.fn<typeof fetch>(async (_input, init) =>
     new Headers(init?.headers).has(HEADERS.paymentSignature) ? paid() : unpaid()
   );
   const store = createMemorySpendStore();
-  const pay = createKoshaPay(PAY_CONFIG, { fetch: fetchMock, store, now: () => NOW });
+  const config = { ...PAY_CONFIG, policy: { ...PAY_CONFIG.policy, dailyUsdc } };
+  const pay = createKoshaPay(config, { fetch: fetchMock, store, now: () => NOW });
   const sentHeaders = (call: number) => new Headers(fetchMock.mock.calls[call]?.[1]?.headers);
   return { pay, fetchMock, store, sentHeaders };
 };
@@ -126,9 +128,31 @@ describe('createKoshaPay: fetch', () => {
   });
 });
 
+describe('createKoshaPay: refusals before fetching', () => {
+  it.each([
+    ['a host off the allowlist', 'https://evil.example/v1/data?leak=1', 'policy_allowlist'],
+    ['cloud metadata', 'http://169.254.169.254/latest/meta-data/', 'blocked_host']
+  ])('refuses %s without contacting it', async (_label, url, reason) => {
+    const { pay, fetchMock } = setup();
+
+    const response = await pay.fetch(url);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(0);
+    expect(pay.lastError?.reason).toBe(reason);
+  });
+
+  it('does not follow a redirect off the checked host', async () => {
+    const { pay, fetchMock } = setup();
+
+    await pay.fetch(URL_GST);
+
+    expect(fetchMock.mock.calls.map(([, init]) => init?.redirect)).toEqual(['manual', 'manual']);
+  });
+});
+
 describe('createKoshaPay: refusals before signing', () => {
   it.each([
-    ['blocked by the allowlist', 'https://evil.example/v1/data', quoted(), 'policy_allowlist'],
     [
       'over the per-payment cap',
       URL_GST,
@@ -163,13 +187,24 @@ describe('createKoshaPay: refusals before signing', () => {
       'invalid_402'
     ]
   ])('refuses %s and returns the 402 unchanged', async (_label, url, reply, reason) => {
-    const { pay, fetchMock } = setup({ unpaid: () => reply });
+    const { pay, fetchMock, store } = setup({ unpaid: () => reply });
 
     const response = await pay.fetch(url);
 
     expect(response.status).toBe(402);
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(pay.lastError?.reason).toBe(reason);
+    expect(await store.totals(NOW)).toEqual({ dayMicro: 0n, fyMicro: 0n });
+  });
+
+  it('pays a 402 that also offers schemes and networks Kosha does not model', async () => {
+    const evm = { ...splitEntry, scheme: 'exact', network: 'eip155:8453', asset: '0xabc' };
+    const upto = { ...splitEntry, scheme: 'upto' };
+    const { pay } = setup({ unpaid: () => quoted([evm, upto, splitEntry]) });
+
+    const prepared = await pay.prepare(URL_GST);
+
+    expect(prepared.ok && prepared.data.kind).toBe('payment');
   });
 
   it('reads the quote from the 402 body when the header is missing', async () => {
@@ -199,6 +234,50 @@ describe('createKoshaPay: prepare and complete', () => {
     const completed = await pay.complete(prepared.data.payment);
 
     expect(completed.ok && completed.data.receipt?.txId).toBe(SETTLED.transaction);
+  });
+});
+
+describe('createKoshaPay: caps with payments in flight', () => {
+  it('lets only one of two concurrent payments through a cap that fits one', async () => {
+    const { pay, fetchMock, store } = setup({ dailyUsdc: '0.15' });
+
+    const responses = await Promise.all([pay.fetch(URL_GST), pay.fetch(URL_GST)]);
+
+    const paidCalls = fetchMock.mock.calls.filter(([, init]) =>
+      new Headers(init?.headers).has(HEADERS.paymentSignature)
+    );
+    expect(paidCalls).toHaveLength(1);
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 402]);
+    expect((await store.totals(NOW)).dayMicro).toBe(101019n);
+  });
+
+  it('holds the caps from prepare() until release(), and frees them once', async () => {
+    const { pay, store } = setup();
+
+    const prepared = await pay.prepare(URL_GST);
+    if (!prepared.ok || prepared.data.kind !== 'payment') {
+      throw new Error('expected a prepared payment');
+    }
+    expect((await store.totals(NOW)).dayMicro).toBe(101019n);
+
+    await store.record(NOW, 5n);
+    await pay.release(prepared.data.payment);
+    await pay.release(prepared.data.payment);
+
+    expect((await store.totals(NOW)).dayMicro).toBe(5n);
+  });
+
+  it('keeps a sent payment counted even if release() is called after', async () => {
+    const { pay, store } = setup();
+
+    const prepared = await pay.prepare(URL_GST);
+    if (!prepared.ok || prepared.data.kind !== 'payment') {
+      throw new Error('expected a prepared payment');
+    }
+    await pay.complete(prepared.data.payment);
+    await pay.release(prepared.data.payment);
+
+    expect((await store.totals(NOW)).dayMicro).toBe(101019n);
   });
 });
 

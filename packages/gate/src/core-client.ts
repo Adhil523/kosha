@@ -12,6 +12,13 @@ import { type z } from 'zod';
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
+// Settle waits on the chain, so it gets longer than quote and verify. Core's slow path is a receipt
+// that never comes: the Hedera SDK asks 10 times with backoff of 0.5 s doubling to an 8 s cap (about
+// 50 s), then Core asks the Mirror Node 5 times 2 s apart (about 10 s). 75 s covers both plus the
+// submit. A node hanging every call can still run to the SDK's 2-minute ceiling; the client's retry
+// with the same signed payment then gets Core's earlier result instead of paying twice.
+const DEFAULT_SETTLE_TIMEOUT_MS = 75_000;
+
 export const CORE_PATHS = {
   quote: '/v1/quote',
   verify: '/v1/verify',
@@ -63,7 +70,9 @@ export type CoreClientOptions = {
   core: string;
   // The receiver's API key; identifies the API owner in Core
   apiKey: string;
+  // For quote and verify
   timeoutMs?: number;
+  settleTimeoutMs?: number;
   fetch?: typeof fetch;
 };
 
@@ -84,9 +93,15 @@ const toWireJson = (body: unknown): string =>
 export const createCoreClient = (options: CoreClientOptions): CoreClient => {
   const fetchImpl = options.fetch ?? fetch;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const settleTimeoutMs = options.settleTimeoutMs ?? DEFAULT_SETTLE_TIMEOUT_MS;
   const baseUrl = options.core.replace(/\/+$/, '');
 
-  const post = async <T>(path: string, body: unknown, schema: z.ZodType<T>) => {
+  const post = async <T>(
+    path: string,
+    body: unknown,
+    schema: z.ZodType<T>,
+    waitMs: number = timeoutMs
+  ) => {
     let response: Response;
     try {
       response = await fetchImpl(`${baseUrl}${path}`, {
@@ -96,7 +111,7 @@ export const createCoreClient = (options: CoreClientOptions): CoreClient => {
           'content-type': 'application/json'
         },
         body: toWireJson(body),
-        signal: AbortSignal.timeout(timeoutMs)
+        signal: AbortSignal.timeout(waitMs)
       });
     } catch {
       return { ok: false, data: { reason: 'core_unavailable' } } satisfies CoreResult<T>;
@@ -130,6 +145,6 @@ export const createCoreClient = (options: CoreClientOptions): CoreClient => {
   return {
     quote: (request) => post(CORE_PATHS.quote, request, quoteResponseSchema),
     verify: (request) => post(CORE_PATHS.verify, request, verifyResponseSchema),
-    settle: (request) => post(CORE_PATHS.settle, request, settleResponseSchema)
+    settle: (request) => post(CORE_PATHS.settle, request, settleResponseSchema, settleTimeoutMs)
   };
 };
