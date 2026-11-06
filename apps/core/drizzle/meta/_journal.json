@@ -8,6 +8,13 @@
       "when": 1793975169053,
       "tag": "0000_blushing_kingpin",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793977571539,
+      "tag": "0001_nasty_karma",
+      "breakpoints": true
     }
   ]
 }

@@ -21,6 +21,8 @@ const accountSchema = z.object({
   key: z.object({ _type: z.string(), key: z.string() }).nullable()
 });
 
+const accountMemoSchema = z.object({ memo: z.string() });
+
 const transactionSchema = z.object({
   transaction_id: z.string(),
   consensus_timestamp: z.string(),
@@ -125,6 +127,12 @@ export const createMirrorClient = (baseUrl: string, fetchImpl: FetchLike = fetch
     return { ok: true, data: { type: result.data.key._type, hex: result.data.key.key } };
   };
 
+  // The account memo; an agent's points at its HCS-11 profile (hcs11-profile.ts)
+  const accountMemo = async (accountId: string): Promise<MirrorResult<string>> => {
+    const result = await getJson(`/api/v1/accounts/${accountId}`, accountMemoSchema);
+    return result.ok ? { ok: true, data: result.data.memo } : result;
+  };
+
   // mirrorTransactionId is the 0.0.x-seconds-nanos form (see @kosha/shared/links)
   const transactionById = async (
     mirrorTransactionId: string
@@ -191,7 +199,7 @@ export const createMirrorClient = (baseUrl: string, fetchImpl: FetchLike = fetch
     };
   };
 
-  return { accountKey, transactionById, tokenCreditsSince, scheduleStatus };
+  return { accountKey, accountMemo, transactionById, tokenCreditsSince, scheduleStatus };
 };
 
 export type MirrorClient = ReturnType<typeof createMirrorClient>;
