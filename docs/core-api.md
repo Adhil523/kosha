@@ -87,6 +87,26 @@ A refused quote returns `403` with `{ error: "policy_…", message }` and stores
 
 Events are in-process: Core runs as one instance.
 
+### Quarterly TDS export (A15)
+
+`GET /v1/exports/tds?receiverId=&quarter=2026-Q3` answers `text/csv; charset=utf-8` with `Content-Disposition: attachment; filename="kosha-tds-<quarter>.csv"`. A receiver key may leave `receiverId` out; the admin token must name one. An unknown quarter returns `400`.
+
+- **Quarter:** the financial year's start year, then the quarter. With the April start, `2026-Q3` is 1 October to 31 December 2026, cut at midnight IST.
+- **Rows:** one per settled payment to the receiver in that quarter that withheld TDS, sorted by deductee and then by time. Payments with no TDS (under the threshold, or with a non-resident side), pending or failed payments, and sample history are left out.
+- **Format:** RFC 4180. The header is `tdsExportRowSchema`'s keys in order, cells are quoted only when needed, and lines end in CRLF.
+
+| Column | Meaning |
+| --- | --- |
+| `deducteeRef` | The payer's account, masked (`0.0.6***`). Core never holds an agent's PAN; a payer with no PAN on file is prefixed with the statutory `PANNOTAVBL`. |
+| `considerationPaise` | The API's price in paise at the quote's rate: the consideration, not including TDS |
+| `tdsPaise` | The TDS `decide()` computed. Recovered exactly as `floor(tdsMicro × inrPerUsdMicro ÷ 10¹⁰)`, because decide rounds the paise up and then the micro-USDC up. |
+| `rateBps` | 100 (1%) or 2000 (20%, no PAN) |
+| `fundedBy` | Always `deductee_reserve`: the payer funded its own TDS into its 2-of-2 reserve (mode C) |
+| `paymentDate`, `deductionDate` | The IST date of the settlement. One atomic transaction pays the price and reserves the TDS, so the two dates are the same. |
+| `section` | `393(1)` |
+| `hcsSequence` | The payment's HCS record, empty until the outbox has published it |
+| `transactionId` | The Hedera transaction that settled it |
+
 ## Demo administration (A14)
 
 Admin only. `pnpm seed --history` and `pnpm seed --reset-demo` call these. Parties are named the way the seed knows them: the agent's identity and the receiver's wallet account.
