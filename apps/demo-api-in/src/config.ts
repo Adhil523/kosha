@@ -9,7 +9,10 @@ const envSchema = z.object({
   CORE_URL: z.url(),
   DEMO_API_IN_KEY: z.string().min(1),
   DEMO_API_IN_PORT: z.coerce.number().int().min(1).max(65_535).default(DEFAULT_PORT),
-  CONSOLE_URL: z.url().default(DEFAULT_CONSOLE_URL)
+  CONSOLE_URL: z.url().default(DEFAULT_CONSOLE_URL),
+  // `off` skips Gate's Mirror Node reserve proof after each settlement (B28). The burst script
+  // starts its own instance this way, so 20 quick calls are not each held up by Mirror Node lag.
+  DEMO_API_PROOF: z.enum(['on', 'off']).default('on')
 });
 
 export type DemoApiConfig = {
@@ -17,6 +20,7 @@ export type DemoApiConfig = {
   apiKey: string;
   port: number;
   registrationUrl: string;
+  onChainProof: boolean;
 };
 
 export type LoadedConfig =
@@ -35,14 +39,15 @@ export const loadConfig = (env: NodeJS.ProcessEnv): LoadedConfig => {
     const problems = [...new Set(parsed.error.issues.map((issue) => String(issue.path[0])))];
     return { ok: false, data: { problems } };
   }
-  const { CORE_URL, DEMO_API_IN_KEY, DEMO_API_IN_PORT, CONSOLE_URL } = parsed.data;
+  const { CORE_URL, DEMO_API_IN_KEY, DEMO_API_IN_PORT, CONSOLE_URL, DEMO_API_PROOF } = parsed.data;
   return {
     ok: true,
     data: {
       core: CORE_URL,
       apiKey: DEMO_API_IN_KEY,
       port: DEMO_API_IN_PORT,
-      registrationUrl: new URL(REGISTRATION_PATH, CONSOLE_URL).toString()
+      registrationUrl: new URL(REGISTRATION_PATH, CONSOLE_URL).toString(),
+      onChainProof: DEMO_API_PROOF === 'on'
     }
   };
 };
