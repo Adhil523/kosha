@@ -1,6 +1,9 @@
+import { loadPolicy } from './agent-policy';
+import { committedSpend } from './agent-spend';
 import type { KoshaDb } from './db/client';
 import { agentWallet, quote } from './db/schema';
 import { type QuoteRow, verifiableQuote } from './quote-terms';
+import { checkSpendPolicy } from './spend-policy';
 import type { TransferTransaction } from '@hiero-ledger/sdk';
 import type { PayerKeyLookup } from '@kosha/hedera/payer-key';
 import { verifyPayerSignature, verifyTransfer } from '@kosha/hedera/transfer-verifier';
@@ -34,7 +37,7 @@ export type PaymentCheck =
 
 // Everything Core checks before it signs as fee payer: the stored quote (the receiver's own, unexpired,
 // unused), the transaction against that quote, the payer as a declared wallet of the quoted agent,
-// and the payer's signature with its key from the Mirror Node.
+// the agent's spending policy, and the payer's signature with its key from the Mirror Node.
 export const verifyPayment = async (
   deps: VerifyDeps,
   receiverId: string,
@@ -84,6 +87,24 @@ export const verifyPayment = async (
     .from(agentWallet)
     .where(and(eq(agentWallet.accountID, payer), eq(agentWallet.agentID, row.agentID)));
   if (!declared) return fail('payer_not_declared');
+
+  // Checked again here, so a cap the owner tightened after the quote still holds
+  const rules = await loadPolicy(deps.db, row.agentID);
+  if (rules) {
+    const allowed = checkSpendPolicy({
+      rules,
+      resourceUrl: row.resource,
+      totalMicro: row.totalMicro,
+      reason: row.reason,
+      spent: await committedSpend(deps.db, {
+        agentId: row.agentID,
+        fy: row.fy,
+        now,
+        excludeQuoteId: row.id
+      })
+    });
+    if (!allowed.ok) return fail(allowed.data.code);
+  }
 
   const key = await deps.payerKey(payer);
   if (!key.ok)

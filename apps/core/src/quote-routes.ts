@@ -1,4 +1,6 @@
 import type { ActiveRulePack } from './active-rule-pack';
+import { loadPolicy } from './agent-policy';
+import { committedSpend, lockAgentSpend } from './agent-spend';
 import type { RegisterRoutes } from './app';
 import { authenticateReceiver } from './auth';
 import type { KoshaDb } from './db/client';
@@ -7,6 +9,7 @@ import type { FxSource } from './fx';
 import { pairTotalPaise, withPairLock } from './pair-total';
 import { quoteTransfers } from './quote-terms';
 import type { ResolvePayer } from './resolve-payer';
+import { checkSpendPolicy } from './spend-policy';
 import { type ErrorResponse, errorResponseSchema } from '@kosha/shared/error-codes';
 import { quoteRequestSchema } from '@kosha/shared/facilitator-api';
 import { SCHEMES, X402_NETWORKS, X402_VERSION } from '@kosha/shared/headers';
@@ -55,6 +58,7 @@ export const quoteRoutes =
             200: paymentRequiredSchema,
             400: errorResponseSchema,
             401: errorResponseSchema,
+            403: errorResponseSchema,
             503: errorResponseSchema
           }
         }
@@ -81,6 +85,7 @@ export const quoteRoutes =
           .orderBy(asc(receiverWallet.createdAt));
         if (!payTo) return reply.status(400).send({ error: 'unknown_receiver' });
 
+        const rules = await loadPolicy(deps.db, payer.data.agentId);
         const issuedAt = now();
         const rate = await deps.fx.current();
         const price = amountToBigint(priceMicroUsdc);
@@ -108,6 +113,27 @@ export const quoteRoutes =
             priceMicroUsdc: price,
             tdsMicroUsdc: decision.tdsMicroUsdc
           });
+
+          // The agent owner's caps, checked on the all-in total under a per-agent lock, so quotes
+          // to two receivers at once can't both fit under one cap
+          if (rules) {
+            await lockAgentSpend(tx, pair.agentId);
+            const allowed = checkSpendPolicy({
+              rules,
+              resourceUrl: resource.url,
+              totalMicro: split.payerTotalMicro,
+              reason: decision.reason,
+              spent: await committedSpend(tx, { agentId: pair.agentId, fy: pair.fy, now: issuedAt })
+            });
+            if (!allowed.ok) return { ok: false, data: allowed.data } as const;
+            if (allowed.data.warn) {
+              request.log.warn(
+                { agentId: pair.agentId, reason: decision.reason },
+                'quote withholds TDS'
+              );
+            }
+          }
+
           const [row] = await tx
             .insert(quote)
             .values({
@@ -130,10 +156,14 @@ export const quoteRoutes =
               expiresAt: new Date(issuedAt.getTime() + QUOTE_TTL_SECONDS * 1000)
             })
             .returning();
-          return { decision, split, row };
+          return { ok: true, data: { decision, split, row } } as const;
         });
-        if (!saved.row) throw new Error('[quote]: the quote was not saved');
-        const { decision, split, row } = saved;
+        if (!saved.ok) {
+          const { code, message } = saved.data;
+          return reply.status(403).send({ error: code, message });
+        }
+        if (!saved.data.row) throw new Error('[quote]: the quote was not saved');
+        const { decision, split, row } = saved.data;
 
         const transfers = quoteTransfers(row);
         const body: PaymentRequired = paymentRequiredSchema.parse({

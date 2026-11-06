@@ -1,13 +1,16 @@
 import { readRulePack } from './active-rule-pack';
+import { savePolicy } from './agent-policy';
 import { buildApp } from './app';
 import { hashApiKey } from './auth';
 import type { DbHandle } from './db/client';
-import { agent, aggregate, receiver, receiverWallet } from './db/schema';
+import { agent, aggregate, quote, receiver, receiverWallet } from './db/schema';
 import { testDb } from './db/test-db';
 import { demoFixedFx } from './fx';
 import { quoteRoutes } from './quote-routes';
 import { createPayerResolver } from './resolve-payer';
 import { findRepoRoot } from '@kosha/shared/env';
+import { amountSchema } from '@kosha/shared/money';
+import type { Policy } from '@kosha/shared/registry';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const NOW = new Date('2026-11-06T10:30:00Z');
@@ -230,5 +233,70 @@ describe('POST /v1/quote', () => {
     expect(noKey.statusCode).toBe(401);
     const noAgent = await quoteFor('business');
     expect(noAgent.statusCode).toBe(400);
+  });
+
+  describe('with a spending policy', () => {
+    const RESIDENT = 'hedera:testnet:0.0.6001';
+    const RULES: Policy = {
+      perPaymentMicro: amountSchema.parse('500000'),
+      dailyMicro: amountSchema.parse('5000000'),
+      fyBudgetMicro: amountSchema.parse('200000000'),
+      allowlist: ['api.demo-in.dev'],
+      thresholdAction: 'warn',
+      acceptRulepacks: ['in-2026.2']
+    };
+
+    const withPolicy = (overrides: Partial<Policy>) =>
+      savePolicy(handle.db, agentIds[RESIDENT] ?? '', { ...RULES, ...overrides });
+
+    const refusal = async () => {
+      const response = await quoteFor('business', RESIDENT);
+      return { status: response.statusCode, error: (response.json() as { error?: string }).error };
+    };
+
+    it('quotes inside every rule', async () => {
+      await withPolicy({});
+      expect((await quoteFor('business', RESIDENT)).statusCode).toBe(200);
+    });
+
+    it('refuses a resource whose host is off the allowlist, and stores no quote', async () => {
+      await withPolicy({ allowlist: ['api.demo-global.dev'] });
+      expect(await refusal()).toEqual({ status: 403, error: 'policy_allowlist' });
+      expect(await handle.db.select().from(quote)).toHaveLength(0);
+    });
+
+    it('counts the tax: TDS pushes a price at the per-payment cap over it', async () => {
+      await withPolicy({ perPaymentMicro: amountSchema.parse('100000') });
+      expect((await quoteFor('business', RESIDENT)).statusCode).toBe(200);
+      // Crossing the threshold adds 1019 micro-USDC of TDS to the 100000 price
+      await seedTotal(RESIDENT, 'business', 999_500n);
+      expect(await refusal()).toEqual({ status: 403, error: 'policy_per_payment' });
+    });
+
+    it("refuses a quote that would pass today's cap, counting open quotes", async () => {
+      await withPolicy({ dailyMicro: amountSchema.parse('250000') });
+      expect((await quoteFor('business', RESIDENT)).statusCode).toBe(200);
+      expect((await quoteFor('business', RESIDENT)).statusCode).toBe(200);
+      expect(await refusal()).toEqual({ status: 403, error: 'policy_daily' });
+    });
+
+    it("refuses a quote that would pass the year's budget", async () => {
+      await withPolicy({ fyBudgetMicro: amountSchema.parse('150000') });
+      expect((await quoteFor('business', RESIDENT)).statusCode).toBe(200);
+      expect(await refusal()).toEqual({ status: 403, error: 'policy_budget' });
+    });
+
+    it('blocks a quote that withholds TDS when the threshold action is block', async () => {
+      await withPolicy({ thresholdAction: 'block' });
+      expect((await quoteFor('business', RESIDENT)).statusCode).toBe(200);
+      await seedTotal(RESIDENT, 'business', 999_500n);
+      expect(await refusal()).toEqual({ status: 403, error: 'policy_threshold_block' });
+    });
+
+    it('quotes a withholding payment when the threshold action is warn', async () => {
+      await withPolicy({ thresholdAction: 'warn' });
+      await seedTotal(RESIDENT, 'business', 999_500n);
+      expect((await quoteFor('business', RESIDENT)).statusCode).toBe(200);
+    });
   });
 });
