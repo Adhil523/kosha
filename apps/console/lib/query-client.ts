@@ -17,5 +17,7 @@ export const QUERY_KEYS = {
   ledger: ['ledger'],
   aggregates: ['aggregates'],
   overview: ['overview'],
-  agents: ['agents']
+  agents: ['agents'],
+  agentSpend: (agentId: string) => ['agents', agentId, 'spend'] as const,
+  agentPolicy: (agentId: string) => ['agents', agentId, 'policy'] as const
 } as const;

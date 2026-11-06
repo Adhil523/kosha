@@ -2,6 +2,7 @@ import { agentViewsSchema } from '@/lib/agents';
 import { api } from '@/lib/api';
 import { overviewSchema } from '@/lib/overview';
 import { QUERY_KEYS } from '@/lib/query-client';
+import { spendSummarySchema } from '@/lib/spend';
 import { URLS } from '@/lib/urls';
 import { aggregateRowSchema, ledgerPageSchema } from '@kosha/shared/console-api';
 import { z } from 'zod';
@@ -33,4 +34,9 @@ export const getOverviewQueryParams = () => ({
 export const getAgentsQueryParams = () => ({
   queryKey: QUERY_KEYS.agents,
   queryFn: () => getValidated(URLS.console.agents, agentViewsSchema)
+});
+
+export const getAgentSpendQueryParams = (agentId: string) => ({
+  queryKey: QUERY_KEYS.agentSpend(agentId),
+  queryFn: () => getValidated(URLS.console.agentSpend(agentId), spendSummarySchema)
 });

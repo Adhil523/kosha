@@ -24,3 +24,7 @@ export const readTokenBalance = (json: unknown, tokenId: string): string | null 
   const token = parsed.data.tokens.find((entry) => entry.token_id === tokenId);
   return String(token?.balance ?? 0);
 };
+
+// A short tab label: the paying account and the level, e.g. "0.0.6001 · L1"
+export const agentShortLabel = (agent: AgentView): string =>
+  `${agent.wallets[0] ?? agent.agentId} · L${agent.level}`;
