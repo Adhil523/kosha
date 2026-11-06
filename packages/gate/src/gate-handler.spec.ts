@@ -1,5 +1,10 @@
 import { CORE_PATHS } from './core-client';
-import { createGateHandler, type GateRequest, type GateResult } from './gate-handler';
+import {
+  createGateHandler,
+  type GateOptions,
+  type GateRequest,
+  type GateResult
+} from './gate-handler';
 import { ERROR_CODES } from '@kosha/shared/error-codes';
 import { encodeHeader, HEADERS } from '@kosha/shared/headers';
 import { exactEntry, paymentRequired, splitEntry } from '@kosha/shared/x402-payment.fixture';
@@ -32,7 +37,7 @@ type CoreReplies = Partial<Record<keyof typeof CORE_PATHS, () => Response | Prom
 const json = (body: unknown, status = 200) => Response.json(body, { status });
 
 // A fake Core: each path answers with the given reply, or a happy-path default
-const setup = (replies: CoreReplies = {}) => {
+const setup = (replies: CoreReplies = {}, overrides: Partial<GateOptions> = {}) => {
   const defaults: Required<CoreReplies> = {
     quote: () => json(paymentRequired),
     verify: () => json({ isValid: true, payer: '0.0.6001' }),
@@ -52,7 +57,9 @@ const setup = (replies: CoreReplies = {}) => {
     core: 'https://core.test',
     apiKey: 'key_123',
     fetch: fetchMock,
-    routes: { 'GET /v1/gst-lookup': { priceUsdc: '0.10', description: 'GSTIN lookup' } }
+    onChainProof: false,
+    routes: { 'GET /v1/gst-lookup': { priceUsdc: '0.10', description: 'GSTIN lookup' } },
+    ...overrides
   });
   const calls = (path: string) =>
     fetchMock.mock.calls
@@ -147,7 +154,8 @@ describe('createGateHandler: paid request', () => {
       txId: SETTLED.transaction,
       hashscanUrl: SETTLED.extensions.kosha.hashscanUrl,
       tdsMicroUsdc: 1019n,
-      hcsSequence: 42
+      hcsSequence: 42,
+      reserveProof: 'off'
     });
     expect(result.headers[HEADERS.koshaTax]).toBe(
       'rateBps=100; tdsMicroUsdc=1019; rulepack=in-2026.2'
@@ -312,5 +320,63 @@ describe('createGateHandler: Core unavailable', () => {
     const result = expectRespond(await handle(request()));
 
     expect(result).toMatchObject({ status: 503, body: { error: 'unauthorized' } });
+  });
+});
+
+describe('createGateHandler: on-chain reserve proof', () => {
+  // The settled transaction as the Mirror Node shows it, crediting the reserve `reserveMicro`
+  /* eslint-disable @typescript-eslint/naming-convention -- Mirror Node fields are snake_case */
+  const mirrorWith = (reserveMicro: number | null) =>
+    vi.fn(async () =>
+      reserveMicro === null
+        ? Response.json({}, { status: 404 })
+        : Response.json({
+            transactions: [
+              {
+                transaction_id: '0.0.6001-1762424000-000000001',
+                consensus_timestamp: '1762424002.000000001',
+                result: 'SUCCESS',
+                name: 'CRYPTOTRANSFER',
+                token_transfers: [
+                  { token_id: splitEntry.asset, account: '0.0.5001', amount: 100000 },
+                  { token_id: splitEntry.asset, account: '0.0.6101', amount: reserveMicro }
+                ]
+              }
+            ]
+          })
+    );
+  /* eslint-enable @typescript-eslint/naming-convention */
+  const proofOptions = (mirrorFetch: ReturnType<typeof mirrorWith>) => ({
+    onChainProof: { mirrorUrl: 'https://mirror.test', fetch: mirrorFetch, sleep: async () => {} }
+  });
+  const paid = request({ 'payment-signature': paymentFor(splitEntry) });
+
+  it('passes once the reserve leg is proven on-chain', async () => {
+    const { handle } = setup({}, proofOptions(mirrorWith(1019)));
+    const result = await handle(paid);
+    expect(result.action === 'pass' && result.kosha.reserveProof).toBe('proven');
+  });
+
+  it('refuses with amount_mismatch when the chain shows a short reserve, whatever Core said', async () => {
+    const { handle } = setup({}, proofOptions(mirrorWith(1000)));
+    const result = expectRespond(await handle(paid));
+    expect(result.status).toBe(402);
+    expect(result.body).toMatchObject({
+      error: 'amount_mismatch',
+      message: 'reserve proof: reserve_short'
+    });
+    expect(
+      decodePaymentResponseHeader(result.headers[HEADERS.paymentResponse] ?? '')
+    ).toMatchObject({
+      success: false,
+      errorReason: 'amount_mismatch',
+      transaction: SETTLED.transaction
+    });
+  });
+
+  it('still serves, marked unconfirmed, when the Mirror Node lags past the timeout', async () => {
+    const { handle } = setup({}, proofOptions(mirrorWith(null)));
+    const result = await handle(paid);
+    expect(result.action === 'pass' && result.kosha.reserveProof).toBe('unconfirmed');
   });
 });
