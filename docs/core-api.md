@@ -86,6 +86,25 @@ A refused quote returns `403` with `{ error: "policy_…", message }` and stores
 
 Events are in-process: Core runs as one instance.
 
+## Demo administration (A14)
+
+Admin only. `pnpm seed --history` and `pnpm seed --reset-demo` call these. Parties are named the way the seed knows them: the agent's identity and the receiver's wallet account.
+
+| Method and path | Auth | Request | Response |
+| --- | --- | --- | --- |
+| `POST /v1/admin/sample-payments` | admin | `demo-admin` `samplePaymentsRequestSchema` | `demo-admin` `samplePaymentsResponseSchema` |
+| `POST /v1/admin/demo-reset` | admin | `demo-admin` `demoResetRequestSchema` | `demo-admin` `demoResetResponseSchema` |
+
+**Sample payments** are written oldest first as settled payments with `sample: true`. Each is taxed by `decide()` against the pair's running total, like a live payment, and adds to the aggregate. They have no transaction on chain and no HCS record, so a sample row's HashScan link leads nowhere. A sample whose `key` was already recorded is skipped. If any party is not registered, the call returns `400` and writes nothing. Samples count toward thresholds, not toward spending caps (A12).
+
+**Demo reset** runs in one database transaction:
+1. Clears each `clearAgents` agent's own (non-sample) payments, their unpublished HCS rows, and its unpaid quotes.
+2. Sets each `balances` pair to one sample "opening balance" payment worth `valuePaise`, dated a day back (or now, when a day back falls in the last financial year). Every other payment of that pair this year is removed.
+3. Recounts every touched pair's aggregate from the payments that remain.
+4. Sends each `level0` agent back to Level 0: residency `unknown`, no PAN, no credential.
+
+HCS messages already published stay on chain, so after a reset the topic's running totals no longer match the database for the reset pairs.
+
 ## Fixtures
 
 `@kosha/shared/fixtures` exports one parsed example per read schema (`LEDGER_PAGE_FIXTURE`, `AGGREGATES_FIXTURE`, `STREAM_EVENTS_FIXTURE`, `TDS_EXPORT_FIXTURE`, `MONTHLY_CLOSE_FIXTURE`, and so on). The Console serves them under `KOSHA_MOCK=1` until Core serves real data. Core's responses must parse with the same schemas.
