@@ -1,10 +1,10 @@
 import { checkAgentProfile, type ProfileCheckResult } from './agent-profile';
 import type { RegisterRoutes } from './app';
 import { requireAdmin } from './auth';
-import { credentialHash, verifyCredential } from './credentials';
 import type { KoshaDb } from './db/client';
 import { agent, agentWallet } from './db/schema';
 import type { PublicKey } from '@hiero-ledger/sdk';
+import { credentialHash, verifyCredential } from '@kosha/hedera/credentials';
 import type { ProfileReader } from '@kosha/hedera/hcs11-profile';
 import { type ErrorResponse, errorResponseSchema } from '@kosha/shared/error-codes';
 import { agentRegisterSchema, type AgentRow, agentRowSchema } from '@kosha/shared/registry';

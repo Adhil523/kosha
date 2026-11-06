@@ -238,6 +238,9 @@ importers:
       '@kosha/shared':
         specifier: workspace:*
         version: link:../shared
+      '@kosha/tax-engine':
+        specifier: workspace:*
+        version: link:../tax-engine
       zod:
         specifier: 4.6.7
         version: 4.6.7

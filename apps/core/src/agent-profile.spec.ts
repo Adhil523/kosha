@@ -1,10 +1,10 @@
 import { agentRoutes } from './agent-routes';
 import { buildApp } from './app';
-import { credentialHash, issueCredential } from './credentials';
 import type { DbHandle } from './db/client';
 import { agent } from './db/schema';
 import { testDb } from './db/test-db';
 import { PrivateKey } from '@hiero-ledger/sdk';
+import { credentialHash, issueCredential } from '@kosha/hedera/credentials';
 import type { AgentProfile, ProfileResult } from '@kosha/hedera/hcs11-profile';
 import { accountIdSchema, agentIdentitySchema, type Uaid, uaidSchema } from '@kosha/shared/ids';
 import { eq } from 'drizzle-orm';

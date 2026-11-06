@@ -1,9 +1,9 @@
 import { agentRoutes } from './agent-routes';
 import { buildApp } from './app';
-import { issueCredential } from './credentials';
 import type { DbHandle } from './db/client';
 import { testDb } from './db/test-db';
 import { PrivateKey } from '@hiero-ledger/sdk';
+import { issueCredential } from '@kosha/hedera/credentials';
 import { agentIdentitySchema } from '@kosha/shared/ids';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
