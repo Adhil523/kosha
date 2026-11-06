@@ -7,7 +7,7 @@ import { type PreparedPayment } from '@kosha/pay/prepare-payment';
 import { decodeHeader, HEADERS, SCHEMES } from '@kosha/shared/headers';
 import { type AgentIdentity } from '@kosha/shared/ids';
 import { amountSchema } from '@kosha/shared/money';
-import { type AgentRegister, type Policy } from '@kosha/shared/registry';
+import { type Policy } from '@kosha/shared/registry';
 import { tdsExportRowSchema } from '@kosha/shared/tax-reports';
 import { paymentRequiredSchema, type QuoteTax, type TaxReason } from '@kosha/shared/x402-payment';
 
@@ -23,8 +23,7 @@ export type DemoContext = {
   // A Kosha Pay client for one demo agent, allowlisted for both demo APIs
   payFor: (agent: DemoAgent) => KoshaPay;
   identityOf: (agent: DemoAgent) => AgentIdentity;
-  // The agent's wallet and reserve, as the seed registers them
-  registrationOf: (agent: DemoAgent) => Omit<AgentRegister, 'credential'>;
+  coreUrl: string;
   issuerKey: PrivateKey;
   urls: { gstLookup: string; company: string; lei: string };
   // The official x402 client paying as the agent: no Kosha code, no X-KOSHA-AGENT
@@ -170,11 +169,13 @@ const stepUnverifiedPayer: DemoStep = {
       panOnFile: true,
       level: 1
     });
-    const registered = await context.core.registerAgent({
-      ...context.registrationOf('unknown'),
-      credential
-    });
-    if (!registered.ok) return failed(`presenting the credential: ${registered.data}`);
+    // Pay's register(): a signed challenge to POST /v1/agents/self, no admin token (B23)
+    const registered = await pay.register({ coreUrl: context.coreUrl, credential });
+    if (!registered.ok) {
+      return failed(
+        `presenting the credential: ${registered.data.reason} ${registered.data.message}`
+      );
+    }
 
     const next = await quote(pay, context.urls.gstLookup);
     if (!next.ok) return failed(`the quote after the credential: ${next.data}`);

@@ -4,7 +4,8 @@ import {
   accountIdSchema,
   hederaNetworkSchema,
   tokenIdSchema,
-  topicIdSchema
+  topicIdSchema,
+  uaidSchema
 } from '@kosha/shared/ids';
 import { z } from 'zod';
 
@@ -44,6 +45,8 @@ const envSchema = z.object({
   MAX_TX_FEE_HBAR: z.string().min(1),
   AGENT_RESIDENT_ACCOUNT_ID: accountIdSchema,
   AGENT_RESIDENT_PRIVATE_KEY: z.string().min(1),
+  // The HCS-14 identity `pnpm register-agents` wrote (B23); the account identity otherwise
+  AGENT_RESIDENT_UAID: uaidSchema.optional(),
   AGENT_RESIDENT_RESERVE_ID: accountIdSchema,
   DEMO_API_IN_PORT: z.coerce.number().int().min(1).max(65_535).default(DEFAULT_DEMO_API_IN_PORT),
   // The Agent Kit budget policy's caps, all-in (tax included)
@@ -89,6 +92,7 @@ export const payOptions = (env: AgentEnv): PayConfigInput => ({
   accountId: env.AGENT_RESIDENT_ACCOUNT_ID,
   privateKey: env.AGENT_RESIDENT_PRIVATE_KEY,
   reserveAccountId: env.AGENT_RESIDENT_RESERVE_ID,
+  ...(env.AGENT_RESIDENT_UAID ? { agentId: env.AGENT_RESIDENT_UAID } : {}),
   asset: env.SETTLEMENT_TOKEN_ID,
   trustedFacilitators: [env.CORE_ACCOUNT_ID],
   maxTransactionFeeHbar: env.MAX_TX_FEE_HBAR,

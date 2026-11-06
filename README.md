@@ -106,18 +106,18 @@ government requires: paying the tax in rupees.
 
 ## Hedera x402 track
 
-| Requirement or bonus                    | Where Kosha meets it                                                                                                                                              |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| x402 endpoint settling on Hedera        | Kosha Gate and Core, Kosha's own facilitator, x402 v2                                                                                                             |
-| Agent pays end to end without approval  | Kosha Pay; the demo agent (in progress)                                                                                                                           |
-| Settled transaction ID in the README    | [First settled payment](#first-settled-payment-testnet) below                                                                                                     |
-| Spending controls                       | Pay's policy (per payment, daily, yearly budget, allowlist, threshold action); a server-side re-check in Core and an Agent Kit policy (in progress)               |
-| Agent identity (HCS-14)                 | Core checks an agent's tax credential against its HCS-14 UAID and HCS-11 profile; demo agent registration in progress                                             |
-| HCS tamper-evident log                  | Payments topic whose submit key is Core's, with recomputable decisions                                                                                            |
-| Agents negotiating before payment       | Each Gate-protected API publishes its terms (prices, rule pack, unverified-payer policy, accepted levels) at `/.well-known/kosha`; propose-and-counter is planned |
-| HTS token settlement and revenue splits | USDC price and TDS split in one `TransferTransaction`                                                                                                             |
-| Scheduled transactions                  | Monthly reserve release, co-signed by the agent and Kosha (in progress)                                                                                           |
-| Hedera Agent Kit                        | `kosha_paid_fetch` as a `BaseTool` plugin (in progress)                                                                                                           |
+| Requirement or bonus                    | Where Kosha meets it                                                                                                                                                                                |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| x402 endpoint settling on Hedera        | Kosha Gate and Core, Kosha's own facilitator, x402 v2                                                                                                                                               |
+| Agent pays end to end without approval  | Kosha Pay; the demo agent (in progress)                                                                                                                                                             |
+| Settled transaction ID in the README    | [First settled payment](#first-settled-payment-testnet) below                                                                                                                                       |
+| Spending controls                       | Pay's policy (per payment, daily, yearly budget, allowlist, threshold action); a server-side re-check in Core and an Agent Kit policy (in progress)                                                 |
+| Agent identity (HCS-14)                 | `pnpm register-agents` gives each Level 1 demo agent a UAID and an HCS-11 profile on an HCS-1 topic; Core checks the credential against them ([docs/testnet-accounts.md](docs/testnet-accounts.md)) |
+| HCS tamper-evident log                  | Payments topic whose submit key is Core's, with recomputable decisions                                                                                                                              |
+| Agents negotiating before payment       | Each Gate-protected API publishes its terms (prices, rule pack, unverified-payer policy, accepted levels) at `/.well-known/kosha`; propose-and-counter is planned                                   |
+| HTS token settlement and revenue splits | USDC price and TDS split in one `TransferTransaction`                                                                                                                                               |
+| Scheduled transactions                  | Monthly reserve release, co-signed by the agent and Kosha (in progress)                                                                                                                             |
+| Hedera Agent Kit                        | `kosha_paid_fetch` as a `BaseTool` plugin (in progress)                                                                                                                                             |
 
 Kosha uses no smart contracts, only native HTS, HCS and scheduled transactions.
 
