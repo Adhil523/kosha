@@ -57,6 +57,7 @@ const fakePay = (totalMicro = 101_019n): KoshaPay & { complete: ReturnType<typeo
     prepare: async () => ({ ok: true, data: { kind: 'payment', payment: payment(totalMicro) } }),
     complete,
     fetch: async () => json(BODY),
+    register: () => Promise.reject(new Error('register is not part of this test')),
     lastReceipt: null,
     lastError: null
   };

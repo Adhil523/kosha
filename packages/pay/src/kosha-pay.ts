@@ -8,8 +8,10 @@ import {
   type PrepareResult,
   withHeaders
 } from './prepare-payment';
+import { registerAgent, type RegisterInput, type RegisterResult } from './register';
 import { createMemorySpendStore, type SpendStore } from './spend-store';
 import { HEADERS } from '@kosha/shared/headers';
+import { type AgentIdentity } from '@kosha/shared/ids';
 
 export type CompleteResult =
   | { ok: true; data: { response: Response; receipt: Receipt | null } }
@@ -23,6 +25,10 @@ export type KoshaPay = {
   // Both steps, as a drop-in fetch. When Pay won't pay, the server's 402 comes back unchanged
   // and `lastError` says why.
   fetch: (url: string, init?: RequestInit) => Promise<Response>;
+  // Registers or upgrades this agent with Core through a signed challenge; no admin token needed
+  register: (
+    input: Omit<RegisterInput, 'identity'> & { identity?: AgentIdentity }
+  ) => Promise<RegisterResult>;
   readonly lastReceipt: Receipt | null;
   readonly lastError: Omit<PayFailure, 'response'> | null;
 };
@@ -95,10 +101,17 @@ export const createKoshaPay = (input: PayConfigInput, deps: KoshaPayDeps = {}): 
     return completed.data.response;
   };
 
+  const register: KoshaPay['register'] = (input) =>
+    registerAgent(
+      { fetch: fetchImpl, accountId: config.accountId, privateKey: config.privateKey },
+      { ...input, identity: input.identity ?? config.agentId }
+    );
+
   return {
     prepare,
     complete,
     fetch: payFetch,
+    register,
     get lastReceipt() {
       return lastReceipt;
     },
