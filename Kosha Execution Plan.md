@@ -12,10 +12,10 @@ Nov 6, 2026 · @Adhil · **v2**: updated with [findings and design updates](docs
 
 | Component | What it is | Who uses it | Ships as |
 | --- | --- | --- | --- |
-| **Kosha Core** | The facilitator: quotes, verifies and settles x402 payments on Hedera, runs the tax engine, logs to HCS, sweeps escrow | Runs as a service | Node.js server (`apps/core`) |
+| **Kosha Core** | The facilitator: quotes, verifies and settles x402 payments on Hedera, runs the tax engine, logs to HCS, releases tax reserves | Runs as a service | Node.js server (`apps/core`) |
 | **Kosha Gate** | Server SDK: middleware that makes any API endpoint return 402 and get paid through Kosha | Indian API owners | npm `@kosha/gate` |
 | **Kosha Pay** | Agent client library: pays Kosha-protected endpoints, carries the tax profile, enforces spending rules | Agent developers | npm `@kosha/pay` (+ Hedera Agent Kit plugin) |
-| **Kosha Console** | Web dashboard: earnings, TDS ledger, escrow, filing export, agent spend and policies | API owners, agent owners, their CA | Next.js app (`apps/console`) |
+| **Kosha Console** | Web dashboard: earnings, TDS ledger, monthly tax and reserves, filing export, agent spend and policies | API owners, agent owners, their CA | Next.js app (`apps/console`) |
 
 **Legal basis (unsettled; confirm with a CA):** USDC is a virtual digital asset (VDA). Section 393(1) of the Income-tax Act 2025 (formerly 194S) requires 1% TDS (20% with no PAN) on VDA transfers. The agent hands over USDC, so it is the **seller of the VDA and the deductee**. The API receives USDC for a service, so it is the **buyer and the deductor**. The yearly threshold is keyed to the **buyer**: ₹50,000 when the API owner is a specified person, ₹10,000 otherwise (findings §2.1, §3.1).
 
@@ -673,7 +673,7 @@ Don't start a phase until the previous gate passes. If Gate 2 slips past midnigh
 
 | Role | Owns | Phases |
 | --- | --- | --- |
-| Hedera and Core | `packages/hedera`, bootstrap script, Core verify and settle, HCS log, watcher, sweep, deploy | 1 to 4 |
+| Hedera and Core | `packages/hedera`, bootstrap script, Core verify and settle, HCS log, watcher, reserve release, deploy | 1 to 4 |
 | Tax and SDKs | Tax engine and its tests, rule pack, Kosha Gate, Kosha Pay, demo APIs, demo agent, HCS-14 profiles | 1 to 3 |
 | Console and story | Kosha Console, seed data, README, architecture diagram, pitch, video | 2 to 5 |
 
@@ -681,25 +681,29 @@ With two people, merge "Tax and SDKs" into the other two roles. Solo, follow the
 
 ### Cut list (drop in this order if behind)
 
-1. Agents negotiating funding: hard-code payer-funded.
-2. Scheduled sweep: show the escrow balance only.
+1. Agents negotiating terms: hard-code the receiver's policy.
+2. Scheduled reserve release: show the reserve balance and the challan record only.
 3. Outside-payment watcher: describe it in the pitch instead.
-4. HCS-14 identity: keep credentials in Core only.
-5. Gains report for agent owners.
-6. Hono adapter for Gate.
+4. Compatibility mode: show only the `kosha-split` path and explain the second `accepts[]` entry.
+5. `POST /v1/decide` for other chains: describe it as the tax-layer roadmap.
+6. HCS-14 identity: keep credentials in Core only.
+7. Gains report for agent owners.
+8. Hono adapter for Gate.
 
-**Never cut:** tax engine tests, the split settlement, the HCS log, spending controls, the threshold counter, the 20% default for unknown payers, and the video.
+**Never cut:** tax engine tests, the split settlement into the agent's own reserve, the HCS log with its submit key, spending controls (Kosha Pay, Core and the Agent Kit policy), the threshold counter, the unverified-payer policy, and the video.
 
 ### Submission checklist
 
 - [ ] Public GitHub repo, with this plan's architecture diagram in the README
-- [ ] README: setup, architecture, payment flow, and HashScan links for a normal payment, a payment with TDS withheld, and the sweep
+- [ ] README: setup, architecture, payment flow, and HashScan links for a normal payment, a payment with TDS reserved, and the reserve release
+- [ ] README sections from [docs/hackathon-readiness.md](docs/hackathon-readiness.md): network impact, why Hedera, business model, validation evidence
 - [ ] Demo video around 3:30, in your own voice, which fits both ETHGlobal (2 to 4 min, no AI voiceover) and Hedera (5 min or less)
 - [ ] Video shows a settled payment on HashScan and the split
 - [ ] Deployed URLs for Core, the demo API and Console
 - [ ] Sponsor prizes selected on ETHGlobal (up to 3)
 - [ ] "Rule pack unreviewed" and "not tax advice" labels visible in Console and README
-- [ ] Seeded history labelled as sample data
+- [ ] Seeded history labelled as sample data; the mocked INR challan labelled as mocked
+- [ ] Self-review with the `hedera-skills` submission validator at Gate 3 and before submitting
 
 ## Sponsors, testing, risks and sources
 
@@ -709,45 +713,50 @@ Hedera's x402 track is the primary target; every requirement and all seven bonus
 
 | Hedera requirement or bonus | Where Kosha meets it |
 | --- | --- |
-| x402 endpoint settling on Hedera | Kosha Gate + Core, own facilitator |
+| x402 endpoint settling on Hedera | Kosha Gate + Core, own facilitator, x402 v2 (`kosha-split` plus standard `exact`) |
 | Agent pays end to end without human approval | `demo-agent` via Kosha Pay |
 | README with settled transaction ID; video of 5 min or less with HashScan | Step 7 milestone; recording in Step 12 |
-| Spending controls | Pay policy + server-side enforcement in Core |
-| Agent identity (HCS-14) | Agent profiles carry the tax credential reference |
-| HCS tamper-evident spending log | Payments topic |
-| Agents negotiating before payment | Funding agreement via `/.well-known/kosha` |
+| Spending controls | Pay policy, server-side enforcement in Core, and an Agent Kit `AbstractPolicy` |
+| Agent identity (HCS-14) | HCS-14 UAID with an HCS-11 profile carrying the tax credential reference |
+| HCS tamper-evident spending log | Payments topic (submit key = Core) with recomputable decisions, plus the kit's `HcsAuditTrailHook` |
+| Agents negotiating before payment | Verification terms via `/.well-known/kosha` |
 | HTS token settlement (USDC) and revenue splits | USDC settlement; price and TDS split in one transfer |
-| Scheduled Transactions | Monthly escrow sweep |
-| Hedera Agent Kit | `demo-agent` and the `kosha_paid_fetch` tool |
+| Scheduled Transactions | Monthly reserve release, co-signed by the agent operator and Kosha |
+| Hedera Agent Kit | `demo-agent` with the `kosha-pay` plugin (`BaseTool`) |
 
-**Also possible:** Hedera's "No Solidity Allowed" ($2,000), since Kosha uses no contracts and at least two native services (HTS, HCS, scheduled transactions). Ask Hedera's team whether one project can win two of their prizes. For the other two sponsor picks, World ID (Agent Pass as proof of a unique human behind each agent) is the closest fit; Arkiv only if records are mirrored there with the required `/arkiv/*.md` files.
+**Also possible:** Hedera's "No Solidity Allowed" ($2,000), since Kosha uses no contracts and at least two native services (HTS, HCS, scheduled transactions). Ask Hedera's team whether one project can win two of their prizes.
+
+**Other sponsor picks** (findings §8.1; re-check each prize page): **World ID Agent Pass** ($5,000, strong fit: a unique human behind each agent stops splitting payments across fake agents to stay under the threshold), then **Arkiv** (only if Console reads from it, with the required `/arkiv/*.md` files) or **Chainlink CRE** (monthly close workflow and the INR/USD rate; check Hedera support). **Tokenize Anything** becomes possible only if a KYC-gated kUSDC is built with Stablecoin Studio (findings §4.3), which is out of scope for the MVP.
 
 ### Testing
 
 | Layer | What | Tool |
 | --- | --- | --- |
-| Tax engine | 30+ cases: thresholds, crossing, rates, residency, financial-year rollover, rounding | Vitest |
-| Verifier | Tampered transactions: extra transfer, HBAR debit of Core, wrong token, memo, replay, bad signature | Vitest + SDK fixtures |
-| Gate | 402 body, happy path, every error code | Supertest |
+| Tax engine | 30+ cases: buyer thresholds, crossing, rates, residency, unverified-payer policies, financial-year rollover, rounding; `fast-check` properties | Vitest |
+| Verifier | Tampered transactions: extra transfer, HBAR debit of Core, wrong token, memo, wrong nodes, fee cap, reserve leg to another account, replay, bad signature | Vitest + SDK fixtures |
+| Gate | 402 header and body, happy path, every error code, reserve proof | Supertest |
 | End to end | `pnpm demo` on testnet, asserting HashScan and HCS results | Script |
 | Console | Threshold counter, CSV download | Playwright |
 
 ### Risks and open questions
 
-- [ ] **Tax reading (highest risk):** does paying for an API in USDC fall under s.393(1), and is the API the deductor? Get a CA's view; until then the rule pack shows "unreviewed".
-- [ ] Whole crossing payment or only the excess: confirm with a CA (default `full`).
-- [ ] Which INR rate tax law expects for VDA consideration (SBI TT buying rate is common practice).
-- [ ] Exact form numbers and due dates under the Income-tax Act 2025.
-- [ ] Can a facilitator take on the deduction duty under the exchange-route model?
-- [ ] Testnet USDC token ID and faucet availability on Hedera.
-- [ ] Whether long-term scheduled transactions (`setWaitForExpiry`) work on testnet.
-- [ ] Which x402 version and header names to follow; align with an existing Hedera facilitator's spec.
-- [ ] HCS-14 SDK maturity; fall back to an HCS-11 profile if needed.
+- [ ] **Tax reading (highest risk):** does paying for an API in USDC fall under s.393(1), and is the API the deductor? Get a CA's view; until then the rule pack shows "unreviewed". The full CA question list is in findings §9 (mode C timing, reimbursement, deposit mechanics, crossing, INR rate, new forms and dates, gifts, PAN hashes under the DPDP Act).
+- [ ] Compatibility mode holds funds briefly (Kosha's settlement account), which carries regulatory weight; keep it labelled as a convenience path.
+- [ ] Threshold-tolerant policy puts some risk on the API owner (an unverified payer later found over the threshold); it is the owner's choice and the Console says so.
+- [ ] Does `@langchain/anthropic` handle the current Claude models' adaptive thinking cleanly? Smoke-test it in B13.
+- [ ] Mirror Node lag (a few seconds) slows Gate's reserve proof; measure it.
 - [ ] Name clash check for "Kosha" (trademark, npm scope, domain).
+- [x] ~~Testnet USDC token ID and faucet~~: `0.0.429274`, 20 USDC per 2 h (`docs/research/hedera-usdc.md`).
+- [x] ~~Long-term scheduled transactions on testnet~~: live, max 62 days (`docs/research/scheduled-transactions.md`).
+- [x] ~~x402 version and header names~~: v2 (`docs/research/x402.md`).
+- [x] ~~HCS-14 maturity~~: draft ID format resolved through an HCS-11 profile (`docs/research/hcs-14.md`).
 
 ### Sources
 
 - [Hedera prizes, ETHGlobal Mumbai](https://ethglobal.com/events/mumbai/prizes/hedera)
+- [Hedera skills for AI coding agents (x402, HTS, HCS, Agent Kit, hackathon rubric)](https://github.com/hedera-dev/hedera-skills)
+- [x402 specification v2 and the Hedera `exact` scheme](https://github.com/x402-foundation/x402)
+- Findings, sources and evidence of need: [docs/agents/kosha-findings-and-design-updates.md §10](docs/agents/kosha-findings-and-design-updates.md#10-evidence-the-need-exists-sources-for-the-pitch)
 - [TDS on Virtual Digital Assets, Section 393(1) (194S), TDSMAN (Aug 2026)](https://blog.tdsman.com/2026/08/tds-on-virtual-digital-assets-section-3931-194s/)
 - [CBDT guidelines on TDS for VDAs (Circular 13 of 2022), Khaitan & Co](https://khaitanco.com/thought-leaderships/CBDT-provides-much-awaited-guidelines-in-relation-to-TDS-on-payments-for-Virtual-Digital-Assets)
 - [Are stablecoins taxable in India?, KoinX (2026)](https://www.koinx.com/in/tax-guides/are-stablecoins-and-cbdc-taxable-in-india)
