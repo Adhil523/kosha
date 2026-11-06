@@ -9,7 +9,9 @@ import {
   accountIdSchema,
   agentIdentitySchema,
   tokenIdSchema,
-  topicIdSchema
+  topicIdSchema,
+  type Uaid,
+  uaidSchema
 } from '@kosha/shared/ids';
 import { wrapFetchWithPaymentFromConfig } from '@x402/fetch';
 import { createClientHederaSigner, ExactHederaScheme } from '@x402/hedera';
@@ -48,7 +50,10 @@ export const demoEnvSchema = seedEnvSchema.extend({
   DEMO_API_GLOBAL_PORT: port(DEFAULT_DEMO_API_GLOBAL_PORT),
   // Deployed demo APIs; the local ones otherwise
   DEMO_API_IN_URL: z.url().optional(),
-  DEMO_API_GLOBAL_URL: z.url().optional()
+  DEMO_API_GLOBAL_URL: z.url().optional(),
+  // Written by `pnpm register-agents` (B23)
+  AGENT_RESIDENT_UAID: uaidSchema.optional(),
+  AGENT_NONRESIDENT_UAID: uaidSchema.optional()
 });
 export type DemoEnv = z.output<typeof demoEnvSchema>;
 
@@ -74,7 +79,8 @@ export const demoUrls = (env: DemoEnv): DemoContext['urls'] => {
   };
 };
 
-type AgentKeys = { accountId: string; privateKey: string; reserveId: string };
+// uaid: the HCS-14 identity `pnpm register-agents` gave a Level 1 agent, sent as X-KOSHA-AGENT
+type AgentKeys = { accountId: string; privateKey: string; reserveId: string; uaid?: Uaid };
 
 export const agentKeys = (env: DemoEnv, agent: DemoAgent): AgentKeys => {
   switch (agent) {
@@ -82,13 +88,15 @@ export const agentKeys = (env: DemoEnv, agent: DemoAgent): AgentKeys => {
       return {
         accountId: env.AGENT_RESIDENT_ACCOUNT_ID,
         privateKey: env.AGENT_RESIDENT_PRIVATE_KEY,
-        reserveId: env.AGENT_RESIDENT_RESERVE_ID
+        reserveId: env.AGENT_RESIDENT_RESERVE_ID,
+        uaid: env.AGENT_RESIDENT_UAID
       };
     case 'nonresident':
       return {
         accountId: env.AGENT_NONRESIDENT_ACCOUNT_ID,
         privateKey: env.AGENT_NONRESIDENT_PRIVATE_KEY,
-        reserveId: env.AGENT_NONRESIDENT_RESERVE_ID
+        reserveId: env.AGENT_NONRESIDENT_RESERVE_ID,
+        uaid: env.AGENT_NONRESIDENT_UAID
       };
     case 'unknown':
       return {
@@ -111,6 +119,7 @@ export const payConfigFor = (env: DemoEnv, agent: DemoAgent, hosts: string[]): P
     asset: env.SETTLEMENT_TOKEN_ID,
     trustedFacilitators: [env.CORE_ACCOUNT_ID],
     maxTransactionFeeHbar: env.MAX_TX_FEE_HBAR,
+    ...(keys.uaid ? { agentId: keys.uaid } : {}),
     policy: { perPaymentUsdc: '1', dailyUsdc: '10', fyBudgetUsdc: '500', allowlist: hosts }
   };
 };
@@ -138,14 +147,7 @@ export const buildContext = (env: DemoEnv, fetchImpl: typeof fetch = fetch): Dem
     urls,
     identityOf,
     payFor: (agent) => createKoshaPay(payConfigFor(env, agent, hosts), { fetch: fetchImpl }),
-    registrationOf: (agent) => {
-      const keys = agentKeys(env, agent);
-      return {
-        identity: identityOf(agent),
-        wallets: [accountIdSchema.parse(keys.accountId)],
-        reserveAccountId: accountIdSchema.parse(keys.reserveId)
-      };
-    },
+    coreUrl: env.CORE_URL,
     issuerKey: keyOf(env.ISSUER_PRIVATE_KEY, 'the test issuer'),
     stockFetchFor: (agent) => {
       const keys = agentKeys(env, agent);

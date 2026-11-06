@@ -1,11 +1,5 @@
 import { type AggregateRow, aggregateRowSchema, ledgerPageSchema } from '@kosha/shared/console-api';
-import {
-  type AgentRegister,
-  type AgentRow,
-  agentRowSchema,
-  type Policy,
-  policySchema
-} from '@kosha/shared/registry';
+import { type AgentRow, agentRowSchema, type Policy, policySchema } from '@kosha/shared/registry';
 import { z } from 'zod';
 
 // What the demo runner reads and sets through Core's admin API (B17): the IDs behind the
@@ -50,13 +44,9 @@ export type DemoCore = {
   getPolicy: (agentId: string) => Promise<CoreResult<Policy | null>>;
   putPolicy: (agentId: string, policy: Policy) => Promise<CoreResult<Policy>>;
   tdsExport: (receiverId: string, quarter: string) => Promise<CoreResult<string>>;
-  // Registers or upgrades an agent (an upsert): the demo presents agent-unknown's credential this way
-  registerAgent: (body: AgentRegister) => Promise<CoreResult<AgentRow>>;
   // The status an optional endpoint answers: 404 means the feature is not built
   probe: (path: string) => Promise<number>;
 };
-
-const CREATED = 201;
 
 const NOT_FOUND = 404;
 const OK = 200;
@@ -141,13 +131,6 @@ export const demoCore = (core: AdminHttp): DemoCore => {
       return typeof response.body === 'string'
         ? { ok: true, data: response.body }
         : { ok: false, data: 'the TDS export was not CSV text' };
-    },
-    registerAgent: async (body) => {
-      const response = await core('POST', '/v1/agents', body);
-      if (response.status !== OK && response.status !== CREATED) {
-        return { ok: false, data: refusal('POST /v1/agents', response.status, response.body) };
-      }
-      return parse('POST /v1/agents', agentRowSchema, response.body);
     },
     probe: async (path) => (await core('GET', path)).status
   };
