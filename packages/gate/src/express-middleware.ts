@@ -1,6 +1,6 @@
+import { type AdapterOptions, isSuccess, notifySettled, type SettleMode } from './adapter-options';
 import {
   createGateHandler,
-  type GateOptions,
   type GateResult,
   type KoshaContext,
   type SettledResult
@@ -18,19 +18,11 @@ declare global {
   }
 }
 
-export type SettleMode = 'before' | 'after';
-
-export type KoshaGateOptions = GateOptions & {
-  // "before" (the default) settles before the handler runs, so data is never served unpaid.
-  // "after" verifies first, runs the handler, and settles only if it answered 2xx.
-  settleMode?: SettleMode;
-  onSettled?: (kosha: KoshaContext) => void;
-};
+export type { SettleMode };
+export type KoshaGateOptions = AdapterOptions;
 
 type Respond = Extract<GateResult, { action: 'respond' }>;
 type Callback = (error?: Error | null) => void;
-
-const isSuccess = (status: number): boolean => status >= 200 && status < 300;
 
 // The headers that described the handler's own body, dropped when a failure replaces it
 const BODY_HEADERS = ['content-length', 'content-type', 'etag'] as const;
@@ -49,14 +41,6 @@ const toGateRequest = (req: Request) => ({
   url: `${req.protocol}://${req.get('host') ?? 'localhost'}${req.originalUrl}`,
   headers: req.headers
 });
-
-const notify = (onSettled: KoshaGateOptions['onSettled'], kosha: KoshaContext): void => {
-  try {
-    onSettled?.(kosha);
-  } catch (error) {
-    console.error('[kosha-gate]: onSettled threw', error);
-  }
-};
 
 const toBuffer = (chunk: unknown, encoding: unknown): Buffer | null => {
   if (typeof chunk === 'string') {
@@ -138,7 +122,7 @@ const settleAfter = (
       return;
     }
     req.kosha = settled.kosha;
-    notify(onSettled, settled.kosha);
+    notifySettled(onSettled, settled.kosha);
     res.set(settled.headers).end(body);
   });
 };
@@ -161,7 +145,7 @@ export const koshaGate = (options: KoshaGateOptions): RequestHandler => {
         return;
       case 'pass':
         req.kosha = result.kosha;
-        notify(onSettled, result.kosha);
+        notifySettled(onSettled, result.kosha);
         res.set(result.headers);
         next();
         return;

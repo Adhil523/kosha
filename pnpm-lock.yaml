@@ -269,6 +269,9 @@ importers:
       express:
         specifier: 5.3.0
         version: 5.3.0
+      hono:
+        specifier: ^4.13.16
+        version: 4.13.16
       supertest:
         specifier: 7.3.1
         version: 7.3.1
