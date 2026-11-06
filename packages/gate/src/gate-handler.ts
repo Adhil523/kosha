@@ -1,4 +1,5 @@
 import { type CoreClientOptions, type CoreFailure, createCoreClient } from './core-client';
+import { buildTerms, TERMS_PATH, type TermsOptions } from './kosha-terms';
 import { compileRoutes, type MatchedRoute, type Routes } from './route-match';
 import { type ErrorCode, errorCodeSchema } from '@kosha/shared/error-codes';
 import { type FacilitatorRequest } from '@kosha/shared/facilitator-api';
@@ -20,7 +21,7 @@ import {
   type SettlementResponse
 } from '@kosha/shared/x402-payment';
 
-const STATUS = { noContent: 204, paymentRequired: 402, unavailable: 503 } as const;
+const STATUS = { ok: 200, noContent: 204, paymentRequired: 402, unavailable: 503 } as const;
 type X402Network = (typeof X402_NETWORKS)[keyof typeof X402_NETWORKS];
 
 export type GateHeaders = Readonly<Record<string, string | readonly string[] | undefined>>;
@@ -67,6 +68,8 @@ export type GateOptions = CoreClientOptions & {
   routes: Routes;
   // The network named in a failed PAYMENT-RESPONSE when the payload can't be read
   network?: X402Network;
+  // When set, Gate answers GET /.well-known/kosha with these terms and the route prices
+  terms?: TermsOptions;
 };
 
 const EXPOSE_HEADERS = { 'access-control-expose-headers': CORS_EXPOSED_HEADERS.join(', ') };
@@ -135,6 +138,14 @@ export const createGateHandler = (options: GateOptions) => {
   const core = createCoreClient(options);
   const matchRoute = compileRoutes(options.routes);
   const fallbackNetwork = options.network ?? X402_NETWORKS.testnet;
+  const termsResult: GateResult | null = options.terms
+    ? {
+        action: 'respond',
+        status: STATUS.ok,
+        headers: { 'access-control-allow-origin': '*' },
+        body: buildTerms(options.routes, fallbackNetwork, options.terms)
+      }
+    : null;
 
   const preflight = (request: GateRequest): GateResult => {
     const wanted = readHeader(request.headers, 'access-control-request-method');
@@ -249,7 +260,11 @@ export const createGateHandler = (options: GateOptions) => {
     if (request.method.toUpperCase() === 'OPTIONS') {
       return preflight(request);
     }
-    const route = matchRoute(request.method, pathOf(request.url));
+    const path = pathOf(request.url);
+    if (termsResult && request.method.toUpperCase() === 'GET' && path === TERMS_PATH) {
+      return termsResult;
+    }
+    const route = matchRoute(request.method, path);
     if (!route) {
       return { action: 'next' };
     }

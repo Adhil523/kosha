@@ -2,7 +2,7 @@ import { defineConfig } from 'tsup';
 
 // Builds the published package. Inside the workspace, consumers import the TypeScript source.
 export default defineConfig({
-  entry: ['src/express-middleware.ts', 'src/gate-handler.ts'],
+  entry: ['src/express-middleware.ts', 'src/gate-handler.ts', 'src/kosha-terms.ts'],
   format: ['esm', 'cjs'],
   // Inline @kosha/shared's types too: it is never published on its own. tsup's type resolver
   // ignores package `exports`, so the subpaths are mapped by hand.
