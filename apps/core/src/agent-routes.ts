@@ -1,70 +1,27 @@
-import { checkAgentProfile, type ProfileCheckResult } from './agent-profile';
+import { identityAccount } from './agent-identity';
+import { registerAgent, type RegisterDeps } from './agent-register';
+import { listAgentRows, loadAgentRow } from './agent-rows';
 import type { RegisterRoutes } from './app';
 import { requireAdmin } from './auth';
-import type { KoshaDb } from './db/client';
-import { agent, agentWallet } from './db/schema';
-import type { PublicKey } from '@hiero-ledger/sdk';
-import { credentialHash, verifyCredential } from '@kosha/hedera/credentials';
-import type { ProfileReader } from '@kosha/hedera/hcs11-profile';
-import { type ErrorResponse, errorResponseSchema } from '@kosha/shared/error-codes';
-import { agentRegisterSchema, type AgentRow, agentRowSchema } from '@kosha/shared/registry';
-import { asc, eq, inArray } from 'drizzle-orm';
+import type { ChallengeStore } from './challenges';
+import type { KeyLookup } from './receiver-routes';
+import { errorResponseSchema } from '@kosha/shared/error-codes';
+import {
+  agentChallengeSchema,
+  agentRegisterSchema,
+  agentRowSchema,
+  agentSelfRegisterSchema
+} from '@kosha/shared/registry';
 import { z } from 'zod';
 
-export type AgentRouteDeps = {
-  db: KoshaDb;
+export type AgentRouteDeps = RegisterDeps & {
   adminToken: string;
-  // Core's test issuer (ISSUER_PRIVATE_KEY's public key)
-  issuerKey: PublicKey;
-  // Checks a UAID against its HCS-11 profile (A18). Without one, Core registers the UAID and
-  // credential only: the spec's fallback for when the Kiloscribe CDN is down.
-  profileReader?: Pick<ProfileReader, 'profileForUaid'>;
+  // The account's current key from the Mirror Node, for self-registration proofs
+  keyLookup: KeyLookup;
+  challenges: ChallengeStore;
 };
 
-const NO_PROFILE_CHECK: ProfileCheckResult = { ok: true, data: null };
-
-const invalid = (message: string): ErrorResponse => ({ error: 'invalid_payload', message });
-
-const toAgentRow = (row: typeof agent.$inferSelect, wallets: string[]): AgentRow =>
-  agentRowSchema.parse({
-    agentId: row.id,
-    identity: row.identity,
-    level: row.level,
-    residency: row.residency,
-    panOnFile: row.panOnFile,
-    wallets,
-    reserveAccountId: row.reserveAccountID,
-    credentialIssuer: row.credentialIssuer,
-    verifiedAt: row.verifiedAt?.toISOString() ?? null
-  });
-
-export const loadAgentRow = async (db: KoshaDb, agentId: string): Promise<AgentRow | null> => {
-  const [row] = await db.select().from(agent).where(eq(agent.id, agentId));
-  if (!row) return null;
-  const wallets = await db
-    .select({ accountID: agentWallet.accountID })
-    .from(agentWallet)
-    .where(eq(agentWallet.agentID, agentId))
-    .orderBy(asc(agentWallet.createdAt), asc(agentWallet.accountID));
-  return toAgentRow(
-    row,
-    wallets.map((wallet) => wallet.accountID)
-  );
-};
-
-// Every registered agent, oldest first: two queries, not one per agent
-export const listAgentRows = async (db: KoshaDb): Promise<AgentRow[]> => {
-  const rows = await db.select().from(agent).orderBy(asc(agent.createdAt), asc(agent.id));
-  const wallets = await db
-    .select({ agentID: agentWallet.agentID, accountID: agentWallet.accountID })
-    .from(agentWallet)
-    .orderBy(asc(agentWallet.createdAt), asc(agentWallet.accountID));
-  const walletsOf = new Map<string, string[]>();
-  for (const wallet of wallets) {
-    walletsOf.set(wallet.agentID, [...(walletsOf.get(wallet.agentID) ?? []), wallet.accountID]);
-  }
-  return rows.map((row) => toAgentRow(row, walletsOf.get(row.id) ?? []));
-};
+const invalid = (message: string) => ({ error: 'invalid_payload' as const, message });
 
 export const agentRoutes =
   (deps: AgentRouteDeps): RegisterRoutes =>
@@ -87,89 +44,55 @@ export const agentRoutes =
         }
       },
       async (request, reply) => {
-        const { identity, credential, wallets, reserveAccountId } = request.body;
+        const registered = await registerAgent(deps, request.body);
+        if (!registered.ok) return reply.status(registered.data.status).send(registered.data.body);
+        const { row, created } = registered.data;
+        return reply.status(created ? 201 : 200).send(row);
+      }
+    );
 
-        let verified: {
-          residency: 'resident' | 'non_resident';
-          panOnFile: boolean;
-          level: 1 | 2;
-        } | null = null;
-        if (credential) {
-          if (credential.subject !== identity) {
-            return reply.status(400).send(invalid('the credential names another agent'));
+    app.get('/v1/agents/challenge', { schema: { response: { 200: agentChallengeSchema } } }, () =>
+      deps.challenges.issue()
+    );
+
+    // An agent registers itself (Kosha Pay's register()): no admin token, a signed challenge instead
+    app.post(
+      '/v1/agents/self',
+      {
+        schema: {
+          body: agentSelfRegisterSchema,
+          response: {
+            200: agentRowSchema,
+            201: agentRowSchema,
+            400: errorResponseSchema,
+            401: errorResponseSchema,
+            502: errorResponseSchema
           }
-          const checked = verifyCredential(credential, deps.issuerKey);
-          if (!checked.ok)
-            return reply.status(400).send(invalid(`credential ${checked.data.reason}`));
-          verified = checked.data;
+        }
+      },
+      async (request, reply) => {
+        const { challengeNonce, signature, ...registration } = request.body;
+        if (!deps.challenges.consume(challengeNonce)) {
+          return reply.status(400).send(invalid('challenge expired or already used'));
+        }
+        const account = identityAccount(registration.identity);
+        if (!account)
+          return reply.status(400).send(invalid('the identity names no Hedera account'));
+        if (registration.wallets.length !== 1 || registration.wallets[0] !== account) {
+          return reply
+            .status(400)
+            .send(invalid('an agent registering itself declares only its own account as a wallet'));
+        }
+        const key = await deps.keyLookup(account);
+        const nonce = new TextEncoder().encode(challengeNonce);
+        if (!key || !key.verify(nonce, Buffer.from(signature, 'hex'))) {
+          return reply.status(401).send({ error: 'unauthorized', message: 'bad account proof' });
         }
 
-        const profileCheck = deps.profileReader
-          ? await checkAgentProfile(deps.profileReader, { identity, credential, wallets })
-          : NO_PROFILE_CHECK;
-        if (!profileCheck.ok) {
-          const { reason, message } = profileCheck.data;
-          return reason === 'unavailable'
-            ? reply.status(502).send({ error: 'internal_error', message })
-            : reply.status(400).send(invalid(message));
-        }
-
-        const [existing] = await deps.db.select().from(agent).where(eq(agent.identity, identity));
-        const owners = await deps.db
-          .select({ accountID: agentWallet.accountID, agentID: agentWallet.agentID })
-          .from(agentWallet)
-          .where(inArray(agentWallet.accountID, wallets));
-        if (owners.some((owner) => owner.agentID !== existing?.id)) {
-          return reply.status(400).send(invalid('a wallet belongs to another agent'));
-        }
-
-        const profile = verified
-          ? {
-              level: verified.level,
-              residency: verified.residency,
-              panOnFile: verified.panOnFile,
-              credentialIssuer: credential?.issuer ?? null,
-              credentialHash: credential ? credentialHash(credential) : null,
-              verifiedAt: new Date()
-            }
-          : {};
-        const profileCache = profileCheck.data ?? {};
-
-        const agentId = await deps.db.transaction(async (tx) => {
-          const [saved] = existing
-            ? await tx
-                .update(agent)
-                .set({
-                  ...profile,
-                  ...profileCache,
-                  reserveAccountID: existing.reserveAccountID ?? reserveAccountId ?? null
-                })
-                .where(eq(agent.id, existing.id))
-                .returning({ id: agent.id })
-            : await tx
-                .insert(agent)
-                .values({
-                  identity,
-                  reserveAccountID: reserveAccountId ?? null,
-                  ...profile,
-                  ...profileCache
-                })
-                .returning({ id: agent.id });
-          const id = saved?.id ?? '';
-          const known = new Set(owners.map((owner) => owner.accountID));
-          const fresh = wallets.filter((wallet) => !known.has(wallet));
-          if (fresh.length > 0) {
-            await tx
-              .insert(agentWallet)
-              .values(fresh.map((accountID) => ({ agentID: id, accountID })));
-          }
-          return id;
-        });
-
-        const row = await loadAgentRow(deps.db, agentId);
-        // Just written in this request; the error handler answers internal_error if it's gone
-        if (!row) throw new Error('[agents]: saved agent could not be read back');
-        return reply.status(existing ? 200 : 201).send(row);
+        const registered = await registerAgent(deps, registration);
+        if (!registered.ok) return reply.status(registered.data.status).send(registered.data.body);
+        const { row, created } = registered.data;
+        return reply.status(created ? 201 : 200).send(row);
       }
     );
 

@@ -72,6 +72,12 @@ export const wireCore = (
   // Settlements publish here; each open /v1/stream subscribes to its receiver
   const bus = createEventBus();
 
+  // An account's current key from the Mirror Node: wallet and agent ownership proofs
+  const keyLookup = async (accountId: string) => {
+    const key = await payerKey(accountId);
+    return key.ok ? key.data : null;
+  };
+
   const settlement = {
     db,
     feePayer: config.coreAccountId,
@@ -85,16 +91,15 @@ export const wireCore = (
       db,
       adminToken: config.adminToken,
       panCommitSecret: config.panCommitSecret,
-      keyLookup: async (accountId) => {
-        const key = await payerKey(accountId);
-        return key.ok ? key.data : null;
-      },
+      keyLookup,
       challenges: createChallengeStore(),
       defaultUnverifiedPolicy: rulePack.pack.unverifiedPayer.defaultPolicy
     }),
     agentRoutes({
       db,
       adminToken: config.adminToken,
+      keyLookup,
+      challenges: createChallengeStore(),
       issuerKey: issuer.data.publicKey,
       profileReader: createProfileReader({ mirror, network: config.network })
     }),

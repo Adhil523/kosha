@@ -33,8 +33,27 @@ The quote's `kosha-split` entry must pass `split-quote` `checkSplitQuote()`; Kos
 | `POST /v1/agents` | admin | `registry` `agentRegisterSchema` | `registry` `agentRowSchema` | A07 |
 | `GET /v1/agents` | admin | — | array of `registry` `agentRowSchema`, oldest first; `[]` when none | #47 |
 | `GET /v1/agents/:id` | admin | — | `registry` `agentRowSchema` | A07 |
+| `GET /v1/agents/challenge` | public | — | `registry` `agentChallengeSchema` | #56 |
+| `POST /v1/agents/self` | account proof | `registry` `agentSelfRegisterSchema` | `registry` `agentRowSchema`; `201` new, `200` updated | #56 |
 | `GET` / `PUT /v1/agents/:id/policy` | admin | `registry` `policySchema` | `registry` `policySchema` | A12 |
 | `POST /v1/terms` | receiver | `registry` `termsProposalSchema` | `registry` `termsAnswerSchema` | A21 (optional) |
+
+### Agent identity and self-registration (#56)
+
+**One record per account.** An agent keeps a single record as its identity moves from its CAIP-10 account (`hedera:testnet:0.0.6003`, Level 0) to an HCS-14 UAID whose `nativeId` is that same account. Its ID, reserve, payments and aggregates all stay with it.
+- Registering the UAID (`POST /v1/agents` or `/v1/agents/self`) upgrades the existing record in place and answers `200`.
+- Registering the CAIP-10 identity again keeps the UAID; the identity never moves back.
+- Everywhere Core looks an agent up by identity (`X-KOSHA-AGENT` at quote, the demo admin endpoints), the old CAIP-10 identity still finds the upgraded agent.
+- A wallet held by an agent whose identity is backed by a different account is still a clash (`400`).
+
+**Self-registration.** `POST /v1/agents/self` needs no token, so an agent never holds `CONSOLE_ADMIN_TOKEN`:
+1. The agent gets a nonce from `GET /v1/agents/challenge`. It is single-use and valid for 10 minutes.
+2. It signs the nonce with the key of its identity's account (the CAIP-10 account, or the UAID's `nativeId`), and sends the signature in hex with the same body as `POST /v1/agents`.
+3. Core checks the signature against that account's key on the Mirror Node.
+
+The agent may declare only that account as a wallet, and `reserveAccountId` is ignored, because Core creates the 2-of-2 reserve itself. A credential and the HCS-11 profile check work exactly as on the admin route. Responses:
+- a wrong key: `401`;
+- a reused or expired challenge, or another wallet: `400`.
 
 ### Spending policies (A12)
 

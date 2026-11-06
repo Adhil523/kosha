@@ -1,5 +1,6 @@
 import { agentRoutes } from './agent-routes';
 import { buildApp } from './app';
+import { createChallengeStore } from './challenges';
 import type { DbHandle } from './db/client';
 import { agent } from './db/schema';
 import { testDb } from './db/test-db';
@@ -37,6 +38,8 @@ const PUBLISHED: AgentProfile = {
   kosha: kosha(credentialHash(CREDENTIAL), ['0.0.6001'])
 };
 
+// These tests use the admin route only
+const NO_SELF_REGISTRATION = { keyLookup: async () => null, challenges: createChallengeStore() };
 describe('POST /v1/agents with the HCS-14 profile check', () => {
   let handle: DbHandle;
   let app: ReturnType<typeof buildApp>;
@@ -61,6 +64,7 @@ describe('POST /v1/agents with the HCS-14 profile check', () => {
       logger: false,
       routes: [
         agentRoutes({
+          ...NO_SELF_REGISTRATION,
           db: handle.db,
           adminToken: ADMIN_TOKEN,
           issuerKey: ISSUER.publicKey,
@@ -140,7 +144,14 @@ describe('POST /v1/agents with the HCS-14 profile check', () => {
   it('registers a UAID unchecked when Core runs without a profile reader', async () => {
     const fallback = buildApp({
       logger: false,
-      routes: [agentRoutes({ db: handle.db, adminToken: ADMIN_TOKEN, issuerKey: ISSUER.publicKey })]
+      routes: [
+        agentRoutes({
+          ...NO_SELF_REGISTRATION,
+          db: handle.db,
+          adminToken: ADMIN_TOKEN,
+          issuerKey: ISSUER.publicKey
+        })
+      ]
     });
     const identity = uaidFor('0.0.6002');
     const response = await fallback.inject({

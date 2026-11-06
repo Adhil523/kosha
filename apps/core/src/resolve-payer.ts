@@ -1,3 +1,4 @@
+import { findAgentByIdentity } from './agent-identity';
 import type { KoshaDb } from './db/client';
 import { agent, agentWallet } from './db/schema';
 import type { ErrorResponse } from '@kosha/shared/error-codes';
@@ -20,10 +21,9 @@ export type ResolvedPayer = { ok: true; data: Payer } | { ok: false; data: Error
 
 type AgentRow = typeof agent.$inferSelect;
 
-const findAgent = async (db: KoshaDb, identity: string): Promise<AgentRow | undefined> => {
-  const [row] = await db.select().from(agent).where(eq(agent.identity, identity));
-  return row;
-};
+// By identity, or by its account once the agent has moved from CAIP-10 to a UAID
+const findAgent = async (db: KoshaDb, identity: string): Promise<AgentRow | undefined> =>
+  (await findAgentByIdentity(db, identity)) ?? undefined;
 
 // hedera:testnet:0.0.6003 → 0.0.6003
 const accountOf = (caip10: string): string => caip10.split(':').at(-1) ?? '';

@@ -88,6 +88,21 @@ describe('createPayerResolver', () => {
     expect(saved?.reserveAccountID).toBe('0.0.91');
   });
 
+  it('finds an agent that moved to a UAID by its old CAIP-10 identity', async () => {
+    const uaid = 'uaid:aid:z6Mk6001;uid=0;nativeId=hedera:testnet:0.0.6001';
+    const [row] = await handle.db
+      .insert(agent)
+      .values({ identity: uaid, level: 1, residency: 'resident', reserveAccountID: '0.0.6101' })
+      .returning();
+    await handle.db.insert(agentWallet).values({ agentID: row?.id ?? '', accountID: '0.0.6001' });
+    const resolve = createPayerResolver(handle.db, factory);
+
+    const byAccount = await resolve(id('hedera:testnet:0.0.6001'));
+    expect(byAccount).toMatchObject({ ok: true, data: { agentId: row?.id, level: 1 } });
+    expect(await handle.db.select().from(agent)).toHaveLength(1);
+    expect(created).toEqual([]);
+  });
+
   it('refuses an unregistered UAID', async () => {
     const result = await createPayerResolver(
       handle.db,
