@@ -6,16 +6,57 @@
   "exports": {
     "./*": "./src/*.ts"
   },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "import": {
+          "types": "./dist/express-middleware.d.ts",
+          "default": "./dist/express-middleware.js"
+        },
+        "require": {
+          "types": "./dist/express-middleware.d.cts",
+          "default": "./dist/express-middleware.cjs"
+        }
+      },
+      "./*": {
+        "import": {
+          "types": "./dist/*.d.ts",
+          "default": "./dist/*.js"
+        },
+        "require": {
+          "types": "./dist/*.d.cts",
+          "default": "./dist/*.cjs"
+        }
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
+    "build": "tsup",
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@kosha/shared": "workspace:*",
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@x402/core": "2.30.0"
+    "@kosha/shared": "workspace:*",
+    "@types/express": "5.0.6",
+    "@types/supertest": "7.2.1",
+    "@x402/core": "2.30.0",
+    "express": "5.3.0",
+    "supertest": "7.3.1",
+    "tsup": "8.5.1"
+  },
+  "peerDependencies": {
+    "express": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "express": {
+      "optional": true
+    }
   }
 }

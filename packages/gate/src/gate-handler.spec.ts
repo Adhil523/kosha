@@ -170,6 +170,49 @@ describe('createGateHandler: paid request', () => {
   });
 });
 
+describe('createGateHandler: deferred settlement', () => {
+  it('verifies now and settles only when asked', async () => {
+    const { handle, calls } = setup();
+
+    const result = await handle(request({ 'payment-signature': paymentFor(splitEntry) }), {
+      deferSettle: true
+    });
+
+    if (result.action !== 'verified') {
+      throw new Error(`expected verified, got ${result.action}`);
+    }
+    expect(calls(CORE_PATHS.verify)).toHaveLength(1);
+    expect(calls(CORE_PATHS.settle)).toEqual([]);
+
+    const settled = await result.settle();
+
+    expect(settled.action).toBe('pass');
+    expect(calls(CORE_PATHS.settle)).toHaveLength(1);
+  });
+
+  it('refuses an invalid payment before the API handler runs', async () => {
+    const { handle, calls } = setup({
+      verify: () =>
+        json({ isValid: false, invalidReason: 'quote_expired', invalidMessage: 'expired' })
+    });
+
+    const result = await handle(request({ 'payment-signature': paymentFor(splitEntry) }), {
+      deferSettle: true
+    });
+
+    expect(expectRespond(result).status).toBe(402);
+    expect(calls(CORE_PATHS.settle)).toEqual([]);
+  });
+
+  it('still quotes an unpaid request', async () => {
+    const { handle } = setup();
+
+    const result = await handle(request(), { deferSettle: true });
+
+    expect(expectRespond(result).status).toBe(402);
+  });
+});
+
 const VERIFIER_CODES = ERROR_CODES.slice(0, ERROR_CODES.indexOf('bad_signature') + 1);
 
 describe('createGateHandler: failed payment', () => {

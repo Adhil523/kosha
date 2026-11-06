@@ -1,4 +1,5 @@
 import { type CoreClientOptions, type CoreFailure, createCoreClient } from './core-client';
+import { buildTerms, TERMS_PATH, type TermsOptions } from './kosha-terms';
 import { compileRoutes, type MatchedRoute, type Routes } from './route-match';
 import { type ErrorCode, errorCodeSchema } from '@kosha/shared/error-codes';
 import { type FacilitatorRequest } from '@kosha/shared/facilitator-api';
@@ -20,7 +21,7 @@ import {
   type SettlementResponse
 } from '@kosha/shared/x402-payment';
 
-const STATUS = { noContent: 204, paymentRequired: 402, unavailable: 503 } as const;
+const STATUS = { ok: 200, noContent: 204, paymentRequired: 402, unavailable: 503 } as const;
 type X402Network = (typeof X402_NETWORKS)[keyof typeof X402_NETWORKS];
 
 export type GateHeaders = Readonly<Record<string, string | readonly string[] | undefined>>;
@@ -51,12 +52,24 @@ export type GateResult =
   // Answer now: a 402 quote, a failed payment, a preflight or Core being down
   | { action: 'respond'; status: number; headers: Record<string, string>; body: unknown }
   // Paid and settled: run the API's handler with these response headers added
-  | { action: 'pass'; headers: Record<string, string>; kosha: KoshaContext };
+  | { action: 'pass'; headers: Record<string, string>; kosha: KoshaContext }
+  // Paid and verified, settlement deferred: run the API's handler, then settle on a 2xx
+  | { action: 'verified'; settle: () => Promise<SettledResult> };
+
+// What a deferred settlement resolves to: settled, or a failure to answer with instead
+export type SettledResult = Extract<GateResult, { action: 'pass' | 'respond' }>;
+
+export type HandleOptions = {
+  // Verify now but settle later (settleMode "after"): the result is `verified`, not `pass`
+  deferSettle?: boolean;
+};
 
 export type GateOptions = CoreClientOptions & {
   routes: Routes;
   // The network named in a failed PAYMENT-RESPONSE when the payload can't be read
   network?: X402Network;
+  // When set, Gate answers GET /.well-known/kosha with these terms and the route prices
+  terms?: TermsOptions;
 };
 
 const EXPOSE_HEADERS = { 'access-control-expose-headers': CORS_EXPOSED_HEADERS.join(', ') };
@@ -73,7 +86,7 @@ const failure = (
   network: X402Network,
   settlement?: SettlementResponse,
   message?: string
-): GateResult => {
+): SettledResult => {
   const response: SettlementResponse = settlement ?? {
     success: false,
     errorReason: code,
@@ -88,7 +101,7 @@ const failure = (
   };
 };
 
-const unavailable = (data: CoreFailure): GateResult => ({
+const unavailable = (data: CoreFailure): SettledResult => ({
   action: 'respond',
   status: STATUS.unavailable,
   headers: EXPOSE_HEADERS,
@@ -125,6 +138,14 @@ export const createGateHandler = (options: GateOptions) => {
   const core = createCoreClient(options);
   const matchRoute = compileRoutes(options.routes);
   const fallbackNetwork = options.network ?? X402_NETWORKS.testnet;
+  const termsResult: GateResult | null = options.terms
+    ? {
+        action: 'respond',
+        status: STATUS.ok,
+        headers: { 'access-control-allow-origin': '*' },
+        body: buildTerms(options.routes, fallbackNetwork, options.terms)
+      }
+    : null;
 
   const preflight = (request: GateRequest): GateResult => {
     const wanted = readHeader(request.headers, 'access-control-request-method');
@@ -164,7 +185,8 @@ export const createGateHandler = (options: GateOptions) => {
   const pay = async (
     rawPayment: string,
     route: MatchedRoute,
-    agent: AgentIdentity | undefined
+    agent: AgentIdentity | undefined,
+    deferSettle: boolean
   ): Promise<GateResult> => {
     const decoded = decodeHeader(paymentPayloadSchema, rawPayment);
     if (!decoded.ok) {
@@ -190,6 +212,16 @@ export const createGateHandler = (options: GateOptions) => {
       return failure(code, accepted.network, undefined, verified.data.invalidMessage);
     }
 
+    const settle = () => settlePayment(body, route, agent);
+    return deferSettle ? { action: 'verified', settle } : settle();
+  };
+
+  const settlePayment = async (
+    body: FacilitatorRequest,
+    route: MatchedRoute,
+    agent: AgentIdentity | undefined
+  ): Promise<SettledResult> => {
+    const accepted = body.paymentRequirements;
     const settled = await core.settle(body);
     if (!settled.ok) {
       return unavailable(settled.data);
@@ -224,11 +256,15 @@ export const createGateHandler = (options: GateOptions) => {
   };
 
   // Quote an unpaid request, or verify and settle a paid one, before the API's handler runs
-  return async (request: GateRequest): Promise<GateResult> => {
+  return async (request: GateRequest, handleOptions: HandleOptions = {}): Promise<GateResult> => {
     if (request.method.toUpperCase() === 'OPTIONS') {
       return preflight(request);
     }
-    const route = matchRoute(request.method, pathOf(request.url));
+    const path = pathOf(request.url);
+    if (termsResult && request.method.toUpperCase() === 'GET' && path === TERMS_PATH) {
+      return termsResult;
+    }
+    const route = matchRoute(request.method, path);
     if (!route) {
       return { action: 'next' };
     }
@@ -241,7 +277,9 @@ export const createGateHandler = (options: GateOptions) => {
       readHeader(request.headers, HEADERS.paymentSignature) ??
       readHeader(request.headers, HEADERS.legacyPayment);
 
-    return rawPayment ? pay(rawPayment, route, agent) : quote(request, route, agent);
+    return rawPayment
+      ? pay(rawPayment, route, agent, handleOptions.deferSettle ?? false)
+      : quote(request, route, agent);
   };
 };
 
