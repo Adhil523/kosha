@@ -34,6 +34,8 @@ export const RELEASE_STATUS_LABELS: Record<ReleaseRow['status'], string> = {
   pending: 'Being scheduled',
   scheduled: 'Waiting for the agent’s co-sign',
   executed: 'Released',
+  // The schedule ran but its transfer failed (e.g. the deductor dropped the token): TDS still held
+  failed: 'Transfer failed, TDS still in the reserve',
   expired: 'Expired, to be scheduled again',
   deleted: 'Cancelled'
 };
