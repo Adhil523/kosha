@@ -26,5 +26,19 @@ export const TEST_IDS = {
   taxStat: (id: string) => `tax-stat-${id}`,
   deducteeRow: (ref: string) => `deductee-row-${ref}`,
   evidenceRow: (txId: string) => `evidence-row-${txId}`,
-  rulePackHash: 'rule-pack-hash'
+  rulePackHash: 'rule-pack-hash',
+  outsideSummary: 'outside-summary',
+  outsideRow: (id: string) => `outside-row-${id}`,
+  outsideConsideration: (id: string) => `outside-consideration-${id}`,
+  outsideGift: (id: string) => `outside-gift-${id}`,
+  outsideNote: (id: string) => `outside-note-${id}`,
+  outsideGiftSave: (id: string) => `outside-gift-save-${id}`,
+  monthPicker: 'month-picker',
+  closeRow: (agentId: string) => `close-row-${agentId}`,
+  challanStatus: 'challan-status',
+  challanRef: 'challan-ref',
+  challanRecord: 'challan-record',
+  releaseRow: (id: string) => `release-row-${id}`,
+  releaseCosign: (id: string) => `release-cosign-${id}`,
+  reserveBalance: (agentId: string) => `reserve-balance-${agentId}`
 } as const;

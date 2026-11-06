@@ -7,7 +7,7 @@ loadEnv();
 
 const nextConfig: NextConfig = {
   // Internal packages export TypeScript source (PROTOCOL §2)
-  transpilePackages: ['@kosha/shared'],
+  transpilePackages: ['@kosha/shared', '@kosha/hedera'],
   // Agent instructions live in docs/agents/; stop `next dev` writing its own AGENTS.md
   agentRules: false,
   cacheComponents: true,

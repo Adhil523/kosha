@@ -12,24 +12,29 @@ import {
   type AggregateRow,
   aggregateRowSchema,
   type LedgerPage,
-  ledgerPageSchema
+  ledgerPageSchema,
+  type OutsidePaymentRow,
+  outsidePaymentRowSchema
 } from '@kosha/shared/console-api';
 import { type SupportedResponse, supportedResponseSchema } from '@kosha/shared/facilitator-api';
 import {
   AGENTS_FIXTURE,
   AGGREGATES_FIXTURE,
   LEDGER_PAGE_FIXTURE,
+  OUTSIDE_PAYMENTS_FIXTURE,
   POLICY_FIXTURE,
   SUPPORTED_FIXTURE,
   TDS_EXPORT_FIXTURE
 } from '@kosha/shared/fixtures';
 import { type AgentRow, agentRowSchema, type Policy, policySchema } from '@kosha/shared/registry';
+import { type OutsideClassify } from '@kosha/shared/tax-reports';
 import { z } from 'zod';
 
 // The receiver the API-owner workspace shows. The fixtures use rcv_in; live Core uses the ID
 // that seed gives receiver-in.
 const DEFAULT_RECEIVER_ID = 'rcv_in';
 const NOT_FOUND = 404;
+const CONFLICT = 409;
 const BAD_GATEWAY = 502;
 const NOT_CONFIGURED = 503;
 const LEDGER_PAGE_LIMIT = '200';
@@ -46,10 +51,10 @@ const coreOptions = (): ApiOptions => {
   return token ? { headers: { authorization: `Bearer ${token}` } } : {};
 };
 
-type CoreResult<T> = ApiResponse<T, ApiError>;
+export type CoreResult<T> = ApiResponse<T, ApiError>;
 
 // Every Core answer is parsed with its @kosha/shared schema; a mismatch is a 502, not bad data
-const getParsed = async <T>(url: string, schema: z.ZodType<T>): Promise<CoreResult<T>> => {
+export const getParsed = async <T>(url: string, schema: z.ZodType<T>): Promise<CoreResult<T>> => {
   const response = await api.get<unknown>(url, coreOptions());
   if (!response.ok) return response;
   const parsed = schema.safeParse(response.data);
@@ -58,8 +63,23 @@ const getParsed = async <T>(url: string, schema: z.ZodType<T>): Promise<CoreResu
   return { ok: false, status: BAD_GATEWAY, data: { message: 'Core answered in an unknown shape' } };
 };
 
-const coreBase = (): string | null => process.env.CORE_URL?.trim() || null;
-const notConfigured = {
+// A write: the body sent as JSON, Core's answer parsed like a read
+export const sendParsed = async <T>(
+  method: 'post' | 'put',
+  url: string,
+  body: unknown,
+  schema: z.ZodType<T>
+): Promise<CoreResult<T>> => {
+  const response = await api[method]<unknown>(url, body, coreOptions());
+  if (!response.ok) return response;
+  const parsed = schema.safeParse(response.data);
+  if (parsed.success) return { ok: true, status: response.status, data: parsed.data };
+  console.error(`[core]: ${method.toUpperCase()} ${new URL(url).pathname} broke its schema`);
+  return { ok: false, status: BAD_GATEWAY, data: { message: 'Core answered in an unknown shape' } };
+};
+
+export const coreBase = (): string | null => process.env.CORE_URL?.trim() || null;
+export const notConfigured = {
   ok: false,
   status: NOT_CONFIGURED,
   data: { message: 'CORE_URL is not set' }
@@ -161,16 +181,53 @@ export const putPolicy = async (agentId: string, policy: Policy): Promise<CoreRe
   }
   const base = coreBase();
   if (!base) return notConfigured;
-  const response = await api.put<unknown>(
-    URLS.core.agentPolicy(base, agentId),
-    policy,
-    coreOptions()
+  return sendParsed('put', URLS.core.agentPolicy(base, agentId), policy, policySchema);
+};
+
+// Mock mode keeps classifications in memory too, so the screen round-trips
+const mockOutside = new Map<string, OutsidePaymentRow>(
+  OUTSIDE_PAYMENTS_FIXTURE.map((row) => [row.id, row])
+);
+
+// Transfers the watcher flagged for this receiver (A19), newest first
+export const getOutsidePayments = async (): Promise<CoreResult<OutsidePaymentRow[]>> => {
+  if (isMockMode()) return { ok: true, status: 200, data: [...mockOutside.values()] };
+  const base = coreBase();
+  if (!base) return notConfigured;
+  return getParsed(
+    URLS.core.outsidePayments(base, consoleReceiverId()),
+    z.array(outsidePaymentRowSchema)
   );
-  if (!response.ok) return response;
-  const parsed = policySchema.safeParse(response.data);
-  if (parsed.success) return { ok: true, status: response.status, data: parsed.data };
-  console.error(`[core]: PUT policy broke its schema: ${parsed.error.message}`);
-  return { ok: false, status: BAD_GATEWAY, data: { message: 'Core answered in an unknown shape' } };
+};
+
+// The owner's call on one flagged transfer: consideration, or a gift with a note
+export const classifyOutsidePayment = async (
+  id: string,
+  classification: OutsideClassify
+): Promise<CoreResult<OutsidePaymentRow>> => {
+  if (isMockMode()) {
+    const row = mockOutside.get(id);
+    if (!row)
+      return { ok: false, status: NOT_FOUND, data: { message: `no outside payment ${id}` } };
+    if (row.classification !== 'pending') {
+      return {
+        ok: false,
+        status: CONFLICT,
+        data: { message: 'this transfer is already classified' }
+      };
+    }
+    const classified = { ...row, ...classification, note: classification.note ?? null };
+    mockOutside.set(id, classified);
+    return { ok: true, status: 200, data: classified };
+  }
+  const base = coreBase();
+  if (!base) return notConfigured;
+  return sendParsed(
+    'post',
+    URLS.core.outsideClassify(base, id),
+    classification,
+    outsidePaymentRowSchema
+  );
 };
 
 // Core's quarterly TDS file for this receiver, as Core streams it (RFC 4180 CSV)

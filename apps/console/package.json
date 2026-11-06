@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
+    "@hiero-ledger/sdk": "2.90.1",
+    "@kosha/hedera": "workspace:*",
     "@kosha/shared": "workspace:*",
     "@tanstack/react-query": "^5.106.1",
     "class-variance-authority": "^0.7.1",
