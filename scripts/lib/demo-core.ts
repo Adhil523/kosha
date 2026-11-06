@@ -1,5 +1,20 @@
-import { type AggregateRow, aggregateRowSchema, ledgerPageSchema } from '@kosha/shared/console-api';
+import {
+  type AggregateRow,
+  aggregateRowSchema,
+  ledgerPageSchema,
+  type OutsidePaymentRow,
+  outsidePaymentRowSchema
+} from '@kosha/shared/console-api';
 import { type AgentRow, agentRowSchema, type Policy, policySchema } from '@kosha/shared/registry';
+import {
+  type ChallanRow,
+  challanRowSchema,
+  type MonthlyClose,
+  monthlyCloseSchema,
+  type OutsideClassify,
+  type ReleaseRow,
+  releaseRowSchema
+} from '@kosha/shared/tax-reports';
 import { z } from 'zod';
 
 // What the demo runner reads and sets through Core's admin API (B17): the IDs behind the
@@ -44,12 +59,25 @@ export type DemoCore = {
   getPolicy: (agentId: string) => Promise<CoreResult<Policy | null>>;
   putPolicy: (agentId: string, policy: Policy) => Promise<CoreResult<Policy>>;
   tdsExport: (receiverId: string, quarter: string) => Promise<CoreResult<string>>;
+  outsidePayments: (receiverId: string) => Promise<CoreResult<OutsidePaymentRow[]>>;
+  classifyOutside: (id: string, body: OutsideClassify) => Promise<CoreResult<OutsidePaymentRow>>;
+  monthlyClose: (receiverId: string, month: string) => Promise<CoreResult<MonthlyClose>>;
+  // The month's challan: recorded now, or the one already recorded (Core allows one per month)
+  closeMonth: (
+    receiverId: string,
+    month: string,
+    challanRef: string
+  ) => Promise<CoreResult<ChallanRow>>;
+  releases: (challanId: string) => Promise<CoreResult<ReleaseRow[]>>;
+  cosignRelease: (id: string, transaction: string) => Promise<CoreResult<ReleaseRow>>;
   // The status an optional endpoint answers: 404 means the feature is not built
   probe: (path: string) => Promise<number>;
 };
 
 const NOT_FOUND = 404;
 const OK = 200;
+const CREATED = 201;
+const CONFLICT = 409;
 
 const errorSchema = z.object({ error: z.string(), message: z.string().optional() });
 
@@ -132,11 +160,73 @@ export const demoCore = (core: AdminHttp): DemoCore => {
         ? { ok: true, data: response.body }
         : { ok: false, data: 'the TDS export was not CSV text' };
     },
+    outsidePayments: async (receiverId) => {
+      const path = `/v1/outside-payments?receiverId=${encodeURIComponent(receiverId)}`;
+      const response = await core('GET', path);
+      if (response.status !== OK)
+        return {
+          ok: false,
+          data: refusal('GET /v1/outside-payments', response.status, response.body)
+        };
+      return parse('GET /v1/outside-payments', z.array(outsidePaymentRowSchema), response.body);
+    },
+    classifyOutside: async (id, body) => {
+      const path = `/v1/outside-payments/${encodeURIComponent(id)}/classify`;
+      const response = await core('POST', path, body);
+      if (response.status !== OK)
+        return { ok: false, data: refusal('POST classify', response.status, response.body) };
+      return parse('POST classify', outsidePaymentRowSchema, response.body);
+    },
+    monthlyClose: async (receiverId, month) => {
+      const path = `/v1/close?receiverId=${encodeURIComponent(receiverId)}&month=${month}`;
+      const response = await core('GET', path);
+      if (response.status !== OK)
+        return { ok: false, data: refusal('GET /v1/close', response.status, response.body) };
+      return parse('GET /v1/close', monthlyCloseSchema, response.body);
+    },
+    closeMonth: async (receiverId, month, challanRef) => {
+      const recorded = await core('POST', '/v1/challans', { receiverId, month, challanRef });
+      if (recorded.status === CREATED) {
+        const body = parse(
+          'POST /v1/challans',
+          z.object({ challan: challanRowSchema }),
+          recorded.body
+        );
+        return body.ok ? { ok: true, data: body.data.challan } : body;
+      }
+      if (recorded.status !== CONFLICT)
+        return { ok: false, data: refusal('POST /v1/challans', recorded.status, recorded.body) };
+      const listed = await core('GET', `/v1/challans?receiverId=${encodeURIComponent(receiverId)}`);
+      const rows = parse('GET /v1/challans', z.array(challanRowSchema), listed.body);
+      if (!rows.ok) return rows;
+      const existing = rows.data.find((row) => row.month === month);
+      return existing
+        ? { ok: true, data: existing }
+        : { ok: false, data: `${month} is closed, but no challan is listed` };
+    },
+    releases: async (challanId) => {
+      const response = await core('GET', `/v1/releases?challanId=${encodeURIComponent(challanId)}`);
+      if (response.status !== OK)
+        return { ok: false, data: refusal('GET /v1/releases', response.status, response.body) };
+      return parse('GET /v1/releases', z.array(releaseRowSchema), response.body);
+    },
+    cosignRelease: async (id, transaction) => {
+      const response = await core('POST', `/v1/releases/${encodeURIComponent(id)}/cosign`, {
+        transaction
+      });
+      if (response.status !== OK)
+        return { ok: false, data: refusal('POST cosign', response.status, response.body) };
+      return parse('POST cosign', releaseRowSchema, response.body);
+    },
     probe: async (path) => (await core('GET', path)).status
   };
 };
 
 const IST_OFFSET_MS = 19_800_000;
+
+// The calendar month `now` falls in (IST), for the monthly close: "2026-11"
+export const currentMonth = (now: Date): string =>
+  new Date(now.getTime() + IST_OFFSET_MS).toISOString().slice(0, 7);
 const FY_START_MONTH = 3; // April, zero-based
 
 // The financial-year quarter `now` falls in (IST): 2026-Q3 is October to December 2026

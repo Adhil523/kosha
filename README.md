@@ -92,14 +92,14 @@ mode, in progress).
 
 ### What's on-chain and what isn't
 
-| On Hedera                                                                          | Off-chain                                                            |
-| ---------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| x402 payments in USDC, made by agents without human approval                       | The tax engine's calculation (recomputable from HCS)                 |
-| One atomic transfer: price to the API, TDS to the agent's reserve                  | Yearly totals per pair (Postgres; each running total is also on HCS) |
-| The reserve account, with a 2-of-2 key (agent + Kosha)                             | Taxpayer credentials (KYC issuer)                                    |
-| An HCS log of every tax decision, with the rule-pack hash                          | The TDS challan, paid in INR on the government portal                |
-| Scheduled transactions for monthly reserve releases (in progress)                  | The quarterly return, filed by a CA                                  |
-| Mirror Node reads: Gate's reserve proof, the outside-payment watcher (in progress) |                                                                      |
+| On Hedera                                                            | Off-chain                                                            |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| x402 payments in USDC, made by agents without human approval         | The tax engine's calculation (recomputable from HCS)                 |
+| One atomic transfer: price to the API, TDS to the agent's reserve    | Yearly totals per pair (Postgres; each running total is also on HCS) |
+| The reserve account, with a 2-of-2 key (agent + Kosha)               | Taxpayer credentials (KYC issuer)                                    |
+| An HCS log of every tax decision, with the rule-pack hash            | The TDS challan, paid in INR on the government portal                |
+| Scheduled transactions for monthly reserve releases                  | The quarterly return, filed by a CA                                  |
+| Mirror Node reads: Gate's reserve proof, the outside-payment watcher |                                                                      |
 
 The money moves on Hedera and the proof lives on Hedera. The only off-chain step is the one the
 government requires: paying the tax in rupees.
@@ -116,7 +116,7 @@ government requires: paying the tax in rupees.
 | HCS tamper-evident log                  | Payments topic whose submit key is Core's, with recomputable decisions                                                                                                                              |
 | Agents negotiating before payment       | Each Gate-protected API publishes its terms (prices, rule pack, unverified-payer policy, accepted levels) at `/.well-known/kosha`; propose-and-counter is planned                                   |
 | HTS token settlement and revenue splits | USDC price and TDS split in one `TransferTransaction`                                                                                                                                               |
-| Scheduled transactions                  | Monthly reserve release, co-signed by the agent and Kosha (in progress)                                                                                                                             |
+| Scheduled transactions                  | Monthly reserve release: Core schedules it after the challan, the agent co-signs from the Console's Reserve screen or `pnpm demo`                                                                   |
 | Hedera Agent Kit                        | `kosha_paid_fetch_tool` as a `BaseTool` plugin (in progress)                                                                                                                                        |
 
 Kosha uses no smart contracts, only native HTS, HCS and scheduled transactions.
@@ -294,8 +294,10 @@ the reserve proof off (`DEMO_API_PROOF=off`), so the counter visibly moves on st
 5. An agent hits its daily cap: Core's server-side policy refuses the quote (`policy_daily`), as
    the Agent Kit budget policy does inside `demo-agent`.
 6. A stock x402 client pays through compatibility mode.
-7. An outside transfer is flagged and marked as a gift (cut: skipped by the runner).
-8. Download the TDS file; record a mock challan and co-sign the reserve release (cut: skipped).
+7. The agent pays the API directly, outside Kosha: Core's watcher flags the transfer within a
+   minute, with the TDS it should have carried, and the owner marks it a gift from a relative.
+8. Download the TDS file; record a mock challan for the month, then co-sign the agent's reserve
+   release with its own key, and Hedera runs the scheduled transfer to the API owner.
 
 ### Testnet evidence
 
@@ -303,7 +305,7 @@ the reserve proof off (`DEMO_API_PROOF=off`), so the counter visibly moves on st
 | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | A payment under the threshold (one leg, no TDS)     | [0.0.11341449@1793987958.456000000](https://hashscan.io/testnet/transaction/0.0.11341449-1793987958-456000000) |
 | A payment with 1% TDS reserved (two legs)           | [0.0.11341449@1793987971.680000000](https://hashscan.io/testnet/transaction/0.0.11341449-1793987971-680000000) |
-| A reserve release (co-signed scheduled transaction) | Added once the monthly close is built                                                                          |
+| A reserve release (co-signed scheduled transaction) | Added after the first live run of `pnpm demo` step 8                                                           |
 | Every account and topic                             | [docs/testnet-accounts.md](docs/testnet-accounts.md)                                                           |
 
 ## Deploy
