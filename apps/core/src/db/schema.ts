@@ -203,10 +203,49 @@ export const aggregate = pgTable(
   (table) => [primaryKey({ columns: [table.agentID, table.receiverID, table.fy] })]
 );
 
+// A tax decision for a payment settled on another rail (POST /v1/decide, A24). Like a quote, an
+// unconfirmed decision is held against its pair's total until it expires, so two decisions near the
+// threshold can't both skip TDS. The payer is a Kosha agent, or a facilitator's own reference.
+export const decision = pgTable(
+  'Decision',
+  {
+    ...base,
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => `dec_${createId()}`),
+    receiverID: text('receiverID')
+      .notNull()
+      .references(() => receiver.id),
+    agentID: text('agentID').references(() => agent.id),
+    // The calling facilitator's own payer reference, when it sends claims instead of an identity
+    payerReference: text('payerReference'),
+    chain: text('chain').notNull(),
+    resource: text('resource'),
+    priceMicro: money('priceMicro').notNull(),
+    inrPerUsdMicro: money('inrPerUsdMicro').notNull(),
+    valuePaise: money('valuePaise').notNull(),
+    tdsPaise: money('tdsPaise').notNull(),
+    tdsMicro: money('tdsMicro').notNull(),
+    rateBps: integer('rateBps').notNull(),
+    reason: text('reason').notNull(),
+    flags: text('flags').array().notNull(),
+    rulepack: text('rulepack').notNull(),
+    fy: text('fy').notNull(),
+    expiresAt: utc('expiresAt').notNull(),
+    // Set by POST /v1/decisions/:id/confirm once the payment settled on its rail
+    confirmedAt: utc('confirmedAt'),
+    transactionRef: text('transactionRef')
+  },
+  (table) => [
+    check('decisionPayer', sql`(${table.agentID} is null) <> (${table.payerReference} is null)`)
+  ]
+);
+
 export const HCS_MESSAGE_KINDS = [
   'pay',
   'rulepack',
   'decision',
+  'decision_confirmed',
   'outside',
   'outside_resolved',
   'challan'

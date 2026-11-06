@@ -1,0 +1,10 @@
+# The build context is the repo root; keep it to what the image needs (rulepacks/ stays: Core
+# reads its active rule pack from there)
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+.git
+.env
+.env.*
+docs

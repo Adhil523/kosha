@@ -1,0 +1,29 @@
+# Fly.io config for Kosha Core. Deploy from the repo root (docs/core-api.md, "Deploy"):
+#   fly deploy . --config apps/core/fly.toml --dockerfile apps/core/Dockerfile \
+#     --ignorefile apps/core/Dockerfile.dockerignore
+# Secrets are set with `fly secrets set`; the list is in docs/core-api.md.
+
+app = "kosha-core"
+# Mumbai, beside the demo APIs that call it on every request
+primary_region = "bom"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Core must stay up: the HCS outbox and the compatibility forwarder run inside it, and funds
+  # wait in Kosha's settlement account until a forward goes out
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/health"
+    interval = "30s"
+    timeout = "5s"
+    # Migrations run before the server listens
+    grace_period = "30s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
