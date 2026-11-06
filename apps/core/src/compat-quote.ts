@@ -3,7 +3,7 @@ import { pairLimits } from './pair-limits';
 import { SCHEMES, X402_NETWORKS } from '@kosha/shared/headers';
 import type { HederaNetwork } from '@kosha/shared/ids';
 import { type ExactRequirements, exactRequirementsSchema } from '@kosha/shared/x402-payment';
-import { decide,type Decision } from '@kosha/tax-engine/decide';
+import { decide, type Decision } from '@kosha/tax-engine/decide';
 import type { RulePack } from '@kosha/tax-engine/rule-pack';
 
 // Compatibility mode (A23): the plain `exact` entry any x402 v2 client can pay. It pays the
