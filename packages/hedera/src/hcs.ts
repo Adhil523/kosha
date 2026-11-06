@@ -10,7 +10,8 @@ export const NO_SEQUENCE_STATUS = 'NO_SEQUENCE_NUMBER';
 export type HcsJson = string | number | boolean | null | HcsJson[] | { [key: string]: HcsJson };
 
 export type Submitted =
-  | { ok: true; data: { sequence: number } }
+  // runningHash: the topic's running hash after this message, hex; null if the receipt had none
+  | { ok: true; data: { sequence: number; runningHash: string | null } }
   | { ok: false; data: { reason: 'too_large'; bytes: number } }
   | { ok: false; data: { reason: 'rejected'; status: string } };
 
@@ -42,5 +43,12 @@ export const submitMessage = async (
 
   const sequence = executed.data.topicSequenceNumber;
   if (!sequence) return { ok: false, data: { reason: 'rejected', status: NO_SEQUENCE_STATUS } };
-  return { ok: true, data: { sequence: Number(sequence.toString()) } };
+  const hash = executed.data.topicRunningHash;
+  return {
+    ok: true,
+    data: {
+      sequence: Number(sequence.toString()),
+      runningHash: hash ? Buffer.from(hash).toString('hex') : null
+    }
+  };
 };

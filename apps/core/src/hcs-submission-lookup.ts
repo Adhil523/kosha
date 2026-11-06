@@ -7,7 +7,9 @@ import { toMirrorTransactionId } from '@kosha/shared/links';
 const LANDS_WITHIN_SECONDS = 120 + 60;
 
 export type PriorSubmission =
-  { state: 'published'; sequence: number } | { state: 'absent' } | { state: 'unknown' };
+  | { state: 'published'; sequence: number; runningHash: string }
+  | { state: 'absent' }
+  | { state: 'unknown' };
 
 // What became of an earlier HCS submission: published (with its sequence number), absent (safe to
 // submit again), or unknown (it may still land, so the message waits)
@@ -25,7 +27,11 @@ export const mirrorSubmissionLookup =
       if (found.data.result !== 'SUCCESS') return { state: 'absent' };
       const message = await mirror.topicMessageAt(found.data.consensusTimestamp);
       return message.ok
-        ? { state: 'published', sequence: message.data.sequence }
+        ? {
+            state: 'published',
+            sequence: message.data.sequence,
+            runningHash: message.data.runningHash
+          }
         : { state: 'unknown' };
     }
     if (found.data.reason !== 'not_found') return { state: 'unknown' };

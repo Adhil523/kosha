@@ -123,13 +123,18 @@ describe('mirror client', () => {
   it('finds the HCS message a transaction posted by its consensus timestamp', async () => {
     const { fetchImpl } = fakeFetch({
       '/api/v1/topics/messages/1794911401.000000001': {
-        body: { topic_id: '0.0.7100', sequence_number: 42, consensus_timestamp: '1794911401.0' }
+        body: {
+          topic_id: '0.0.7100',
+          sequence_number: 42,
+          consensus_timestamp: '1794911401.0',
+          running_hash: Buffer.from('ab'.repeat(48), 'hex').toString('base64')
+        }
       }
     });
     const mirror = createMirrorClient(BASE, fetchImpl);
     expect(await mirror.topicMessageAt('1794911401.000000001')).toEqual({
       ok: true,
-      data: { topicId: '0.0.7100', sequence: 42 }
+      data: { topicId: '0.0.7100', sequence: 42, runningHash: 'ab'.repeat(48) }
     });
     expect(await mirror.topicMessageAt('1794911402.000000001')).toEqual({
       ok: false,

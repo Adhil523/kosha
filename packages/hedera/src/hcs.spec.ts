@@ -25,12 +25,12 @@ describe('submitMessage', () => {
   it('submits one JSON message to the topic and returns its sequence number', async () => {
     const { execute, seen } = fakeExecutor({
       ok: true,
-      data: receipt({ topicSequenceNumber: 42n })
+      data: receipt({ topicSequenceNumber: 42n, topicRunningHash: new Uint8Array([0xab, 0xcd]) })
     });
 
     expect(await submitMessage(execute, '0.0.7001', PAY_RECORD)).toEqual({
       ok: true,
-      data: { sequence: 42 }
+      data: { sequence: 42, runningHash: 'abcd' }
     });
 
     const [transaction] = seen;

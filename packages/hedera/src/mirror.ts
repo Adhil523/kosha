@@ -51,10 +51,16 @@ const accountTokensSchema = z.object({
   tokens: z.array(z.object({ token_id: z.string(), balance: z.number().int() }))
 });
 
-const topicMessageSchema = z.object({ topic_id: z.string(), sequence_number: z.number().int() });
+const topicMessageSchema = z.object({
+  topic_id: z.string(),
+  sequence_number: z.number().int(),
+  // base64
+  running_hash: z.string()
+});
 
 export type MirrorAccountKey = { type: string; hex: string };
-export type MirrorTopicMessage = { topicId: string; sequence: number };
+// runningHash is hex, as Core stores it
+export type MirrorTopicMessage = { topicId: string; sequence: number; runningHash: string };
 export type MirrorTokenTransfer = { tokenId: string; account: string; amount: bigint };
 export type MirrorTransaction = {
   transactionId: string;
@@ -242,7 +248,11 @@ export const createMirrorClient = (baseUrl: string, fetchImpl: FetchLike = fetch
     if (!result.ok) return result;
     return {
       ok: true,
-      data: { topicId: result.data.topic_id, sequence: result.data.sequence_number }
+      data: {
+        topicId: result.data.topic_id,
+        sequence: result.data.sequence_number,
+        runningHash: Buffer.from(result.data.running_hash, 'base64').toString('hex')
+      }
     };
   };
 

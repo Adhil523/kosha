@@ -37,7 +37,12 @@ describe('HCS outbox', () => {
     (...results: Submitted[]) =>
     async (topicId: string, message: HcsJson, transactionId: string): Promise<Submitted> => {
       sent.push({ topicId, message, transactionId });
-      return results.shift() ?? { ok: true, data: { sequence: sent.length } };
+      return (
+        results.shift() ?? {
+          ok: true,
+          data: { sequence: sent.length, runningHash: `${'0'.repeat(95)}${sent.length}` }
+        }
+      );
     };
 
   const outbox = (
@@ -56,7 +61,7 @@ describe('HCS outbox', () => {
     expect(report).toEqual({ published: 1, failed: 0 });
     expect(sent).toMatchObject([{ topicId: TOPIC, message: { t: 'pay', tx: TX } }]);
     expect(await handle.db.select().from(hcsOutbox)).toMatchObject([
-      { hcsSequence: 1, attempts: 1, lastError: null }
+      { hcsSequence: 1, hcsRunningHash: `${'0'.repeat(95)}1`, attempts: 1, lastError: null }
     ]);
     expect(await handle.db.select().from(payment)).toMatchObject([{ hcsSequence: 1 }]);
 
@@ -117,7 +122,7 @@ describe('HCS outbox', () => {
     const found = await publishQueued(
       outbox(submitting(), async (transactionId) => {
         asked.push(transactionId);
-        return { state: 'published', sequence: 9 };
+        return { state: 'published', sequence: 9, runningHash: 'cd'.repeat(48) };
       })
     );
     expect(found).toEqual({ published: 1, failed: 0 });

@@ -361,6 +361,9 @@ export const hcsOutbox = pgTable('HcsOutbox', {
   attempts: integer('attempts').notNull().default(0),
   lastError: text('lastError'),
   hcsSequence: integer('hcsSequence'),
+  // The topic's running hash after this message (hex): it chains the message to every earlier
+  // one, so the record can be checked against the topic without trusting Core's database
+  hcsRunningHash: text('hcsRunningHash'),
   publishedAt: utc('publishedAt'),
   // Assigned before each submit and kept while the outcome is unknown: a retry asks the Mirror
   // Node whether that transaction reached consensus before it posts the message again

@@ -34,7 +34,11 @@ const mayHaveLanded = (result: Extract<Submitted, { ok: false }>): boolean =>
   result.data.reason === 'rejected' &&
   (result.data.status === UNKNOWN_EXECUTION_STATUS || result.data.status === NO_SEQUENCE_STATUS);
 
-const recordPublished = async (db: KoshaDb, row: OutboxRow, sequence: number) => {
+const recordPublished = async (
+  db: KoshaDb,
+  row: OutboxRow,
+  { sequence, runningHash }: { sequence: number; runningHash: string | null }
+) => {
   await db.transaction(async (tx) => {
     await tx
       .update(hcsOutbox)
@@ -42,6 +46,7 @@ const recordPublished = async (db: KoshaDb, row: OutboxRow, sequence: number) =>
         attempts: row.attempts + 1,
         lastError: null,
         hcsSequence: sequence,
+        hcsRunningHash: runningHash,
         publishedAt: new Date()
       })
       .where(eq(hcsOutbox.id, row.id));
@@ -58,7 +63,7 @@ const publishOne = async (deps: OutboxDeps, row: OutboxRow): Promise<RowOutcome>
     ? await deps.lookup(row.transactionID)
     : { state: 'absent' };
   if (prior.state === 'published') {
-    await recordPublished(deps.db, row, prior.sequence);
+    await recordPublished(deps.db, row, prior);
     return 'published';
   }
   if (prior.state === 'unknown') {
@@ -76,7 +81,7 @@ const publishOne = async (deps: OutboxDeps, row: OutboxRow): Promise<RowOutcome>
     .where(eq(hcsOutbox.id, row.id));
   const submitted = await deps.submit(row.topicID, row.payload, transactionId);
   if (submitted.ok) {
-    await recordPublished(deps.db, row, submitted.data.sequence);
+    await recordPublished(deps.db, row, submitted.data);
     return 'published';
   }
 

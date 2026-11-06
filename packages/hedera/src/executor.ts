@@ -13,6 +13,8 @@ export type ReceiptLike = {
   topicSequenceNumber: { toString(): string } | null;
   accountId: { toString(): string } | null;
   scheduleId: { toString(): string } | null;
+  // HCS only: the topic's running hash after this message, which chains it to every earlier one
+  topicRunningHash?: Uint8Array | null;
 };
 
 // A failed execution keeps the network status (e.g. INVALID_SIGNATURE) and, when the network

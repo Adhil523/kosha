@@ -23,7 +23,7 @@ const fakeMirror = (
   transactionById: async () => transaction,
   topicMessageAt: async (timestamp) =>
     timestamp === '1794911401.000000002'
-      ? { ok: true, data: { topicId: '0.0.7100', sequence: 42 } }
+      ? { ok: true, data: { topicId: '0.0.7100', sequence: 42, runningHash: 'ab'.repeat(48) } }
       : { ok: false, data: { reason: 'not_found' } }
 });
 
@@ -32,7 +32,11 @@ const at = (ms: number) => () => new Date(ms);
 describe('mirrorSubmissionLookup', () => {
   it('finds the sequence number of a submission that reached consensus', async () => {
     const lookup = mirrorSubmissionLookup(fakeMirror(landed('SUCCESS')));
-    expect(await lookup(ID)).toEqual({ state: 'published', sequence: 42 });
+    expect(await lookup(ID)).toEqual({
+      state: 'published',
+      sequence: 42,
+      runningHash: 'ab'.repeat(48)
+    });
   });
 
   it('reports a submission that failed at consensus as absent', async () => {
