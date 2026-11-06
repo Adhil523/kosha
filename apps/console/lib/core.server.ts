@@ -51,10 +51,10 @@ const coreOptions = (): ApiOptions => {
   return token ? { headers: { authorization: `Bearer ${token}` } } : {};
 };
 
-type CoreResult<T> = ApiResponse<T, ApiError>;
+export type CoreResult<T> = ApiResponse<T, ApiError>;
 
 // Every Core answer is parsed with its @kosha/shared schema; a mismatch is a 502, not bad data
-const getParsed = async <T>(url: string, schema: z.ZodType<T>): Promise<CoreResult<T>> => {
+export const getParsed = async <T>(url: string, schema: z.ZodType<T>): Promise<CoreResult<T>> => {
   const response = await api.get<unknown>(url, coreOptions());
   if (!response.ok) return response;
   const parsed = schema.safeParse(response.data);
@@ -64,7 +64,7 @@ const getParsed = async <T>(url: string, schema: z.ZodType<T>): Promise<CoreResu
 };
 
 // A write: the body sent as JSON, Core's answer parsed like a read
-const sendParsed = async <T>(
+export const sendParsed = async <T>(
   method: 'post' | 'put',
   url: string,
   body: unknown,
@@ -78,8 +78,8 @@ const sendParsed = async <T>(
   return { ok: false, status: BAD_GATEWAY, data: { message: 'Core answered in an unknown shape' } };
 };
 
-const coreBase = (): string | null => process.env.CORE_URL?.trim() || null;
-const notConfigured = {
+export const coreBase = (): string | null => process.env.CORE_URL?.trim() || null;
+export const notConfigured = {
   ok: false,
   status: NOT_CONFIGURED,
   data: { message: 'CORE_URL is not set' }
