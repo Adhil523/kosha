@@ -1,6 +1,11 @@
 import type { RegisterRoutes } from './app';
 import { authenticateReceiver } from './auth';
-import { type SettleDeps, type SettleFailure, settlePayment } from './payment-settle';
+import {
+  type SettleDeps,
+  type SettledPayment,
+  type SettleFailure,
+  settlePayment
+} from './payment-settle';
 import { type PaymentFailure, verifyPayment } from './payment-verify';
 import { errorResponseSchema, toX402Reason } from '@kosha/shared/error-codes';
 import {
@@ -13,7 +18,11 @@ import { type HederaNetwork, quoteIdSchema, transactionIdSchema } from '@kosha/s
 import { hashscanTransaction } from '@kosha/shared/links';
 import { type SettlementResponse, settlementResponseSchema } from '@kosha/shared/x402-payment';
 
-export type FacilitatorRouteDeps = SettleDeps & { network: HederaNetwork };
+export type FacilitatorRouteDeps = SettleDeps & {
+  network: HederaNetwork;
+  // Tells the receiver's Console about the payment (A13's stream)
+  announce?: (settled: SettledPayment) => Promise<void>;
+};
 
 // A failed verify carries the standard x402 reason, and the Kosha code in extra.kosha
 const invalidPayment = ({ code, quoteId }: PaymentFailure): VerifyResponse => ({
@@ -74,6 +83,15 @@ export const facilitatorRoutes =
 
         const result = await settlePayment(deps, auth.data.id, request.body.paymentPayload);
         if (!result.ok) return failedSettlement(deps.network, result.data);
+
+        if (deps.announce) {
+          // The payment is settled and recorded either way; a missed event costs only the live feed
+          try {
+            await deps.announce(result.data);
+          } catch (error) {
+            request.log.error({ err: error }, '[stream]: could not announce a settlement');
+          }
+        }
 
         const { payer, quote, transactionId } = result.data;
         const settled = transactionIdSchema.parse(transactionId);

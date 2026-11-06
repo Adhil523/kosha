@@ -4,6 +4,7 @@ import type { RegisterRoutes } from './app';
 import { createChallengeStore } from './challenges';
 import { type CoreConfig, SETTLEMENT_NODE_ACCOUNT_IDS } from './config';
 import type { KoshaDb } from './db/client';
+import { createEventBus } from './event-bus';
 import { facilitatorRoutes } from './facilitator-routes';
 import { demoFixedFx } from './fx';
 import type { OutboxDeps } from './hcs-outbox';
@@ -12,6 +13,7 @@ import { quoteRoutes } from './quote-routes';
 import { receiverRoutes } from './receiver-routes';
 import { mirrorReconciler } from './reconcile';
 import { createPayerResolver } from './resolve-payer';
+import { announceSettlement } from './settlement-events';
 import { supportedRoutes } from './supported-routes';
 import type { Client, PrivateKey, TransferTransaction } from '@hiero-ledger/sdk';
 import { parsePrivateKey } from '@kosha/hedera/client';
@@ -63,6 +65,9 @@ export const wireCore = (
     return execute(transaction);
   };
 
+  // Settlements publish here; each open /v1/stream subscribes to its receiver
+  const bus = createEventBus();
+
   const settlement = {
     db,
     feePayer: config.coreAccountId,
@@ -113,6 +118,8 @@ export const wireCore = (
         paymentsTopicId: config.paymentsTopicId
       },
       execute: executeSettlement,
+      announce: (settled) =>
+        announceSettlement({ db, bus, pack: rulePack.pack, network: config.network }, settled),
       reconcile: mirrorReconciler(mirror, RECONCILE)
     })
   ];
