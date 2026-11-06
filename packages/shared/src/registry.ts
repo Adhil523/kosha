@@ -90,6 +90,20 @@ export const agentRegisterSchema = z.object({
   reserveAccountId: accountIdSchema.optional()
 });
 
+// POST /v1/agents/self: an agent registers or upgrades itself, with no admin token. It proves it
+// holds its identity's account (the CAIP-10 account, or the UAID's nativeId) by signing a nonce
+// from GET /v1/agents/challenge with that account's key. It may declare only that account as a
+// wallet, and never a reserve: Core creates the 2-of-2 reserve itself.
+export const agentSelfRegisterSchema = agentRegisterSchema
+  .omit({ reserveAccountId: true })
+  .extend({
+    challengeNonce: z.string().regex(HEX_PATTERN),
+    // Hex signature over the nonce by the identity account's key (checked against the Mirror Node)
+    signature: z.string().regex(HEX_PATTERN)
+  });
+// GET /v1/agents/challenge answers the same shape as the receiver challenge
+export const agentChallengeSchema = receiverChallengeSchema;
+
 export const agentRowSchema = z.object({
   agentId: z.string().min(1),
   identity: agentIdentitySchema,
@@ -127,6 +141,7 @@ export const termsAnswerSchema = z.object({
 export type ReceiverCreate = z.output<typeof receiverCreateSchema>;
 export type Credential = z.output<typeof credentialSchema>;
 export type AgentRegister = z.output<typeof agentRegisterSchema>;
+export type AgentSelfRegister = z.output<typeof agentSelfRegisterSchema>;
 export type AgentRow = z.output<typeof agentRowSchema>;
 export type AgentLevel = z.output<typeof agentLevelSchema>;
 export type Policy = z.output<typeof policySchema>;
