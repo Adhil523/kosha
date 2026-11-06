@@ -2,7 +2,7 @@
 
 This file is for Agent A and Agent B, and for the human who merges their work. It has the rules both agents follow, the stack decisions that override [Kosha Execution Plan.md](../../Kosha%20Execution%20Plan.md) (called "the spec" below), and the points where the human has to step in.
 
-The task queues are in [AGENT_A.md](AGENT_A.md) and [AGENT_B.md](AGENT_B.md).
+The task queues are in [AGENT_A.md](AGENT_A.md) and [AGENT_B.md](AGENT_B.md). Tasks with no fixed owner are in [UNASSIGNED.md](UNASSIGNED.md); the human hands each one to whichever agent is free.
 
 ## 1. Roles and workspaces
 
@@ -12,6 +12,7 @@ The task queues are in [AGENT_A.md](AGENT_A.md) and [AGENT_B.md](AGENT_B.md).
 | Builds | Repo scaffold, `@kosha/shared` contracts, `@kosha/hedera`, Kosha Core, seed scripts, Core deploy | Research, tax engine, testnet bootstrap, Kosha Gate, Kosha Pay, demo APIs, demo agent, Kosha Console, README, demo scripts |
 | Branch prefix | `a/` | `b/` |
 | Task IDs | `A01`, `A02`, … | `B00`, `B01`, … |
+| Unassigned tasks | `U01`, … in [UNASSIGNED.md](UNASSIGNED.md), branch `a/u01-…` | the same, branch `b/u01-…` |
 
 The split is built around contracts. Agent A publishes every wire schema early (A02), so Agent B can build Gate, Pay and Console against those schemas and their fixtures before Core implements them.
 
@@ -63,7 +64,7 @@ Spec v2 already includes most of these; the table records why each one was made.
 
 1. [CLAUDE.md](../../CLAUDE.md), which tells you your role
 2. This file
-3. Your queue: [AGENT_A.md](AGENT_A.md) or [AGENT_B.md](AGENT_B.md)
+3. Your queue: [AGENT_A.md](AGENT_A.md) or [AGENT_B.md](AGENT_B.md), and [UNASSIGNED.md](UNASSIGNED.md) when the human assigns you a `U` task
 4. The sections of the spec that your current task points to
 
 ## 4. File ownership
@@ -75,6 +76,7 @@ Edit only what you own. If you need a change in the other agent's area, file a r
 | **Agent A** | Root config (`package.json`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig.base.json`, lint, format and Vitest config), `.github/`, `.gitignore`, `.env.example` (Agent B may add lines only under its `# --- Agent B ---` section), `packages/shared/`, `packages/hedera/`, `apps/core/`, `scripts/package.json`, `scripts/seed.ts`, `scripts/smoke-settle.ts`, `scripts/cosign-release.ts`, `docs/core-api.md` |
 | **Agent B** | `docs/research/`, `docs/architecture.md`, `docs/testnet-accounts.md`, `rulepacks/`, `packages/tax-engine/`, `packages/gate/`, `packages/pay/`, `apps/demo-api-in/`, `apps/demo-api-global/`, `apps/demo-agent/`, `apps/console/`, `scripts/bootstrap.ts`, `scripts/lib/` (env-file helpers), `scripts/register-agents.ts`, `scripts/pay-once.ts`, `scripts/burst.ts`, `scripts/demo.ts`, `README.md` |
 | **Both** | `pnpm-lock.yaml`: never edit it by hand; regenerate it (§7) |
+| **Whoever is assigned the task** | The paths its card in [UNASSIGNED.md](UNASSIGNED.md) names, for example `apps/site/` for U01. Until the human assigns it, nobody edits them. |
 | **Human only** | `Kosha Execution Plan.md`, `CLAUDE.md`, `docs/agents/` (including the findings doc), `docs/hackathon-readiness.md`, `scripts/agent/`. To change one of these, propose it in your PR description or your report. |
 
 A01 created the workspace, `@kosha/shared`, `@kosha/scripts` and root `pnpm` scripts for every script in the table. **Each owner creates its own packages** (`package.json`, `tsconfig.json` extending `../../tsconfig.base.json`, the lint/test/typecheck scripts copied from `packages/shared/package.json`, subpath exports, no `index.ts`) in its first task for that package. The workspace globs pick them up, so neither agent needs to edit root files.
@@ -90,6 +92,7 @@ Repeat until your queue is finished.
 2. **Choose** the first task in your queue, top to bottom, that has no PR yet and whose dependencies are all met:
    - **A dependency on the other agent** is met only when it is **merged into `main`**. Check with `scripts/agent/tasks.sh check <IDs>`.
    - **A dependency on your own task** is met when it is merged, **or** when it has an open PR and your stack of unmerged PRs is at most **2 deep**. In that case, branch from your open branch (stacking).
+   - **An unassigned task** (`U01`, …) is never picked up on your own. When the human assigns you one, it comes first, before your queue. Branch `a/u01-<slug>` or `b/u01-<slug>`. Give it its own PR; don't batch it with queue tasks.
    - Tasks marked *(optional, cut N)* come after everything else in your queue. They are ordered in reverse of the spec's cut list, so the first item cut is the last one built. Skip them if the human says the team is behind.
 3. **If nothing can start, you are blocked.** Do not start a task early, and do not copy the other agent's unmerged code.
    - Start `scripts/agent/tasks.sh wait <IDs>` with `run_in_background`. You will be woken up when it exits.
@@ -190,7 +193,7 @@ Never print, log, commit or paste private keys, including in PR descriptions. Ac
 | **H3** | B12 READY (**Gate 2**) | Open the HashScan link and confirm two token transfers (API and the agent's reserve) and one HCS message. This meets the Hedera track minimum. |
 | **H4** | Before B13 | Add `LLM_PROVIDER` and the matching API key to `kosha.env` |
 | **H5** | Before recording | Get Circle testnet USDC (`0.0.429274`) for the agent accounts, set `SETTLEMENT_TOKEN_ID` to it, and re-run bootstrap's association step |
-| **H6** | A16 and B19 READY | Log in to Fly or Railway and Vercel, set secrets, run the deploy commands from `docs/core-api.md` and the README, then run `pnpm demo` against the deployed stack twice |
+| **H6** | A16 and B19 READY | Log in to Fly or Railway and Vercel, set secrets, run the deploy commands from `docs/core-api.md` and the README, then run `pnpm demo` against the deployed stack twice. If U01 is merged, deploy the showcase site (`apps/site`) too, and fill in its `content/links.ts` |
 | **H-val** | From Gate 2 on | The validation actions V1–V5 in `docs/hackathon-readiness.md` §2; only people can do them |
 | **H7** | End | Run the `hedera-skills` submission validator, record the video in your own voice, then submit |
 
