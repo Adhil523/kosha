@@ -1,7 +1,8 @@
+import { findAgentByIdentity } from './agent-identity';
 import { SETTLEMENT_NODE_ACCOUNT_IDS } from './config';
 import type { KoshaDb } from './db/client';
 import {
-  agent,
+  type agent,
   agentWallet,
   aggregate,
   payment,
@@ -47,25 +48,33 @@ const sampleTransactionId = (payer: string, at: Date, key: string): string => {
   return `${payer}@${Math.floor(at.getTime() / 1000)}.${nanos.padStart(NANOS_DIGITS, '0')}`;
 };
 
-// The agent by identity and the receiver by its wallet: the names the seed knows
+// The agent by identity (or its account, after a UAID upgrade) and the receiver by its wallet:
+// the names the seed knows
 export const findParties = async (
   db: KoshaDb,
   identity: string,
   receiverAccountId: string
 ): Promise<Parties | null> => {
-  const [payer] = await db
-    .select({ agent, payerAccountId: agentWallet.accountID })
-    .from(agent)
-    .innerJoin(agentWallet, eq(agentWallet.agentID, agent.id))
-    .where(eq(agent.identity, identity))
-    .orderBy(asc(agentWallet.createdAt));
+  const found = await findAgentByIdentity(db, identity);
+  const [payer] = found
+    ? await db
+        .select({ payerAccountId: agentWallet.accountID })
+        .from(agentWallet)
+        .where(eq(agentWallet.agentID, found.id))
+        .orderBy(asc(agentWallet.createdAt))
+    : [];
   const [payee] = await db
     .select({ receiver })
     .from(receiverWallet)
     .innerJoin(receiver, eq(receiver.id, receiverWallet.receiverID))
     .where(eq(receiverWallet.accountID, receiverAccountId));
-  if (!payer || !payee) return null;
-  return { ...payer, receiver: payee.receiver, receiverAccountId };
+  if (!found || !payer || !payee) return null;
+  return {
+    agent: found,
+    payerAccountId: payer.payerAccountId,
+    receiver: payee.receiver,
+    receiverAccountId
+  };
 };
 
 const pairValuePaise = async (tx: KoshaDb, agentId: string, receiverId: string, fy: string) => {

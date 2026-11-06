@@ -1,3 +1,4 @@
+import { findAgentByIdentity } from './agent-identity';
 import { checkAgentProfile, type ProfileCheckResult } from './agent-profile';
 import type { RegisterRoutes } from './app';
 import { requireAdmin } from './auth';
@@ -7,6 +8,7 @@ import type { PublicKey } from '@hiero-ledger/sdk';
 import { credentialHash, verifyCredential } from '@kosha/hedera/credentials';
 import type { ProfileReader } from '@kosha/hedera/hcs11-profile';
 import { type ErrorResponse, errorResponseSchema } from '@kosha/shared/error-codes';
+import { uaidSchema } from '@kosha/shared/ids';
 import { agentRegisterSchema, type AgentRow, agentRowSchema } from '@kosha/shared/registry';
 import { asc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
@@ -114,7 +116,8 @@ export const agentRoutes =
             : reply.status(400).send(invalid(message));
         }
 
-        const [existing] = await deps.db.select().from(agent).where(eq(agent.identity, identity));
+        // Found by identity, or by its account when an agent moves from CAIP-10 to a UAID
+        const existing = await findAgentByIdentity(deps.db, identity);
         const owners = await deps.db
           .select({ accountID: agentWallet.accountID, agentID: agentWallet.agentID })
           .from(agentWallet)
@@ -140,6 +143,8 @@ export const agentRoutes =
             ? await tx
                 .update(agent)
                 .set({
+                  // A UAID replaces the CAIP-10 identity it grew from; never the other way
+                  identity: uaidSchema.safeParse(identity).success ? identity : existing.identity,
                   ...profile,
                   ...profileCache,
                   reserveAccountID: existing.reserveAccountID ?? reserveAccountId ?? null

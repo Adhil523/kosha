@@ -1,3 +1,4 @@
+import { findAgentByIdentity } from './agent-identity';
 import { SETTLEMENT_NODE_ACCOUNT_IDS } from './config';
 import type { KoshaDb } from './db/client';
 import { agent, aggregate, hcsOutbox, payment, quote } from './db/schema';
@@ -89,11 +90,11 @@ export const resetDemo = async (
   now: Date
 ): Promise<ResetResult> => {
   const identities = [...new Set([...request.clearAgents, ...request.level0])];
-  const agents = await deps.db
-    .select({ id: agent.id, identity: agent.identity })
-    .from(agent)
-    .where(inArray(agent.identity, identities.length > 0 ? identities : ['']));
-  const idOf = new Map(agents.map((row) => [row.identity, row.id]));
+  const idOf = new Map<string, string>();
+  for (const identity of identities) {
+    const found = await findAgentByIdentity(deps.db, identity);
+    if (found) idOf.set(identity, found.id);
+  }
   const balances: { parties: Parties; valuePaise: bigint }[] = [];
   for (const balance of request.balances) {
     const parties = await findParties(deps.db, balance.agent, balance.receiverAccountId);

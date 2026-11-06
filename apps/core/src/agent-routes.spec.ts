@@ -129,4 +129,36 @@ describe('agent registry', () => {
     ).toBe(404);
     expect((await app.inject({ method: 'GET', url: '/v1/agents/nope' })).statusCode).toBe(401);
   });
+
+  describe('moving from a CAIP-10 identity to a UAID', () => {
+    const uaidFor = (account: string) =>
+      agentIdentitySchema.parse(
+        `uaid:aid:z6Mk${account.replaceAll('.', '')};uid=0;nativeId=hedera:testnet:${account}`
+      );
+
+    it('upgrades the agent in place, keeping its ID, wallets and reserve', async () => {
+      const before = await register({ identity: UNKNOWN, wallets: ['0.0.6003'] });
+      const upgraded = await register({ identity: uaidFor('0.0.6003'), wallets: ['0.0.6003'] });
+
+      expect(upgraded.statusCode).toBe(200);
+      expect(upgraded.json()).toMatchObject({
+        agentId: before.json<{ agentId: string }>().agentId,
+        identity: uaidFor('0.0.6003'),
+        wallets: ['0.0.6003'],
+        reserveAccountId: '0.0.6103'
+      });
+    });
+
+    it('keeps the UAID when the agent registers by its account again', async () => {
+      const again = await register({ identity: UNKNOWN, wallets: ['0.0.6003'] });
+      expect(again.statusCode).toBe(200);
+      expect(again.json()).toMatchObject({ identity: uaidFor('0.0.6003') });
+    });
+
+    it("still refuses a UAID for an account that is another agent's wallet", async () => {
+      // 0.0.6012 is a second wallet of the agent registered as hedera:testnet:0.0.6002
+      const clash = await register({ identity: uaidFor('0.0.6012'), wallets: ['0.0.6012'] });
+      expect(clash.statusCode).toBe(400);
+    });
+  });
 });
