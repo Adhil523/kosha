@@ -172,6 +172,16 @@ describe('createKoshaPay: refusals before signing', () => {
     expect(pay.lastError?.reason).toBe(reason);
   });
 
+  it('pays a 402 that also offers schemes and networks Kosha does not model', async () => {
+    const evm = { ...splitEntry, scheme: 'exact', network: 'eip155:8453', asset: '0xabc' };
+    const upto = { ...splitEntry, scheme: 'upto' };
+    const { pay } = setup({ unpaid: () => quoted([evm, upto, splitEntry]) });
+
+    const prepared = await pay.prepare(URL_GST);
+
+    expect(prepared.ok && prepared.data.kind).toBe('payment');
+  });
+
   it('reads the quote from the 402 body when the header is missing', async () => {
     const { pay } = setup({ unpaid: () => Response.json(paymentRequired, { status: 402 }) });
 

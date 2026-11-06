@@ -6,9 +6,9 @@ import { decodeHeader, encodeHeader, HEADERS, SCHEMES, X402_VERSION } from '@kos
 import {
   type KoshaSplitRequirements,
   koshaSplitRequirementsSchema,
+  offeredPaymentRequiredSchema,
   type PaymentPayload,
-  type PaymentRequired,
-  paymentRequiredSchema
+  type PaymentRequired
 } from '@kosha/shared/x402-payment';
 
 export const PAYMENT_REQUIRED_STATUS = 402;
@@ -59,11 +59,12 @@ export const withHeaders = (init: RequestInit, extra: Record<string, string>): R
   return { ...init, headers };
 };
 
-// The quote from the PAYMENT-REQUIRED header, or from the 402 body when the header is missing
+// The quote from the PAYMENT-REQUIRED header, or from the 402 body when the header is missing.
+// Entries for schemes or networks Kosha doesn't model are dropped, so they can't spoil the 402.
 const readPaymentRequired = async (response: Response): Promise<PaymentRequired | null> => {
   const header = response.headers.get(HEADERS.paymentRequired);
   if (header) {
-    const decoded = decodeHeader(paymentRequiredSchema, header);
+    const decoded = decodeHeader(offeredPaymentRequiredSchema, header);
     return decoded.ok ? decoded.data : null;
   }
   let body: unknown;
@@ -72,7 +73,7 @@ const readPaymentRequired = async (response: Response): Promise<PaymentRequired 
   } catch {
     return null;
   }
-  const parsed = paymentRequiredSchema.safeParse(body);
+  const parsed = offeredPaymentRequiredSchema.safeParse(body);
   return parsed.success ? parsed.data : null;
 };
 
