@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 const VALUE = 884n;
 const EXCESS_PACK = { ...IN_2026_2, crossing: 'excess' as const };
 
-describe('decide: thresholds (₹10,000 other, ₹50,000 specified person)', () => {
+describe('decide: buyer thresholds (₹10,000 other, ₹50,000 specified-person receiver)', () => {
   it.each([
     ['the first payment of the year', 0n],
     ['a total landing exactly on ₹10,000', OTHER_THRESHOLD - VALUE],
@@ -48,11 +48,14 @@ describe('decide: thresholds (₹10,000 other, ₹50,000 specified person)', () 
     ['under ₹50,000', OTHER_THRESHOLD, false],
     ['landing exactly on ₹50,000', SPECIFIED_THRESHOLD - VALUE, false],
     ['crossing ₹50,000 by 1 paisa', SPECIFIED_THRESHOLD - VALUE + 1n, true]
-  ])('uses the ₹50,000 threshold for a specified person: %s', (_label, aggregatePaise, applies) => {
-    const decision = decide(decideInput({ aggregatePaise, payer: { specifiedPerson: true } }));
+  ])(
+    'uses the ₹50,000 threshold for a specified-person receiver: %s',
+    (_label, aggregatePaise, applies) => {
+      const decision = decide(decideInput({ aggregatePaise, receiver: { specifiedPerson: true } }));
 
-    expect(decision.applies).toBe(applies);
-  });
+      expect(decision.applies).toBe(applies);
+    }
+  );
 });
 
 describe('decide: crossing rule', () => {
@@ -91,7 +94,7 @@ describe('decide: crossing rule', () => {
     const decision = decide(
       decideInput({
         pack: EXCESS_PACK,
-        payer: { specifiedPerson: true },
+        receiver: { specifiedPerson: true },
         aggregatePaise: SPECIFIED_THRESHOLD - VALUE + 1n
       })
     );
