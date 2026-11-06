@@ -1,4 +1,4 @@
-import { type KoshaPay } from './kosha-pay';
+import { type CompleteResult, type KoshaPay } from './kosha-pay';
 import { type PreparedPayment } from './prepare-payment';
 import { createMemorySpendStore, type SpendStore } from './spend-store';
 import {
@@ -7,6 +7,7 @@ import {
   type Context,
   type Plugin,
   type PostCoreActionParams,
+  type PostSecondaryActionParams,
   TOOL_STATUS
 } from '@hashgraph/hedera-agent-kit';
 import { type Client } from '@hiero-ledger/sdk';
@@ -30,12 +31,14 @@ export type PaidFetchOutput = {
     paid: boolean;
     httpStatus?: number;
     body?: unknown;
+    // Set when the body couldn't be read; on a paid call the payment still stands
+    bodyError?: string;
     transactionId?: string;
     totalUsdc?: string;
     tdsUsdc?: string;
     hashscanUrl?: string;
     error?: string;
-    // Set when a policy or hook stopped the call, so the tool runs the audit hooks for it
+    // Set when something threw before the payment was sent, so the tool runs the audit hooks
     aborted?: boolean;
   };
   humanMessage: string;
@@ -47,12 +50,23 @@ type CoreResult = { payment: PreparedPayment } | PaidFetchOutput;
 const isQuoted = (result: unknown): result is { payment: PreparedPayment } =>
   typeof result === 'object' && result !== null && 'payment' in result;
 
-const readBody = async (response: Response): Promise<unknown> => {
-  const text = (await response.text()).slice(0, MAX_BODY_CHARS);
+const errorText = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+// Never throws: after a payment settles, a failed read must not turn it into an error
+const readBody = async (
+  response: Response
+): Promise<Pick<PaidFetchOutput['raw'], 'body' | 'bodyError'>> => {
+  let text: string;
   try {
-    return JSON.parse(text);
+    text = (await response.text()).slice(0, MAX_BODY_CHARS);
+  } catch (error) {
+    return { bodyError: `the response body could not be read: ${errorText(error)}` };
+  }
+  try {
+    return { body: JSON.parse(text) };
   } catch {
-    return text;
+    return { body: text };
   }
 };
 
@@ -92,7 +106,7 @@ export class KoshaPaidFetchTool extends BaseTool<Params, Params> {
         url,
         paid: false,
         httpStatus: response.status,
-        body: await readBody(response)
+        ...(await readBody(response))
       },
       humanMessage: `${url} answered ${response.status} without asking for payment.`
     };
@@ -115,7 +129,17 @@ export class KoshaPaidFetchTool extends BaseTool<Params, Params> {
 
   override async secondaryAction(quoted: { payment: PreparedPayment }): Promise<PaidFetchOutput> {
     const { url } = quoted.payment;
-    const completed = await this.pay.complete(quoted.payment);
+    let completed: CompleteResult;
+    try {
+      completed = await this.pay.complete(quoted.payment);
+    } catch (error) {
+      // The signed payment left, so it may have settled: say so, or the agent would pay again
+      const message = `no answer after the payment was sent (${errorText(error)}); it may have settled`;
+      return {
+        raw: { status: TOOL_STATUS.ERROR, url, paid: false, error: message },
+        humanMessage: `Payment for ${url} may have gone through: ${message}. Do not pay again.`
+      };
+    }
     if (!completed.ok) {
       return {
         raw: { status: TOOL_STATUS.ERROR, url, paid: false, error: completed.data.message },
@@ -131,7 +155,7 @@ export class KoshaPaidFetchTool extends BaseTool<Params, Params> {
         url,
         paid: true,
         httpStatus: response.status,
-        body: await readBody(response),
+        ...(await readBody(response)),
         transactionId: receipt?.txId,
         totalUsdc,
         tdsUsdc,
@@ -146,8 +170,25 @@ export class KoshaPaidFetchTool extends BaseTool<Params, Params> {
     return { ...output, raw: { ...output.raw, aborted: true } };
   }
 
+  // Every hook gets its turn, and none can change the outcome: once a payment has settled, a
+  // throwing hook must not report it unpaid (the agent would pay again) or skip the audit after it
+  override async postToolExecutionHook(
+    params: PostSecondaryActionParams<Params, Params>
+  ): Promise<PaidFetchOutput> {
+    for (const hook of params.context.hooks ?? []) {
+      try {
+        await hook.postToolExecutionHook(params, this.method);
+      } catch (error) {
+        console.error(`[kosha-pay]: hook ${hook.name} failed after the call; it stands`, error);
+      }
+    }
+    return params.toolResult as PaidFetchOutput;
+  }
+
   // The kit runs postToolExecution hooks only when nothing threw, so a payment a policy blocked
-  // would never reach the audit trail. That refusal is the event most worth auditing.
+  // would never reach the audit trail. That refusal is the event most worth auditing. Nothing
+  // throws once a payment is sent (see secondaryAction and postToolExecutionHook), so an aborted
+  // call was never paid and its hooks haven't run yet.
   override async execute(
     client: Client,
     context: Context,
@@ -157,20 +198,15 @@ export class KoshaPaidFetchTool extends BaseTool<Params, Params> {
     if (!result.raw.aborted) return result;
     // The kit's error handler doesn't see the params; name the URL so the agent and the audit can
     const output = { ...result, raw: { ...result.raw, url: params.url, paid: false } };
-    try {
-      await this.postToolExecutionHook({
-        context,
-        rawParams: params,
-        normalisedParams: params,
-        coreActionResult: null,
-        toolResult: output,
-        client,
-        toolType: this.toolType
-      });
-    } catch (error) {
-      console.error('[kosha-pay]: a hook failed while auditing a stopped call', error);
-    }
-    return output;
+    return this.postToolExecutionHook({
+      context,
+      rawParams: params,
+      normalisedParams: params,
+      coreActionResult: null,
+      toolResult: output,
+      client,
+      toolType: this.toolType
+    });
   }
 }
 

@@ -40,12 +40,13 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 // A KoshaPay whose prepare() quotes `totalMicro` and whose complete() settles it
 const fakePay = (
-  totalMicro = 101_019n
+  totalMicro = 101_019n,
+  paidResponse: () => Response = () => json(BODY)
 ): KoshaPay & { complete: ReturnType<typeof vi.fn>; release: ReturnType<typeof vi.fn> } => {
   const complete = vi.fn<KoshaPay['complete']>(async () => ({
     ok: true,
     data: {
-      response: json(BODY),
+      response: paidResponse(),
       receipt: {
         txId: TX_ID,
         payer: null,
@@ -79,6 +80,27 @@ class RecordingHook extends AbstractHook {
   }
 }
 
+// A post-execution hook that fails, as a policy blocking after the fact or a broken logger would
+class ThrowingHook extends AbstractHook {
+  name = 'throwing';
+  description = 'fails after the call';
+  relevantTools = [KOSHA_PAID_FETCH];
+  calls = 0;
+
+  override async postToolExecutionHook() {
+    this.calls += 1;
+    throw new Error('hook failed');
+  }
+}
+
+// A body whose stream breaks mid-read, as a dropped connection would
+const unreadable = () =>
+  new Response(
+    new ReadableStream({
+      start: (controller) => controller.error(new Error('connection reset'))
+    })
+  );
+
 const client = Client.forTestnet();
 const run = (pay: KoshaPay, hooks: AbstractHook[] = []) =>
   new KoshaPaidFetchTool(pay).execute(client, { hooks } satisfies Context, { url: URL_PAID });
@@ -100,6 +122,45 @@ describe('KoshaPaidFetchTool', () => {
     });
     expect(() => JSON.stringify(output)).not.toThrow();
     expect(pay.complete).toHaveBeenCalledOnce();
+    expect(audit.seen).toHaveLength(1);
+  });
+
+  it('reports a settled payment as paid, with its transaction ID, when the body read fails', async () => {
+    const pay = fakePay(101_019n, unreadable);
+    const audit = new RecordingHook();
+
+    const output = await run(pay, [audit]);
+
+    expect(output.raw).toMatchObject({ status: 'SUCCESS', paid: true, transactionId: TX_ID });
+    expect(output.raw.bodyError).toContain('connection reset');
+    expect(audit.seen.map((seen) => seen.raw.paid)).toEqual([true]);
+  });
+
+  it('keeps a paid call paid when a hook after it throws, and runs every hook once', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const pay = fakePay();
+    const throwing = new ThrowingHook();
+    const audit = new RecordingHook();
+
+    const output = await run(pay, [throwing, audit]);
+
+    expect(output.raw).toMatchObject({ status: 'SUCCESS', paid: true, transactionId: TX_ID });
+    expect(throwing.calls).toBe(1);
+    expect(audit.seen).toHaveLength(1);
+    expect(pay.complete).toHaveBeenCalledOnce();
+    quiet.mockRestore();
+  });
+
+  it('warns the agent not to pay again when the paid call gets no answer', async () => {
+    const pay = fakePay();
+    pay.complete.mockRejectedValueOnce(new Error('socket hang up'));
+    const audit = new RecordingHook();
+
+    const output = await run(pay, [audit]);
+
+    expect(output.raw).toMatchObject({ status: 'ERROR', paid: false });
+    expect(output.raw.error).toContain('may have settled');
+    expect(output.humanMessage).toContain('Do not pay again');
     expect(audit.seen).toHaveLength(1);
   });
 
