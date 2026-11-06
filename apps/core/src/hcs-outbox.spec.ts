@@ -65,6 +65,27 @@ describe('HCS outbox', () => {
     expect(second).toEqual({ published: 1, failed: 0 });
   });
 
+  it('holds later messages on a topic behind a failed one, so the topic keeps its order', async () => {
+    await handle.db
+      .insert(hcsOutbox)
+      .values({ kind: 'rulepack', topicID: TOPIC, payload: { t: 'rulepack', n: 2 } });
+    await handle.db
+      .insert(hcsOutbox)
+      .values({ kind: 'rulepack', topicID: '0.0.7200', payload: { t: 'rulepack', n: 3 } });
+    const rejected: Submitted = { ok: false, data: { reason: 'rejected', status: 'BUSY' } };
+
+    const first = await publishQueued({ db: handle.db, submit: submitting(rejected) });
+    expect(first).toEqual({ published: 1, failed: 1 });
+    expect(sent.map((entry) => entry.topicId)).toEqual([TOPIC, '0.0.7200']);
+
+    sent = [];
+    expect(await publishQueued({ db: handle.db, submit: submitting() })).toEqual({
+      published: 2,
+      failed: 0
+    });
+    expect(sent.map((entry) => entry.message)).toMatchObject([{ t: 'pay' }, { n: 2 }]);
+  });
+
   it('queues the rule pack hash once', async () => {
     expect(await queueRulepackOnce(handle.db, TOPIC, 'in-2026.2', 'ab'.repeat(32))).toBe(true);
     expect(await queueRulepackOnce(handle.db, TOPIC, 'in-2026.2', 'ab'.repeat(32))).toBe(false);
@@ -80,6 +101,6 @@ describe('HCS outbox', () => {
       { intervalMs: 5, maxIntervalMs: 20 }
     );
     await expect.poll(async () => (await handle.db.select().from(payment))[0]?.hcsSequence).toBe(1);
-    stop();
+    await stop();
   });
 });

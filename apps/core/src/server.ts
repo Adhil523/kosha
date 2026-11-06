@@ -81,8 +81,7 @@ const main = async (): Promise<void> => {
   const app = buildApp({ routes: wiring.data.routes });
 
   const shutdown = async () => {
-    stopOutbox();
-    stopForwarder();
+    await Promise.all([stopOutbox(), stopForwarder()]);
     stopWatcher();
     stopClose();
     await app.close();

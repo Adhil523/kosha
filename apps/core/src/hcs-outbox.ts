@@ -20,7 +20,8 @@ const describeFailure = (result: Extract<Submitted, { ok: false }>): string =>
   result.data.reason === 'too_large' ? `too_large:${result.data.bytes}` : result.data.status;
 
 // Publishes queued rows, oldest first. A row that fails stays queued with its error, and the
-// next pass tries it again; one failure never stops the rest of the batch.
+// next pass tries it again. Later rows on the same topic wait for it, so each topic keeps the
+// order its events happened in; other topics carry on.
 export const publishQueued = async (deps: OutboxDeps): Promise<PublishReport> => {
   const queued = await deps.db
     .select()
@@ -30,11 +31,14 @@ export const publishQueued = async (deps: OutboxDeps): Promise<PublishReport> =>
     .limit(BATCH_SIZE);
 
   const report: PublishReport = { published: 0, failed: 0 };
+  const held = new Set<string>();
   for (const row of queued) {
+    if (held.has(row.topicID)) continue;
     try {
       const submitted = await deps.submit(row.topicID, row.payload);
       if (!submitted.ok) {
         report.failed += 1;
+        held.add(row.topicID);
         await deps.db
           .update(hcsOutbox)
           .set({ attempts: row.attempts + 1, lastError: describeFailure(submitted) })
@@ -61,6 +65,7 @@ export const publishQueued = async (deps: OutboxDeps): Promise<PublishReport> =>
       report.published += 1;
     } catch (error) {
       report.failed += 1;
+      held.add(row.topicID);
       console.error(`[hcs-outbox]: publishing ${row.id} failed`, error);
     }
   }
@@ -93,18 +98,22 @@ export const queueRulepackOnce = async (
 
 export type OutboxLoopOptions = { intervalMs: number; maxIntervalMs: number };
 
+export type StopLoop = () => Promise<void>;
+
 // Runs a pass on a timer. After a pass with failures the wait doubles, up to the maximum, and
-// drops back once a pass is clean. Returns a stop function.
+// drops back once a pass is clean. The stop function waits for a pass in flight, so a message
+// submitted during shutdown is still recorded before the database closes.
 export const startRetryLoop = (
   label: string,
   pass: () => Promise<{ failed: number }>,
   options: OutboxLoopOptions
-): (() => void) => {
+): StopLoop => {
   let wait = options.intervalMs;
   let timer: NodeJS.Timeout | undefined;
   let stopped = false;
+  let running: Promise<void> = Promise.resolve();
 
-  const tick = async () => {
+  const run = async () => {
     try {
       const report = await pass();
       wait = report.failed > 0 ? Math.min(wait * 2, options.maxIntervalMs) : options.intervalMs;
@@ -112,15 +121,20 @@ export const startRetryLoop = (
       wait = Math.min(wait * 2, options.maxIntervalMs);
       console.error(`[${label}]: pass failed`, error);
     }
+  };
+  const tick = async () => {
+    running = run();
+    await running;
     if (!stopped) timer = setTimeout(() => void tick(), wait);
   };
 
   timer = setTimeout(() => void tick(), 0);
-  return () => {
+  return async () => {
     stopped = true;
     clearTimeout(timer);
+    await running;
   };
 };
 
-export const startOutboxLoop = (deps: OutboxDeps, options: OutboxLoopOptions): (() => void) =>
+export const startOutboxLoop = (deps: OutboxDeps, options: OutboxLoopOptions): StopLoop =>
   startRetryLoop('hcs-outbox', () => publishQueued(deps), options);
