@@ -229,6 +229,9 @@ importers:
       express:
         specifier: 5.3.0
         version: 5.3.0
+      hono:
+        specifier: ^4.13.16
+        version: 4.13.16
       supertest:
         specifier: 7.3.1
         version: 7.3.1
@@ -2956,6 +2959,10 @@ packages:
 
   help-me@5.0.0:
     resolution: {integrity: sha512-7xgomUX6ADmcYzFik0HzAxh/73YlKR9bmFzf51CZwR+b6YtzU2m0u49hQCqV6SvlqIqsaxovfwdvbnsw3b/zpg==}
+
+  hono@4.13.16:
+    resolution: {integrity: sha512-AOLOEhvrV+iH92xXCnFr/5+3KjPKcI3xP63XJtX5spAnkznPdHijlIsUTpi7/9EhWqrTCekw5c5zh1K+YsVw7A==}
+    engines: {node: '>=16.9.0'}
 
   hookified@1.15.1:
     resolution: {integrity: sha512-MvG/clsADq1GPM2KGo2nyfaWVyn9naPiXrqIe4jYjXNZQt238kWyOGrsyc/DmRAQ+Re6yeo6yX/yoNCG5KAEVg==}
@@ -6617,6 +6624,8 @@ snapshots:
       function-bind: 1.1.2
 
   help-me@5.0.0: {}
+
+  hono@4.13.16: {}
 
   hookified@1.15.1: {}
 

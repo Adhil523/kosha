@@ -41,10 +41,33 @@ A settled request carries `req.kosha` (with `settleMode: 'before'`) and the resp
 `PAYMENT-RESPONSE` and `X-KOSHA-TAX`. A failed payment gets a `402` with a Kosha error code; Core
 being unreachable gets a `503`.
 
+## Hono
+
+The same options, for Hono on Node, Bun, Deno or Cloudflare Workers:
+
+```ts
+import { Hono } from 'hono';
+import { koshaHono, type KoshaHonoEnv } from '@kosha/gate/hono-middleware';
+
+const app = new Hono<KoshaHonoEnv>();
+app.use(
+  koshaHono({
+    core: 'https://core.kosha.dev',
+    apiKey: process.env.KOSHA_API_KEY ?? '',
+    routes: { 'GET /v1/gst-lookup': { priceUsdc: '0.10' } }
+  })
+);
+
+app.get('/v1/gst-lookup', (c) => c.json({ ok: true, paidBy: c.get('kosha')?.agentId }));
+```
+
+`hono` and `express` are optional peer dependencies: install the one you use.
+
 ## Any other framework
 
 `createGateHandler(options)` from `@kosha/gate/gate-handler` takes `{ method, url, headers }` and
-returns `next`, `respond` or `pass`; see `src/express-middleware.ts` for a complete adapter.
+returns `next`, `respond`, `pass` or `verified`; see `src/hono-middleware.ts` for a short, complete
+adapter.
 
 ## Build
 
