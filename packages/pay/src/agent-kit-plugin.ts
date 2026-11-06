@@ -3,12 +3,15 @@ import { type PreparedPayment } from './prepare-payment';
 import { createMemorySpendStore, type SpendStore } from './spend-store';
 import {
   AbstractPolicy,
+  AgentMode,
   BaseTool,
   type Context,
   type Plugin,
   type PostCoreActionParams,
   type PostSecondaryActionParams,
-  TOOL_STATUS
+  TOOL_STATUS,
+  TOOL_TYPE,
+  type ToolType
 } from '@hashgraph/hedera-agent-kit';
 import { type Client } from '@hiero-ledger/sdk';
 import { formatUsdc } from '@kosha/shared/money';
@@ -80,6 +83,8 @@ export class KoshaPaidFetchTool extends BaseTool<Params, Params> {
     'Fetch a paid API that answers HTTP 402. Pays in USDC on Hedera through Kosha, with any Indian ' +
     'TDS reserved in your own reserve on top of the price. Returns the response body and a receipt.';
   parameters = paramsSchema;
+  // It moves funds, so kit policies that act on every transaction tool cover it too
+  override toolType: ToolType = TOOL_TYPE.TRANSACTION;
 
   constructor(private readonly pay: KoshaPay) {
     super();
@@ -89,7 +94,18 @@ export class KoshaPaidFetchTool extends BaseTool<Params, Params> {
     return paramsSchema.parse(params);
   }
 
-  async coreAction({ url }: Params): Promise<CoreResult> {
+  async coreAction({ url }: Params, context: Context): Promise<CoreResult> {
+    // Pay signs the payer's half and the API's facilitator submits it, so there are no bytes to
+    // hand back and nothing for a custom strategy to execute. Any other mode means the owner wants
+    // to sign or approve each transaction, so Pay neither fetches nor pays.
+    const mode = context.mode ?? AgentMode.AUTONOMOUS;
+    if (mode !== AgentMode.AUTONOMOUS) {
+      const message = `Kosha Pay pays only in AgentMode.AUTONOMOUS, and this agent runs in ${mode}`;
+      return {
+        raw: { status: TOOL_STATUS.ERROR, url, paid: false, error: `unsupported_mode: ${message}` },
+        humanMessage: `Kosha Pay did not fetch or pay for ${url}: ${message}.`
+      };
+    }
     const prepared = await this.pay.prepare(url);
     if (!prepared.ok) {
       const { reason, message } = prepared.data;

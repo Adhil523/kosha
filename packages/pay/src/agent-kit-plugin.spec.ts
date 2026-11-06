@@ -9,8 +9,12 @@ import { type KoshaPay } from './kosha-pay';
 import { type PreparedPayment } from './prepare-payment';
 import {
   AbstractHook,
+  AbstractPolicy,
+  AgentMode,
   type Context,
-  type PostSecondaryActionParams
+  type PostSecondaryActionParams,
+  type PreToolExecutionParams,
+  TOOL_TYPE
 } from '@hashgraph/hedera-agent-kit';
 import { Client } from '@hiero-ledger/sdk';
 import { transactionIdSchema } from '@kosha/shared/ids';
@@ -19,7 +23,7 @@ import {
   koshaSplitRequirementsSchema
 } from '@kosha/shared/x402-payment';
 import { splitEntry } from '@kosha/shared/x402-payment.fixture';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 
 const URL_PAID = 'http://localhost:4101/v1/gst-lookup?gstin=29AAKCK4821M1ZQ';
 const BODY = { registration: { gstin: '29AAKCK4821M1ZQ' } };
@@ -42,7 +46,11 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const fakePay = (
   totalMicro = 101_019n,
   paidResponse: () => Response = () => json(BODY)
-): KoshaPay & { complete: ReturnType<typeof vi.fn>; release: ReturnType<typeof vi.fn> } => {
+): KoshaPay & {
+  prepare: Mock<KoshaPay['prepare']>;
+  complete: Mock<KoshaPay['complete']>;
+  release: Mock<KoshaPay['release']>;
+} => {
   const complete = vi.fn<KoshaPay['complete']>(async () => ({
     ok: true,
     data: {
@@ -58,7 +66,10 @@ const fakePay = (
     }
   }));
   return {
-    prepare: async () => ({ ok: true, data: { kind: 'payment', payment: payment(totalMicro) } }),
+    prepare: vi.fn<KoshaPay['prepare']>(async () => ({
+      ok: true,
+      data: { kind: 'payment', payment: payment(totalMicro) }
+    })),
     complete,
     release: vi.fn<KoshaPay['release']>(async () => {}),
     fetch: async () => json(BODY),
@@ -102,8 +113,21 @@ const unreadable = () =>
   );
 
 const client = Client.forTestnet();
-const run = (pay: KoshaPay, hooks: AbstractHook[] = []) =>
-  new KoshaPaidFetchTool(pay).execute(client, { hooks } satisfies Context, { url: URL_PAID });
+const run = (pay: KoshaPay, hooks: AbstractHook[] = [], mode?: AgentMode) =>
+  new KoshaPaidFetchTool(pay).execute(client, { hooks, mode } satisfies Context, {
+    url: URL_PAID
+  });
+
+// An org-wide rule written against tool types, not names: no transaction tools at all
+class NoTransactionsPolicy extends AbstractPolicy {
+  name = 'No transactions';
+  description = 'read-only agent';
+  relevantTools = ['*'];
+
+  protected override shouldBlockPreToolExecution(params: PreToolExecutionParams) {
+    return params.toolType === TOOL_TYPE.TRANSACTION;
+  }
+}
 
 describe('KoshaPaidFetchTool', () => {
   it('pays the 402 and returns the body with a string-only receipt', async () => {
@@ -164,9 +188,38 @@ describe('KoshaPaidFetchTool', () => {
     expect(audit.seen).toHaveLength(1);
   });
 
+  it.each([AgentMode.RETURN_BYTES, AgentMode.CUSTOM_EXECUTE_TX, AgentMode.CUSTOM_RETURN_BYTES])(
+    'neither fetches nor pays in %s mode',
+    async (mode) => {
+      const pay = fakePay();
+
+      const output = await run(pay, [], mode);
+
+      expect(output.raw).toMatchObject({ status: 'ERROR', paid: false });
+      expect(output.raw.error).toContain(`runs in ${mode}`);
+      expect(pay.prepare).not.toHaveBeenCalled();
+      expect(pay.complete).not.toHaveBeenCalled();
+    }
+  );
+
+  it('pays in autonomous mode, set or left to the default', async () => {
+    const output = await run(fakePay(), [], AgentMode.AUTONOMOUS);
+
+    expect(output.raw.paid).toBe(true);
+  });
+
+  it('is a transaction tool, so a policy on every transaction tool stops it', async () => {
+    const pay = fakePay();
+
+    const output = await run(pay, [new NoTransactionsPolicy()]);
+
+    expect(output.raw.error).toContain('blocked by policy: No transactions');
+    expect(pay.prepare).not.toHaveBeenCalled();
+  });
+
   it('returns a free resource without paying', async () => {
     const pay = fakePay();
-    pay.prepare = async () => ({ ok: true, data: { kind: 'free', response: json(BODY) } });
+    pay.prepare.mockResolvedValue({ ok: true, data: { kind: 'free', response: json(BODY) } });
 
     const output = await run(pay);
 
@@ -176,7 +229,7 @@ describe('KoshaPaidFetchTool', () => {
 
   it("reports Kosha Pay's own refusal without paying", async () => {
     const pay = fakePay();
-    pay.prepare = async () => ({
+    pay.prepare.mockResolvedValue({
       ok: false,
       data: { reason: 'policy_daily', message: 'daily cap reached', response: json({}, 402) }
     });
