@@ -1,4 +1,4 @@
-import { ensureDemoAccounts } from './lib/bootstrap-accounts';
+import { ensureAuditAccount, ensureDemoAccounts } from './lib/bootstrap-accounts';
 import { ensureTokenHoldings } from './lib/bootstrap-association';
 import { type BootstrapContext, bootstrapLog, envSaver } from './lib/bootstrap-context';
 import { ensureSettlementToken } from './lib/bootstrap-token';
@@ -48,7 +48,8 @@ const main = async () => {
     const tokenId = await ensureSettlementToken(context);
     const holders = await ensureDemoAccounts(context);
     await ensureTokenHoldings(context, holders, tokenId);
-    await ensureTopics(context);
+    const audit = await ensureAuditAccount(context);
+    await ensureTopics(context, { key: audit.key.publicKey, created: audit.created });
     ensureSecrets(context);
   } finally {
     client.close();

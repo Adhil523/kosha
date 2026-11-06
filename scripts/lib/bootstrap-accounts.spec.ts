@@ -1,6 +1,6 @@
-import { ensureDemoAccounts } from './bootstrap-accounts';
+import { ensureAuditAccount, ensureDemoAccounts } from './bootstrap-accounts';
 import { fakeContext, receipt } from './bootstrap-fake';
-import { AccountCreateTransaction, KeyList } from '@hiero-ledger/sdk';
+import { AccountCreateTransaction, Hbar, KeyList } from '@hiero-ledger/sdk';
 import { describe, expect, it } from 'vitest';
 
 const numberedAccounts = () => {
@@ -65,5 +65,25 @@ describe('ensureDemoAccounts', () => {
   it('refuses an account ID whose key is missing', async () => {
     const context = fakeContext({ COMPLIANCE_ACCOUNT_ID: '0.0.3003' }, numberedAccounts());
     await expect(ensureDemoAccounts(context)).rejects.toThrow('COMPLIANCE_PRIVATE_KEY is empty');
+  });
+});
+
+describe('ensureAuditAccount', () => {
+  it('creates a funded audit account with its own key once, and says when it did', async () => {
+    const first = fakeContext({}, numberedAccounts());
+    const made = await ensureAuditAccount(first);
+    expect(made.created).toBe(true);
+    expect(Object.keys(first.saved)).toEqual(['AUDIT_ACCOUNT_ID', 'AUDIT_PRIVATE_KEY']);
+    const [create] = first.transactions;
+    if (!(create instanceof AccountCreateTransaction))
+      throw new Error('expected an account create');
+    expect(create.key?.toString()).toBe(made.key.publicKey.toString());
+    expect(create.initialBalance?.toTinybars().toString()).toBe(
+      new Hbar(5).toTinybars().toString()
+    );
+
+    const rerun = fakeContext({ ...first.saved }, numberedAccounts());
+    expect((await ensureAuditAccount(rerun)).created).toBe(false);
+    expect(rerun.transactions).toHaveLength(0);
   });
 });

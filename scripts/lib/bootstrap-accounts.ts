@@ -8,6 +8,10 @@ const RECEIVER_PREFIXES = ['RECEIVER_IN', 'RECEIVER_IN_SOLO', 'RECEIVER_GLOBAL']
 const AGENT_PREFIXES = ['AGENT_RESIDENT', 'AGENT_NONRESIDENT', 'AGENT_UNKNOWN'] as const;
 // Each agent pays for its own HCS-11 profile inscription; Core pays every settlement fee
 const AGENT_HBAR = 5;
+// Compliance pays the ScheduleSign that releases the pooled reserve (cosign-release)
+const COMPLIANCE_HBAR = 5;
+// The audit account pays for the demo agent's audit-trail messages
+const AUDIT_HBAR = 5;
 
 // An account bootstrap must associate with the settlement token, with the keys that sign for it
 // besides Core (the operator signs every transaction anyway)
@@ -40,13 +44,13 @@ const ensureOwnKeyAccount = async (context: BootstrapContext, prefix: string, hb
   const existingKey = context.env[secretKey]?.trim();
   if (existingId) {
     if (!existingKey) throw new Error(`${idKey} is set but ${secretKey} is empty`);
-    return { accountId: existingId, key: PrivateKey.fromStringDer(existingKey) };
+    return { accountId: existingId, key: PrivateKey.fromStringDer(existingKey), created: false };
   }
 
   const key = PrivateKey.generateED25519();
   const accountId = await createAccount(context, labelOf(prefix), key.publicKey, hbar);
   context.save({ [idKey]: accountId, [secretKey]: key.toStringDer() });
-  return { accountId, key };
+  return { accountId, key, created: true };
 };
 
 // An account whose key needs no new secret (Core's key, or a 2-of-2 of keys already saved)
@@ -83,9 +87,14 @@ const ensureAgentReserve = async (
   return created.data.accountId;
 };
 
+// The demo agent's audit trail is posted by this account, whose key is the audit topic's submit
+// key, so the agent never holds Core's key. `created` is true on the run that made it.
+export const ensureAuditAccount = (context: BootstrapContext) =>
+  ensureOwnKeyAccount(context, 'AUDIT', AUDIT_HBAR);
+
 export const ensureDemoAccounts = async (context: BootstrapContext): Promise<TokenHolder[]> => {
   const holders: TokenHolder[] = [];
-  const compliance = await ensureOwnKeyAccount(context, 'COMPLIANCE');
+  const compliance = await ensureOwnKeyAccount(context, 'COMPLIANCE', COMPLIANCE_HBAR);
   holders.push({
     label: 'compliance',
     accountId: compliance.accountId,

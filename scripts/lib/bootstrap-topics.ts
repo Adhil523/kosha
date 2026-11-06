@@ -1,11 +1,11 @@
 import { type BootstrapContext, bootstrapLog } from './bootstrap-context';
-import { PrivateKey, TopicCreateTransaction } from '@hiero-ledger/sdk';
+import { PrivateKey, type PublicKey, TopicCreateTransaction } from '@hiero-ledger/sdk';
 import { randomBytes } from 'node:crypto';
 
 const TOPICS = [
-  { envKey: 'HCS_PAYMENTS_TOPIC', memo: 'kosha payments' },
-  { envKey: 'HCS_PROFILES_TOPIC', memo: 'kosha profiles' },
-  { envKey: 'HCS_AUDIT_TOPIC', memo: 'kosha audit' }
+  { envKey: 'HCS_PAYMENTS_TOPIC', memo: 'kosha payments', submitter: 'core' },
+  { envKey: 'HCS_PROFILES_TOPIC', memo: 'kosha profiles', submitter: 'core' },
+  { envKey: 'HCS_AUDIT_TOPIC', memo: 'kosha audit', submitter: 'audit' }
 ] as const;
 
 // Same shape as Core's generateApiKey(): 32 random bytes, hex
@@ -20,12 +20,19 @@ const SECRET_BYTES = 32;
 // Core's test credential issuer signs with an Ed25519 key, stored DER-encoded
 const ISSUER_KEY = 'ISSUER_PRIVATE_KEY';
 
-// Core is the submit key on every topic, so nobody else can post to the tamper-evident log
-export const ensureTopics = async (context: BootstrapContext): Promise<void> => {
-  for (const { envKey, memo } of TOPICS) {
-    if (context.env[envKey]?.trim()) continue;
+// Core is the submit key on Kosha's own topics, so nobody else can post to the tamper-evident log.
+// The audit topic takes the audit account's key instead, so the demo agent never holds Core's key.
+// An audit topic made before the audit account existed has Core as submit key, so the run that
+// creates the audit account replaces it.
+export const ensureTopics = async (
+  context: BootstrapContext,
+  audit: { key: PublicKey; created: boolean }
+): Promise<void> => {
+  for (const { envKey, memo, submitter } of TOPICS) {
+    const replace = submitter === 'audit' && audit.created;
+    if (context.env[envKey]?.trim() && !replace) continue;
     const create = new TopicCreateTransaction()
-      .setSubmitKey(context.coreKey.publicKey)
+      .setSubmitKey(submitter === 'audit' ? audit.key : context.coreKey.publicKey)
       .setTopicMemo(memo);
     const created = await context.run(create);
     if (!created.ok) throw new Error(`creating ${memo} topic failed: ${created.data.status}`);
