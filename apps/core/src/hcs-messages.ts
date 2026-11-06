@@ -51,6 +51,49 @@ export const payMessage = (input: PayMessageInput): HcsJson => ({
   ...(input.compat ? { mode: 'compat' } : {})
 });
 
+// A decision for a payment on another rail (A24). `agg` includes this payment, as a pay message's
+// does; it becomes final when the decision is confirmed.
+export type DecisionMessageInput = {
+  decisionId: string;
+  chain: string;
+  rulepack: string;
+  rulepackHash: string;
+  priceMicro: bigint;
+  tdsMicro: bigint;
+  rateBps: number;
+  pair: string;
+  fy: string;
+  aggregatePaise: bigint;
+};
+
+export const decisionMessage = (input: DecisionMessageInput): HcsJson => ({
+  v: HCS_MESSAGE_VERSION,
+  t: 'decision',
+  did: input.decisionId,
+  chain: input.chain,
+  rp: input.rulepack,
+  rph: rulepackHashPrefix(input.rulepackHash),
+  price: input.priceMicro.toString(),
+  tds: input.tdsMicro.toString(),
+  bps: input.rateBps,
+  pair: input.pair,
+  fy: input.fy,
+  agg: input.aggregatePaise.toString()
+});
+
+// The decided payment settled on its rail: the reference ties the HCS log to that transaction
+export const decisionConfirmedMessage = (input: {
+  decisionId: string;
+  chain: string;
+  transactionRef: string;
+}): HcsJson => ({
+  v: HCS_MESSAGE_VERSION,
+  t: 'decision_confirmed',
+  did: input.decisionId,
+  chain: input.chain,
+  ref: input.transactionRef
+});
+
 // Published once per rule pack, so every pay message's `rph` points at a full hash on the topic
 export const rulepackMessage = (rulepack: string, hash: string): HcsJson => ({
   v: HCS_MESSAGE_VERSION,

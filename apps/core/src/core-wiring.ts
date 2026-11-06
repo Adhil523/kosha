@@ -5,6 +5,7 @@ import { createChallengeStore } from './challenges';
 import type { ForwarderDeps } from './compat-forwarder';
 import { type CoreConfig, SETTLEMENT_NODE_ACCOUNT_IDS } from './config';
 import type { KoshaDb } from './db/client';
+import { decisionRoutes } from './decision-routes';
 import { demoRoutes } from './demo-routes';
 import { createEventBus } from './event-bus';
 import { exportRoutes } from './export-routes';
@@ -127,6 +128,15 @@ export const wireCore = (
       db,
       adminToken: config.adminToken,
       financialYearStart: rulePack.pack.financialYearStart
+    }),
+    decisionRoutes({
+      db,
+      pack: rulePack.pack,
+      rulepackHash: rulePack.hash,
+      fx,
+      network: config.network,
+      pairSecret: config.pairHmacSecret,
+      paymentsTopicId: config.paymentsTopicId
     }),
     facilitatorRoutes({
       ...settlement,
