@@ -20,5 +20,6 @@ export const QUERY_KEYS = {
   agents: ['agents'],
   agentSpend: (agentId: string) => ['agents', agentId, 'spend'] as const,
   agentPolicy: (agentId: string) => ['agents', agentId, 'policy'] as const,
-  taxReport: (quarter: string) => ['tax', quarter] as const
+  taxReport: (quarter: string) => ['tax', quarter] as const,
+  outsidePayments: ['outside-payments']
 } as const;
