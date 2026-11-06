@@ -4,6 +4,9 @@ import { AccountId, TopicMessageSubmitTransaction, TransactionId } from '@hiero-
 // Kosha's HCS records fit in one message, so each is one transaction and one sequence number
 export const HCS_MESSAGE_LIMIT_BYTES = 1024;
 
+// A receipt that succeeded without a sequence number: the message landed, its number is unknown
+export const NO_SEQUENCE_STATUS = 'NO_SEQUENCE_NUMBER';
+
 export type HcsJson = string | number | boolean | null | HcsJson[] | { [key: string]: HcsJson };
 
 export type Submitted =
@@ -38,6 +41,6 @@ export const submitMessage = async (
     return { ok: false, data: { reason: 'rejected', status: executed.data.status } };
 
   const sequence = executed.data.topicSequenceNumber;
-  if (!sequence) return { ok: false, data: { reason: 'rejected', status: 'NO_SEQUENCE_NUMBER' } };
+  if (!sequence) return { ok: false, data: { reason: 'rejected', status: NO_SEQUENCE_STATUS } };
   return { ok: true, data: { sequence: Number(sequence.toString()) } };
 };

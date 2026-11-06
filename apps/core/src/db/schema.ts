@@ -354,5 +354,10 @@ export const hcsOutbox = pgTable('HcsOutbox', {
   attempts: integer('attempts').notNull().default(0),
   lastError: text('lastError'),
   hcsSequence: integer('hcsSequence'),
-  publishedAt: utc('publishedAt')
+  publishedAt: utc('publishedAt'),
+  // Assigned before each submit and kept while the outcome is unknown: a retry asks the Mirror
+  // Node whether that transaction reached consensus before it posts the message again
+  transactionID: text('transactionID'),
+  // Set when the message can never be published (over one 1,024-byte chunk); the outbox skips it
+  abandonedAt: utc('abandonedAt')
 });

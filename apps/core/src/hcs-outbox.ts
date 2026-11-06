@@ -1,7 +1,9 @@
 import type { KoshaDb } from './db/client';
 import { hcsOutbox, payment } from './db/schema';
 import { rulepackMessage } from './hcs-messages';
-import type { HcsJson, Submitted } from '@kosha/hedera/hcs';
+import type { PriorSubmission } from './hcs-submission-lookup';
+import { UNKNOWN_EXECUTION_STATUS } from '@kosha/hedera/executor';
+import { type HcsJson, NO_SEQUENCE_STATUS, type Submitted } from '@kosha/hedera/hcs';
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 
 // HCS writes go through an outbox (PROTOCOL design fix 6): settlement queues the message in its own
@@ -11,13 +13,88 @@ const BATCH_SIZE = 20;
 
 export type OutboxDeps = {
   db: KoshaDb;
-  submit: (topicId: string, message: HcsJson) => Promise<Submitted>;
+  submit: (topicId: string, message: HcsJson, transactionId: string) => Promise<Submitted>;
+  newTransactionId: () => string;
+  lookup: (transactionId: string) => Promise<PriorSubmission>;
 };
 
 export type PublishReport = { published: number; failed: number };
 
+type OutboxRow = typeof hcsOutbox.$inferSelect;
+type RowOutcome = 'published' | 'held' | 'abandoned';
+
+// While the Mirror Node can't say whether the last submission landed
+const AWAITING_MIRROR = 'awaiting_mirror';
+
 const describeFailure = (result: Extract<Submitted, { ok: false }>): string =>
   result.data.reason === 'too_large' ? `too_large:${result.data.bytes}` : result.data.status;
+
+// Only these outcomes may have reached consensus; any other failure never posted the message
+const mayHaveLanded = (result: Extract<Submitted, { ok: false }>): boolean =>
+  result.data.reason === 'rejected' &&
+  (result.data.status === UNKNOWN_EXECUTION_STATUS || result.data.status === NO_SEQUENCE_STATUS);
+
+const recordPublished = async (db: KoshaDb, row: OutboxRow, sequence: number) => {
+  await db.transaction(async (tx) => {
+    await tx
+      .update(hcsOutbox)
+      .set({
+        attempts: row.attempts + 1,
+        lastError: null,
+        hcsSequence: sequence,
+        publishedAt: new Date()
+      })
+      .where(eq(hcsOutbox.id, row.id));
+    if (row.paymentID) {
+      await tx.update(payment).set({ hcsSequence: sequence }).where(eq(payment.id, row.paymentID));
+    }
+  });
+};
+
+// One row. A row with a stored transaction ID was submitted before with an unknown outcome, so the
+// Mirror Node is asked first and the message is posted again only if that submission never landed.
+const publishOne = async (deps: OutboxDeps, row: OutboxRow): Promise<RowOutcome> => {
+  const prior: PriorSubmission = row.transactionID
+    ? await deps.lookup(row.transactionID)
+    : { state: 'absent' };
+  if (prior.state === 'published') {
+    await recordPublished(deps.db, row, prior.sequence);
+    return 'published';
+  }
+  if (prior.state === 'unknown') {
+    await deps.db
+      .update(hcsOutbox)
+      .set({ lastError: AWAITING_MIRROR })
+      .where(eq(hcsOutbox.id, row.id));
+    return 'held';
+  }
+
+  const transactionId = deps.newTransactionId();
+  await deps.db
+    .update(hcsOutbox)
+    .set({ transactionID: transactionId })
+    .where(eq(hcsOutbox.id, row.id));
+  const submitted = await deps.submit(row.topicID, row.payload, transactionId);
+  if (submitted.ok) {
+    await recordPublished(deps.db, row, submitted.data.sequence);
+    return 'published';
+  }
+
+  const lastError = describeFailure(submitted);
+  const abandoned = submitted.data.reason === 'too_large';
+  await deps.db
+    .update(hcsOutbox)
+    .set({
+      attempts: row.attempts + 1,
+      lastError,
+      transactionID: mayHaveLanded(submitted) ? transactionId : null,
+      abandonedAt: abandoned ? new Date() : null
+    })
+    .where(eq(hcsOutbox.id, row.id));
+  if (!abandoned) return 'held';
+  console.error(`[hcs-outbox]: ${row.id} can never be published (${lastError}); skipping it`);
+  return 'abandoned';
+};
 
 // Publishes queued rows, oldest first. A row that fails stays queued with its error, and the
 // next pass tries it again. Later rows on the same topic wait for it, so each topic keeps the
@@ -26,7 +103,7 @@ export const publishQueued = async (deps: OutboxDeps): Promise<PublishReport> =>
   const queued = await deps.db
     .select()
     .from(hcsOutbox)
-    .where(isNull(hcsOutbox.publishedAt))
+    .where(and(isNull(hcsOutbox.publishedAt), isNull(hcsOutbox.abandonedAt)))
     .orderBy(asc(hcsOutbox.createdAt))
     .limit(BATCH_SIZE);
 
@@ -35,34 +112,13 @@ export const publishQueued = async (deps: OutboxDeps): Promise<PublishReport> =>
   for (const row of queued) {
     if (held.has(row.topicID)) continue;
     try {
-      const submitted = await deps.submit(row.topicID, row.payload);
-      if (!submitted.ok) {
-        report.failed += 1;
-        held.add(row.topicID);
-        await deps.db
-          .update(hcsOutbox)
-          .set({ attempts: row.attempts + 1, lastError: describeFailure(submitted) })
-          .where(eq(hcsOutbox.id, row.id));
+      const outcome = await publishOne(deps, row);
+      if (outcome === 'published') {
+        report.published += 1;
         continue;
       }
-      await deps.db.transaction(async (tx) => {
-        await tx
-          .update(hcsOutbox)
-          .set({
-            attempts: row.attempts + 1,
-            lastError: null,
-            hcsSequence: submitted.data.sequence,
-            publishedAt: new Date()
-          })
-          .where(eq(hcsOutbox.id, row.id));
-        if (row.paymentID) {
-          await tx
-            .update(payment)
-            .set({ hcsSequence: submitted.data.sequence })
-            .where(eq(payment.id, row.paymentID));
-        }
-      });
-      report.published += 1;
+      report.failed += 1;
+      if (outcome === 'held') held.add(row.topicID);
     } catch (error) {
       report.failed += 1;
       held.add(row.topicID);

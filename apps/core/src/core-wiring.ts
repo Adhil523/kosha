@@ -14,6 +14,7 @@ import { exportRoutes } from './export-routes';
 import { facilitatorRoutes } from './facilitator-routes';
 import { demoFixedFx } from './fx';
 import type { OutboxDeps } from './hcs-outbox';
+import { mirrorSubmissionLookup } from './hcs-submission-lookup';
 import { ledgerRoutes } from './ledger-routes';
 import { outsideRoutes } from './outside-routes';
 import { type WatcherDeps } from './outside-watcher';
@@ -29,7 +30,7 @@ import { supportedRoutes } from './supported-routes';
 import type { Client, PrivateKey, TransferTransaction } from '@hiero-ledger/sdk';
 import { parsePrivateKey } from '@kosha/hedera/client';
 import { clientExecutor } from '@kosha/hedera/executor';
-import { submitMessage } from '@kosha/hedera/hcs';
+import { newTransactionId, submitMessage } from '@kosha/hedera/hcs';
 import { createProfileReader } from '@kosha/hedera/hcs11-profile';
 import { createMirrorClient } from '@kosha/hedera/mirror';
 import { mirrorPayerKey } from '@kosha/hedera/payer-key';
@@ -196,7 +197,13 @@ export const wireCore = (
     ok: true,
     data: {
       routes,
-      outbox: { db, submit: (topicId, message) => submitMessage(execute, topicId, message) },
+      outbox: {
+        db,
+        submit: (topicId, message, transactionId) =>
+          submitMessage(execute, topicId, message, transactionId),
+        newTransactionId: () => newTransactionId(config.coreAccountId),
+        lookup: mirrorSubmissionLookup(mirror)
+      },
       // The compat settlement account has Core's key, so the operator's signature covers it
       watcher: {
         db,
