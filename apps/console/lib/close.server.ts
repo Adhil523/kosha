@@ -35,8 +35,14 @@ const challanRecordedSchema = z.object({
   releases: z.array(releaseRowSchema)
 });
 
-// Mock mode keeps recorded challans and co-signed releases in memory, so the screens round-trip
-const mock = { challans: [...CHALLANS_FIXTURE], releases: [...RELEASES_FIXTURE] };
+// Mock mode keeps recorded challans and co-signed releases in memory, so the screens round-trip.
+// Next.js loads route handlers and server actions as separate module graphs, so the store lives
+// on globalThis: the co-sign action and the releases route must see the same releases.
+type MockStore = { challans: ChallanRow[]; releases: ReleaseRow[] };
+const MOCK_STORE_KEY = '__koshaConsoleMockClose';
+const mockHolder = globalThis as typeof globalThis & { [MOCK_STORE_KEY]?: MockStore };
+mockHolder[MOCK_STORE_KEY] ??= { challans: [...CHALLANS_FIXTURE], releases: [...RELEASES_FIXTURE] };
+const mock: MockStore = mockHolder[MOCK_STORE_KEY];
 
 const ok = <T>(data: T): CoreResult<T> => ({ ok: true, status: 200, data });
 const refuse = (status: number, message: string) =>
