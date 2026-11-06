@@ -1,0 +1,20 @@
+{
+  "name": "@kosha/hedera",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@hiero-ledger/proto": "2.32.0",
+    "@hiero-ledger/sdk": "2.90.1",
+    "@kosha/shared": "workspace:*",
+    "zod": "4.6.7"
+  }
+}
