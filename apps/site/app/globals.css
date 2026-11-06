@@ -1,0 +1,490 @@
+@import 'tailwindcss';
+
+/* Dealt with the design-taste skill: palette blue-black-cornflower, type host, radius sharp.
+   Colours are OKLCH with the dealt hex beside each. */
+@theme {
+  --color-*: initial;
+  --color-ground: oklch(0.159 0.016 266.6); /* #0a0d14 */
+  --color-surface: oklch(0.21 0.025 266.8); /* #131824 */
+  --color-card: oklch(0.196 0.022 263.9); /* #10151f */
+  --color-ink: oklch(0.945 0.009 258.3); /* #e9edf3 */
+  --color-muted: oklch(0.664 0.029 262.3); /* #8a94a6 */
+  --color-accent: oklch(0.756 0.132 242.1); /* #5ab9fc */
+  --color-accent-ink: oklch(0.159 0.016 266.6); /* #0a0d14 */
+  --color-warning: oklch(0.786 0.117 80.5); /* #e0b15c */
+  --color-paper: oklch(0.945 0.009 258.3); /* #e9edf3 */
+  --color-paper-surface: oklch(0.896 0.013 262.4); /* #d8dde6 */
+  --color-paper-muted: oklch(0.451 0.033 260.2); /* #4b5668 */
+  --color-line: color-mix(in oklab, oklch(0.945 0.009 258.3) 12%, transparent);
+  --color-line-strong: color-mix(in oklab, oklch(0.945 0.009 258.3) 28%, transparent);
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --font-sans: var(--font-host), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  --radius-*: initial;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  --text-h1: clamp(2.5rem, 1.1rem + 3.6vw, 4rem); /* 40 to 64 */
+  --text-h1--line-height: 1.02;
+  --text-h1--letter-spacing: -0.035em;
+  --text-h2: clamp(1.875rem, 1.2rem + 1.8vw, 3rem); /* 30 to 48 */
+  --text-h2--line-height: 1.08;
+  --text-h2--letter-spacing: -0.03em;
+  --text-h3: 1.75rem;
+  --text-h3--line-height: 1.2;
+  --text-lead: 1.25rem;
+  --text-lead--line-height: 1.5;
+  --text-body: 1rem;
+  --text-body--line-height: 1.625;
+  --text-small: 0.875rem;
+  --text-small--line-height: 1.45;
+  --text-label: 0.8125rem;
+  --text-label--line-height: 1.25;
+  --text-ui: 0.8125rem; /* text inside a product window */
+  --text-ui--line-height: 1.3;
+  --text-ui-meta: 0.75rem;
+  --text-ui-meta--line-height: 1.3;
+  --text-xl-button: 2rem;
+  --text-xl-button--line-height: 1;
+
+  --ease-ui: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-roll: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* A light travelling along a diagram line; one cycle, repeating */
+  --animate-comet: comet var(--m-cycle) linear infinite;
+  @keyframes comet {
+    from {
+      stroke-dashoffset: var(--comet-from, 600);
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+}
+
+:root {
+  --nav: 72px;
+  --padt: 120px;
+  --padb: 72px;
+  --gut: 80px;
+  --m-in: 140ms;
+  --m-out: 200ms;
+  --m-press: 90ms;
+  --m-cycle: 3.2s;
+  scroll-padding-top: 0;
+}
+
+@media (width < 40rem) {
+  :root {
+    --nav: 56px;
+    --padt: 96px;
+    --padb: 48px;
+    --gut: 24px;
+  }
+}
+
+@layer base {
+  html {
+    height: 100%;
+    background: var(--color-ground);
+  }
+  body {
+    min-height: 100%;
+    background: var(--color-ground);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    text-rendering: optimizeLegibility;
+  }
+  h1,
+  h2,
+  h3 {
+    font-weight: 500;
+    text-wrap: balance;
+  }
+  ::selection {
+    background: var(--color-accent);
+    color: var(--color-accent-ink);
+  }
+}
+
+@layer components {
+  /* One section per screen: the box is one or two screens tall, its h2 first (layout-v4) */
+  .section {
+    position: relative;
+    min-height: calc(var(--h, 1) * 100svh);
+    padding-top: var(--padt);
+    padding-bottom: var(--padb);
+  }
+  .wrap {
+    width: min(100% - 2 * var(--gut), 1280px);
+    margin-inline: auto;
+  }
+
+  /* Buttons step up 1px on hover and sink on press (motion.md); one filled look per view */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    height: 2.75rem;
+    padding-inline: 1.5rem;
+    border-radius: var(--radius-md);
+    font-size: 1rem;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    border: 1px solid transparent;
+    transition:
+      transform var(--m-out) var(--ease-ui),
+      background-color var(--m-out) var(--ease-ui),
+      border-color var(--m-out) var(--ease-ui);
+  }
+  .btn-primary {
+    background: var(--color-accent);
+    color: var(--color-accent-ink);
+  }
+  .btn-secondary {
+    background: transparent;
+    color: var(--color-ink);
+    border-color: var(--color-line-strong);
+  }
+  .btn-xl {
+    width: 100%;
+    height: 5.5rem;
+    font-size: var(--text-xl-button);
+    letter-spacing: -0.02em;
+  }
+  @media (hover: hover) {
+    .btn:hover {
+      transform: translateY(-1px);
+      transition-duration: var(--m-in);
+    }
+    .btn-xl:hover {
+      transform: translateY(-2px);
+    }
+    .btn-primary:hover {
+      background: color-mix(in oklab, var(--color-accent) 86%, var(--color-ink));
+    }
+    .btn-secondary:hover {
+      background: color-mix(in oklab, var(--color-ink) 6%, transparent);
+      border-color: color-mix(in oklab, var(--color-ink) 45%, transparent);
+    }
+  }
+  .btn:active {
+    transform: translateY(1px) scale(0.985);
+    transition-duration: var(--m-press);
+  }
+  @media (width < 40rem) {
+    .btn {
+      width: 100%;
+    }
+    .btn-xl {
+      height: 3rem;
+      font-size: 1.125rem;
+    }
+  }
+
+  /* Links rest on a faint hairline; an ink line draws left to right on hover */
+  .link {
+    color: var(--color-ink);
+    background-image:
+      linear-gradient(currentColor, currentColor),
+      linear-gradient(var(--color-line-strong), var(--color-line-strong));
+    background-repeat: no-repeat;
+    background-size:
+      0% 1px,
+      100% 1px;
+    background-position:
+      0 100%,
+      0 100%;
+    padding-bottom: 1px;
+    transition: background-size var(--m-out) var(--ease-ui);
+  }
+  .link:hover,
+  .link:focus-visible {
+    background-size:
+      100% 1px,
+      100% 1px;
+    transition-duration: var(--m-in);
+  }
+  .navlink {
+    color: var(--color-muted);
+    background-image: linear-gradient(currentColor, currentColor);
+    background-repeat: no-repeat;
+    background-size: 0% 1px;
+    background-position: 0 calc(100% - 0px);
+    padding-bottom: 4px;
+    transition:
+      color var(--m-out) var(--ease-ui),
+      background-size var(--m-out) var(--ease-ui);
+  }
+  .navlink:hover,
+  .navlink:focus-visible {
+    color: var(--color-ink);
+    background-size: 100% 1px;
+    transition-duration: var(--m-in);
+  }
+
+  /* The card: one step off the page, a hairline, an inner top highlight; a linked card lifts 2px */
+  .card {
+    background: var(--color-card);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-lg);
+    box-shadow: inset 0 1px 0 color-mix(in oklab, white 6%, transparent);
+    transition:
+      transform 180ms var(--ease-ui),
+      border-color var(--m-out) var(--ease-ui);
+  }
+  @media (hover: hover) {
+    .card-link:hover {
+      transform: translateY(-2px);
+      border-color: var(--color-line-strong);
+    }
+  }
+
+  /* A product window: the surface one step lighter than the card, 13px text, real data */
+  .ui {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-xl);
+    font-size: var(--text-ui);
+    line-height: var(--text-ui--line-height);
+    box-shadow:
+      0 1px 0 color-mix(in oklab, white 5%, transparent) inset,
+      0 24px 48px -24px color-mix(in oklab, black 60%, transparent);
+  }
+
+  /* The lit ground behind a window: one soft light, no grain, no pattern */
+  .lit {
+    background:
+      radial-gradient(
+        120% 90% at 30% 20%,
+        color-mix(in oklab, var(--color-accent) 42%, var(--color-ground)) 0%,
+        color-mix(in oklab, var(--color-accent) 18%, var(--color-ground)) 38%,
+        color-mix(in oklab, var(--color-accent) 6%, var(--color-ground)) 70%,
+        var(--color-ground) 100%
+      ),
+      var(--color-ground);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation: none !important;
+    transition-property: opacity, color, background-color, border-color !important;
+  }
+}
+
+/* The hero's one timed loop: the receipt shows finished, holds, its three lines arrive again
+   0.7 s apart, then it holds (motion.md). The finished frame is the base style, so reduced
+   motion, no script and phones all show it. */
+@theme {
+  --m-loop: 4s;
+  --animate-step-1: step-1 var(--m-loop) var(--ease-ui) infinite;
+  --animate-step-2: step-2 var(--m-loop) var(--ease-ui) infinite;
+  --animate-step-3: step-3 var(--m-loop) var(--ease-ui) infinite;
+  @keyframes step-1 {
+    0%,
+    44% {
+      opacity: 1;
+      translate: 0 0;
+    }
+    45%,
+    54% {
+      opacity: 0;
+      translate: 0 4px;
+    }
+    60%,
+    100% {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+  @keyframes step-2 {
+    0%,
+    44% {
+      opacity: 1;
+      translate: 0 0;
+    }
+    45%,
+    71% {
+      opacity: 0;
+      translate: 0 4px;
+    }
+    77%,
+    100% {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+  @keyframes step-3 {
+    0%,
+    44% {
+      opacity: 1;
+      translate: 0 0;
+    }
+    45%,
+    88% {
+      opacity: 0;
+      translate: 0 4px;
+    }
+    94%,
+    100% {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+}
+
+[data-paused] * {
+  animation-play-state: paused !important;
+}
+@media (width < 40rem) {
+  .loop-host * {
+    animation: none !important;
+  }
+}
+
+@layer utilities {
+  /* A black third-party mark (GitHub, Express) reads white on the dark ground (icons.md) */
+  .ic-ink {
+    filter: invert(1) hue-rotate(180deg);
+  }
+}
+
+/* Micro-interactions (emil-design-eng): strong ease-out, exact properties, press feedback,
+   one load-once assembly in the hero, life signs only inside the product window. */
+@theme {
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --animate-live-ring: live-ring 2.4s ease-out infinite;
+  @keyframes live-ring {
+    0% {
+      scale: 0.6;
+      opacity: 0.9;
+    }
+    70%,
+    100% {
+      scale: 2.2;
+      opacity: 0;
+    }
+  }
+  --animate-focus-settle: focus-settle 200ms var(--ease-ui);
+  @keyframes focus-settle {
+    from {
+      outline-offset: 6px;
+    }
+  }
+}
+
+@layer components {
+  .btn:active {
+    transform: translateY(1px) scale(0.97);
+  }
+  .btn .m-arrow {
+    transition: translate var(--m-out) var(--ease-out-strong);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .btn:hover .m-arrow {
+      translate: 3px 0;
+      transition-duration: var(--m-in);
+    }
+  }
+
+  /* The hero frame assembles once on load, settled by 0.7 s; the words are in place from frame one */
+  .frame-enter {
+    transition:
+      opacity 600ms var(--ease-out-strong),
+      translate 600ms var(--ease-out-strong),
+      filter 600ms var(--ease-out-strong);
+    @starting-style {
+      opacity: 0;
+      translate: 0 8px;
+      filter: blur(6px);
+    }
+  }
+
+  /* A threshold bar fills once, 0.6 s, from the left */
+  .level {
+    transform-origin: left;
+    scale: var(--share, 1) 1;
+    transition: scale 600ms var(--ease-out-strong) 240ms;
+    @starting-style {
+      scale: 0 1;
+    }
+  }
+
+  /* The live dot stays still; a ring grows from it and fades */
+  .live-dot {
+    position: relative;
+  }
+  .live-dot::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    border: 1px solid var(--color-accent);
+    animation: var(--animate-live-ring);
+  }
+
+  /* The phone menu enters from the bar; it leaves at once */
+  .menu-sheet {
+    transition:
+      opacity 200ms var(--ease-out-strong),
+      translate 200ms var(--ease-out-strong);
+    @starting-style {
+      opacity: 0;
+      translate: 0 -6px;
+    }
+  }
+
+  /* A card's lit panel brightens a step and its window lifts 2px under the pointer */
+  .lit::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--color-accent);
+    opacity: 0;
+    transition: opacity var(--m-out) var(--ease-ui);
+    pointer-events: none;
+  }
+  .lit > :first-child {
+    transition: translate 180ms var(--ease-out-strong);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .card-link:hover .lit::after {
+      opacity: 0.07;
+    }
+    .card-link:hover .lit > :first-child {
+      translate: 0 -2px;
+    }
+  }
+
+  .chip {
+    transition:
+      border-color var(--m-out) var(--ease-ui),
+      color var(--m-out) var(--ease-ui);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .card-link:hover .chip {
+      border-color: var(--color-line-strong);
+      color: var(--color-ink);
+    }
+  }
+}
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    animation: var(--animate-focus-settle);
+  }
+}
