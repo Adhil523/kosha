@@ -20,5 +20,7 @@ export const requireWorkspace = async (
 
 // API-owner data: the owner's workspace and the CA's read-only filing view
 export const RECEIVER_VIEWERS: readonly WorkspaceId[] = ['owner', 'ca'];
+// API-owner actions: classifying an outside payment, recording a challan
+export const RECEIVER_EDITORS: readonly WorkspaceId[] = ['owner'];
 // Agent-owner data: agents, reserves, spend and policies
 export const AGENT_VIEWERS: readonly WorkspaceId[] = ['agent'];

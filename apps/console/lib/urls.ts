@@ -16,7 +16,11 @@ export const URLS = {
     agentPolicy: (base: string, agentId: string) =>
       coreUrl(base, `/v1/agents/${encodeURIComponent(agentId)}/policy`),
     tdsExport: (base: string, receiverId: string, quarter: string) =>
-      coreUrl(base, '/v1/exports/tds', { receiverId, quarter })
+      coreUrl(base, '/v1/exports/tds', { receiverId, quarter }),
+    outsidePayments: (base: string, receiverId: string) =>
+      coreUrl(base, '/v1/outside-payments', { receiverId }),
+    outsideClassify: (base: string, id: string) =>
+      coreUrl(base, `/v1/outside-payments/${encodeURIComponent(id)}/classify`)
   },
   mirror: {
     accountTokens: (base: string, accountId: string, tokenId: string) =>
@@ -34,7 +38,9 @@ export const URLS = {
     tax: (quarter: string) => `/api/tax?quarter=${encodeURIComponent(quarter)}`,
     tdsExport: (quarter: string) => `/api/exports/tds?quarter=${encodeURIComponent(quarter)}`,
     agentSpend: (agentId: string) => `/api/agents/${encodeURIComponent(agentId)}/spend`,
-    agentPolicy: (agentId: string) => `/api/agents/${encodeURIComponent(agentId)}/policy`
+    agentPolicy: (agentId: string) => `/api/agents/${encodeURIComponent(agentId)}/policy`,
+    outsidePayments: '/api/outside-payments',
+    outsideClassify: (id: string) => `/api/outside-payments/${encodeURIComponent(id)}/classify`
   },
   hashscan: {
     transaction: (txId: string) => `https://hashscan.io/testnet/transaction/${txId}`,
