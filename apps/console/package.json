@@ -5,7 +5,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "typecheck": "next typegen && tsc --noEmit",
+    "lint": "eslint . --ignore-pattern 'components/ui/**'",
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
