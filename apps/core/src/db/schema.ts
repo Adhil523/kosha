@@ -11,7 +11,8 @@ import {
   pgTable,
   primaryKey,
   text,
-  timestamp
+  timestamp,
+  unique
 } from 'drizzle-orm/pg-core';
 
 // The source of truth for Core's database; migrations are generated from it (`pnpm db:generate`).
@@ -278,6 +279,59 @@ export const watcherCursor = pgTable('WatcherCursor', {
   cursor: text('cursor').notNull(),
   updatedAt: base.updatedAt
 });
+
+// The deductor's monthly close (A20): the INR challan it paid on the income-tax portal for one
+// month of TDS, stored as a hash of the reference, never the reference. One per receiver and month.
+export const challan = pgTable(
+  'Challan',
+  {
+    ...base,
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => `chl_${createId()}`),
+    receiverID: text('receiverID')
+      .notNull()
+      .references(() => receiver.id),
+    // "2026-11", an IST calendar month
+    month: text('month').notNull(),
+    tdsPaise: money('tdsPaise').notNull(),
+    challanRefHash: text('challanRefHash').notNull(),
+    recordedAt: utc('recordedAt').notNull()
+  },
+  (table) => [unique('challanReceiverMonth').on(table.receiverID, table.month)]
+);
+
+export const RELEASE_STATUSES = ['pending', 'scheduled', 'executed', 'expired', 'deleted'] as const;
+
+// One scheduled transfer per payer reserve for a challan: the month's TDS goes back from the
+// agent's 2-of-2 reserve to the deductor's wallet as reimbursement. Core signs at creation; the
+// agent co-signs, and the transfer runs on that signature.
+export const release = pgTable(
+  'Release',
+  {
+    ...base,
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => `rel_${createId()}`),
+    challanID: text('challanID')
+      .notNull()
+      .references(() => challan.id),
+    agentID: text('agentID')
+      .notNull()
+      .references(() => agent.id),
+    reserveAccountID: text('reserveAccountID').notNull(),
+    toAccountID: text('toAccountID').notNull(),
+    micro: money('micro').notNull(),
+    // Fixed when the challan is recorded, so a retried ScheduleCreate is identical and idempotent
+    expiresAt: utc('expiresAt').notNull(),
+    scheduleID: text('scheduleID').unique(),
+    status: text('status', { enum: RELEASE_STATUSES }).notNull().default('pending'),
+    // The account that paid for the ScheduleSign: the agent operator
+    cosignedBy: text('cosignedBy'),
+    executedAt: utc('executedAt')
+  },
+  (table) => [unique('releaseChallanAgent').on(table.challanID, table.agentID)]
+);
 
 export const HCS_MESSAGE_KINDS = [
   'pay',
