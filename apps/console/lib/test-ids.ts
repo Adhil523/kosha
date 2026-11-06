@@ -10,5 +10,7 @@ export const TEST_IDS = {
   queryRetry: 'query-retry',
   paymentsFeed: 'payments-feed',
   feedStatus: 'feed-status',
-  paymentRow: (paymentId: string) => `payment-row-${paymentId}`
+  paymentRow: (paymentId: string) => `payment-row-${paymentId}`,
+  thresholdCounter: (agentId: string) => `threshold-counter-${agentId}`,
+  thresholdStatus: (agentId: string) => `threshold-status-${agentId}`
 } as const;

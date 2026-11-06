@@ -1,5 +1,5 @@
-import { PaymentsFeed } from '@/components/elements/PaymentsFeed';
-import { paymentsHcsConfig } from '@/lib/hcs-config.server';
+import { LiveReceiverView } from '@/components/elements/LiveReceiverView';
+import { demoFxInrPerUsd, paymentsHcsConfig } from '@/lib/display-config.server';
 import { ROUTES } from '@/lib/routes';
 import { TEST_IDS } from '@/lib/test-ids';
 import { findNavItem } from '@/lib/workspaces';
@@ -9,7 +9,7 @@ const PaymentsPage = () => (
     <h1 data-testid={TEST_IDS.pageTitle} className="text-2xl font-semibold tracking-tight">
       {findNavItem(ROUTES.owner.payments)?.label}
     </h1>
-    <PaymentsFeed hcs={paymentsHcsConfig()} />
+    <LiveReceiverView hcs={paymentsHcsConfig()} fxInrPerUsd={demoFxInrPerUsd()} />
   </div>
 );
 

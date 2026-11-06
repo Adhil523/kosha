@@ -6,7 +6,7 @@ import * as Table from '@/components/ui/table';
 import { formatConsensusTime, REASON_LABELS, reserveLabel } from '@/lib/payment-format';
 import { getLedgerQueryParams } from '@/lib/queries';
 import { TEST_IDS } from '@/lib/test-ids';
-import { POLL_FALLBACK_MS, useLiveStream } from '@/lib/use-live-stream';
+import { POLL_FALLBACK_MS } from '@/lib/use-live-stream';
 import type { TopicId } from '@kosha/shared/ids';
 import { mirrorTopicMessage } from '@kosha/shared/links';
 import { amountToBigint, formatUsdc } from '@kosha/shared/money';
@@ -20,8 +20,8 @@ const hcsMessageUrl = (config: HcsLinkConfig, sequence: number): string | null =
 
 const COLUMNS = ['Time (IST)', 'Agent', 'Price (USDC)', 'TDS (USDC)', 'Rate', 'Reason', 'Evidence'];
 
-export const PaymentsFeed = ({ hcs }: { hcs: HcsLinkConfig }) => {
-  const streaming = useLiveStream();
+// `streaming` comes from the parent's useLiveStream(), so the page opens one stream, not one per widget
+export const PaymentsFeed = ({ hcs, streaming }: { hcs: HcsLinkConfig; streaming: boolean }) => {
   const ledger = useQuery({
     ...getLedgerQueryParams(),
     refetchInterval: streaming ? false : POLL_FALLBACK_MS
