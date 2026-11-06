@@ -7,13 +7,17 @@ import { and, asc, eq, gt, gte, lt } from 'drizzle-orm';
 const QUARTER_PATTERN = /^(\d{4})-Q([1-4])$/;
 const MONTHS_PER_QUARTER = 3;
 // IST is UTC+05:30 all year
-const IST_OFFSET_MS = 19_800_000;
+export const IST_OFFSET_MS = 19_800_000;
 // micro-USDC × micro-rupees-per-USD ÷ this = paise
 const MICRO_RATE_PER_PAISE = 10_000_000_000n;
 // The statutory code a TDS statement uses for a deductee with no PAN
 export const NO_PAN = 'PANNOTAVBL';
 
 export const TDS_EXPORT_COLUMNS = Object.keys(tdsExportRowSchema.shape) as (keyof TdsExportRow)[];
+
+// Midnight IST on the first of a month (the index may run past 11, as Date.UTC allows)
+export const istMonthStart = (year: number, monthIndex: number): Date =>
+  new Date(Date.UTC(year, monthIndex, 1) - IST_OFFSET_MS);
 
 // "2026-Q3" with an April start → [1 Oct 2026 00:00 IST, 1 Jan 2027 00:00 IST)
 export const quarterBounds = (
@@ -23,10 +27,12 @@ export const quarterBounds = (
   const match = QUARTER_PATTERN.exec(key);
   const startMonth = Number(financialYearStart.slice(0, 2));
   if (!match?.[1] || !match[2] || !startMonth) return null;
+  const year = Number(match[1]);
   const firstMonth = startMonth - 1 + (Number(match[2]) - 1) * MONTHS_PER_QUARTER;
-  const istMidnight = (monthIndex: number) =>
-    new Date(Date.UTC(Number(match[1]), monthIndex, 1) - IST_OFFSET_MS);
-  return { start: istMidnight(firstMonth), end: istMidnight(firstMonth + MONTHS_PER_QUARTER) };
+  return {
+    start: istMonthStart(year, firstMonth),
+    end: istMonthStart(year, firstMonth + MONTHS_PER_QUARTER)
+  };
 };
 
 // The TDS decide() computed, in paise. Only micro-USDC is stored, but decide() rounds the paise
