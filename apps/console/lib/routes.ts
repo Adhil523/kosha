@@ -7,12 +7,13 @@ export const ROUTES = {
     payments: '/payments',
     counterparties: '/counterparties',
     tax: '/tax',
-    escrow: '/escrow',
+    monthly: '/monthly',
     outside: '/outside',
     settings: '/settings'
   },
   agent: {
     agents: '/agents',
+    reserve: '/reserve',
     spend: '/spend',
     policies: '/policies',
     credits: '/credits'

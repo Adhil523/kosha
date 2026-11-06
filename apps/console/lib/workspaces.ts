@@ -17,7 +17,7 @@ export const WORKSPACES: Record<WorkspaceId, Workspace> = {
         href: ROUTES.owner.overview,
         label: 'Overview',
         description:
-          'Earnings today and this month, TDS withheld, escrow balance, payments per minute.'
+          'Earnings today and this month, TDS reserved by payers this month, payments per minute.'
       },
       {
         href: ROUTES.owner.payments,
@@ -28,7 +28,7 @@ export const WORKSPACES: Record<WorkspaceId, Workspace> = {
         href: ROUTES.owner.counterparties,
         label: 'Counterparties',
         description:
-          "Each payer's yearly total against its threshold, residency and credential status."
+          "Each payer's yearly total against this receiver's threshold, residency and verification level."
       },
       {
         href: ROUTES.owner.tax,
@@ -36,9 +36,10 @@ export const WORKSPACES: Record<WorkspaceId, Workspace> = {
         description: 'Quarter summary, deductee-wise totals, TDS file download, rule-pack version.'
       },
       {
-        href: ROUTES.owner.escrow,
-        label: 'Escrow and sweeps',
-        description: 'Escrow balance, the monthly sweep schedule and the sweep co-sign.'
+        href: ROUTES.owner.monthly,
+        label: 'Monthly tax',
+        description:
+          'Payment summary for the month, challan reference, release status per payer reserve.'
       },
       {
         href: ROUTES.owner.outside,
@@ -49,7 +50,7 @@ export const WORKSPACES: Record<WorkspaceId, Workspace> = {
         href: ROUTES.owner.settings,
         label: 'Settings',
         description:
-          'Threshold or first-rupee mode, funding mode, priced routes, API keys, webhooks.'
+          'Threshold or first-rupee mode, unverified-payer policy, priced routes, API keys, webhooks.'
       }
     ]
   },
@@ -62,6 +63,11 @@ export const WORKSPACES: Record<WorkspaceId, Workspace> = {
         href: ROUTES.agent.agents,
         label: 'Agents',
         description: "Each agent's HCS-14 ID, credential, declared wallets and status."
+      },
+      {
+        href: ROUTES.agent.reserve,
+        label: 'Reserve',
+        description: 'Reserve balance, pending releases and the release co-sign.'
       },
       {
         href: ROUTES.agent.spend,

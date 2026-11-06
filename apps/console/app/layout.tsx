@@ -11,7 +11,7 @@ const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin']
 export const metadata: Metadata = {
   title: 'Kosha Console',
   description:
-    'Earnings, TDS ledger, escrow and filing export for Kosha, the tax-native x402 gateway.'
+    'Earnings, TDS ledger, payer reserves and filing export for Kosha, the tax-native x402 gateway.'
 };
 
 const RootLayout = ({ children }: LayoutProps<'/'>) => (
