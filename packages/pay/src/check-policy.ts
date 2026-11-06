@@ -28,7 +28,7 @@ export type CheckPolicyResult =
   | { ok: true; data: { totalMicro: bigint; warnings: PolicyWarning[] } }
   | { ok: false; data: { reason: PolicyBlockReason; message: string } };
 
-const hostAllowed = (url: string, allowlist: readonly string[]): boolean => {
+export const hostAllowed = (url: string, allowlist: readonly string[]): boolean => {
   let host: string;
   try {
     host = new URL(url).hostname.toLowerCase();

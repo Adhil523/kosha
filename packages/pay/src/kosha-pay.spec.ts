@@ -126,9 +126,31 @@ describe('createKoshaPay: fetch', () => {
   });
 });
 
+describe('createKoshaPay: refusals before fetching', () => {
+  it.each([
+    ['a host off the allowlist', 'https://evil.example/v1/data?leak=1', 'policy_allowlist'],
+    ['cloud metadata', 'http://169.254.169.254/latest/meta-data/', 'blocked_host']
+  ])('refuses %s without contacting it', async (_label, url, reason) => {
+    const { pay, fetchMock } = setup();
+
+    const response = await pay.fetch(url);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(0);
+    expect(pay.lastError?.reason).toBe(reason);
+  });
+
+  it('does not follow a redirect off the checked host', async () => {
+    const { pay, fetchMock } = setup();
+
+    await pay.fetch(URL_GST);
+
+    expect(fetchMock.mock.calls.map(([, init]) => init?.redirect)).toEqual(['manual', 'manual']);
+  });
+});
+
 describe('createKoshaPay: refusals before signing', () => {
   it.each([
-    ['blocked by the allowlist', 'https://evil.example/v1/data', quoted(), 'policy_allowlist'],
     [
       'over the per-payment cap',
       URL_GST,

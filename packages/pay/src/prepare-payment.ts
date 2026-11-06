@@ -1,4 +1,5 @@
 import { checkPolicy, type PolicyBlockReason, type PolicyWarning } from './check-policy';
+import { checkTarget, type TargetRefusal } from './fetch-target';
 import { signSplitPayment, type SplitRefusal } from './kosha-split-scheme';
 import { type PayConfig } from './pay-config';
 import { type SpendStore } from './spend-store';
@@ -14,12 +15,18 @@ import {
 export const PAYMENT_REQUIRED_STATUS = 402;
 
 export type PayFailureReason =
-  'invalid_402' | 'no_kosha_split' | 'payment_rejected' | PolicyBlockReason | SplitRefusal;
+  | 'invalid_402'
+  | 'no_kosha_split'
+  | 'payment_rejected'
+  | PolicyBlockReason
+  | SplitRefusal
+  | TargetRefusal;
 
 export type PayFailure = {
   reason: PayFailureReason;
   message: string;
-  // The server's 402, so a caller (or `pay.fetch`) can hand it back unchanged
+  // The server's 402, so a caller (or `pay.fetch`) can hand it back unchanged. `Response.error()`
+  // (status 0, no body) when Pay refused the URL before contacting the server.
   response: Response;
 };
 
@@ -77,15 +84,23 @@ const readPaymentRequired = async (response: Response): Promise<PaymentRequired 
   return parsed.success ? parsed.data : null;
 };
 
-// Step 1 of a paid call: fetch; on a 402, take the kosha-split entry, check it against the
-// owner's policy, and sign exactly the quoted transfer. Nothing is sent yet.
+// Step 1 of a paid call: check the host, fetch; on a 402, take the kosha-split entry, check it
+// against the owner's policy, and sign exactly the quoted transfer. Nothing is sent yet.
 export const preparePayment = async (
   deps: PrepareDeps,
   url: string,
   init: RequestInit = {}
 ): Promise<PrepareResult> => {
   const { config, store } = deps;
-  const request = withHeaders(init, { [HEADERS.koshaAgent]: config.agentId });
+  const target = checkTarget(url, config.policy.allowlist);
+  if (!target.ok) {
+    return fail(target.data.reason, target.data.message, Response.error());
+  }
+  // Only this URL's host was checked; following a redirect would reach one nobody checked
+  const request = withHeaders(
+    { ...init, redirect: init.redirect ?? 'manual' },
+    { [HEADERS.koshaAgent]: config.agentId }
+  );
   const response = await deps.fetch(url, request);
   if (response.status !== PAYMENT_REQUIRED_STATUS) {
     return { ok: true, data: { kind: 'free', response } };
