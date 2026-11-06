@@ -1,0 +1,1 @@
+ALTER TABLE "Payment" ADD COLUMN "sample" boolean DEFAULT false NOT NULL;
