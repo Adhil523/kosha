@@ -1,22 +1,22 @@
 @import 'tailwindcss';
 
-/* Dealt with the design-taste skill: palette green-black-bone, type host, radius sharp.
+/* Dealt with the design-taste skill: palette blue-black-cornflower, type host, radius sharp.
    Colours are OKLCH with the dealt hex beside each. */
 @theme {
   --color-*: initial;
-  --color-ground: oklch(0.22 0.01 173.2); /* #161c1a */
-  --color-surface: oklch(0.264 0.012 178.5); /* #1f2725 */
-  --color-card: oklch(0.248 0.012 178.4); /* #1b2321 */
-  --color-ink: oklch(0.911 0.011 100.8); /* #e3e2da */
-  --color-muted: oklch(0.659 0.012 141.2); /* #8e948d */
-  --color-accent: oklch(0.796 0.048 170.2); /* #9fc7b8 */
-  --color-accent-ink: oklch(0.22 0.01 173.2); /* #161c1a */
+  --color-ground: oklch(0.159 0.016 266.6); /* #0a0d14 */
+  --color-surface: oklch(0.21 0.025 266.8); /* #131824 */
+  --color-card: oklch(0.196 0.022 263.9); /* #10151f */
+  --color-ink: oklch(0.945 0.009 258.3); /* #e9edf3 */
+  --color-muted: oklch(0.664 0.029 262.3); /* #8a94a6 */
+  --color-accent: oklch(0.756 0.132 242.1); /* #5ab9fc */
+  --color-accent-ink: oklch(0.159 0.016 266.6); /* #0a0d14 */
   --color-warning: oklch(0.786 0.117 80.5); /* #e0b15c */
-  --color-paper: oklch(0.911 0.011 100.8); /* #e3e2da, the inverse ground */
-  --color-paper-surface: oklch(0.863 0.01 100); /* #d3d2cb */
-  --color-paper-muted: oklch(0.461 0.01 145.4); /* #555a55 */
-  --color-line: color-mix(in oklab, oklch(0.911 0.011 100.8) 12%, transparent);
-  --color-line-strong: color-mix(in oklab, oklch(0.911 0.011 100.8) 28%, transparent);
+  --color-paper: oklch(0.945 0.009 258.3); /* #e9edf3 */
+  --color-paper-surface: oklch(0.896 0.013 262.4); /* #d8dde6 */
+  --color-paper-muted: oklch(0.451 0.033 260.2); /* #4b5668 */
+  --color-line: color-mix(in oklab, oklch(0.945 0.009 258.3) 12%, transparent);
+  --color-line-strong: color-mix(in oklab, oklch(0.945 0.009 258.3) 28%, transparent);
   --color-transparent: transparent;
   --color-current: currentColor;
 
@@ -358,5 +358,133 @@
   /* A black third-party mark (GitHub, Express) reads white on the dark ground (icons.md) */
   .ic-ink {
     filter: invert(1) hue-rotate(180deg);
+  }
+}
+
+/* Micro-interactions (emil-design-eng): strong ease-out, exact properties, press feedback,
+   one load-once assembly in the hero, life signs only inside the product window. */
+@theme {
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --animate-live-ring: live-ring 2.4s ease-out infinite;
+  @keyframes live-ring {
+    0% {
+      scale: 0.6;
+      opacity: 0.9;
+    }
+    70%,
+    100% {
+      scale: 2.2;
+      opacity: 0;
+    }
+  }
+  --animate-focus-settle: focus-settle 200ms var(--ease-ui);
+  @keyframes focus-settle {
+    from {
+      outline-offset: 6px;
+    }
+  }
+}
+
+@layer components {
+  .btn:active {
+    transform: translateY(1px) scale(0.97);
+  }
+  .btn .m-arrow {
+    transition: translate var(--m-out) var(--ease-out-strong);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .btn:hover .m-arrow {
+      translate: 3px 0;
+      transition-duration: var(--m-in);
+    }
+  }
+
+  /* The hero frame assembles once on load, settled by 0.7 s; the words are in place from frame one */
+  .frame-enter {
+    transition:
+      opacity 600ms var(--ease-out-strong),
+      translate 600ms var(--ease-out-strong),
+      filter 600ms var(--ease-out-strong);
+    @starting-style {
+      opacity: 0;
+      translate: 0 8px;
+      filter: blur(6px);
+    }
+  }
+
+  /* A threshold bar fills once, 0.6 s, from the left */
+  .level {
+    transform-origin: left;
+    scale: var(--share, 1) 1;
+    transition: scale 600ms var(--ease-out-strong) 240ms;
+    @starting-style {
+      scale: 0 1;
+    }
+  }
+
+  /* The live dot stays still; a ring grows from it and fades */
+  .live-dot {
+    position: relative;
+  }
+  .live-dot::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    border: 1px solid var(--color-accent);
+    animation: var(--animate-live-ring);
+  }
+
+  /* The phone menu enters from the bar; it leaves at once */
+  .menu-sheet {
+    transition:
+      opacity 200ms var(--ease-out-strong),
+      translate 200ms var(--ease-out-strong);
+    @starting-style {
+      opacity: 0;
+      translate: 0 -6px;
+    }
+  }
+
+  /* A card's lit panel brightens a step and its window lifts 2px under the pointer */
+  .lit::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--color-accent);
+    opacity: 0;
+    transition: opacity var(--m-out) var(--ease-ui);
+    pointer-events: none;
+  }
+  .lit > :first-child {
+    transition: translate 180ms var(--ease-out-strong);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .card-link:hover .lit::after {
+      opacity: 0.07;
+    }
+    .card-link:hover .lit > :first-child {
+      translate: 0 -2px;
+    }
+  }
+
+  .chip {
+    transition:
+      border-color var(--m-out) var(--ease-ui),
+      color var(--m-out) var(--ease-ui);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .card-link:hover .chip {
+      border-color: var(--color-line-strong);
+      color: var(--color-ink);
+    }
+  }
+}
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    animation: var(--animate-focus-settle);
   }
 }
