@@ -263,16 +263,19 @@ export const applyFunding = (priceMicro: bigint, d: Decision) =>
 ### Verifier: the checks that protect the fee payer
 
 ```ts
-import { Transaction, TransferTransaction, PublicKey } from '@hashgraph/sdk';
+import { Transaction, TransferTransaction, PublicKey } from '@hiero-ledger/sdk';
 
 export async function verify(bytes: Uint8Array, q: Quote, payerKey: PublicKey) {
   const tx = Transaction.fromBytes(bytes);
   if (!(tx instanceof TransferTransaction)) fail('not_transfer');
   if (tx.transactionId?.accountId?.toString() !== q.feePayer) fail('wrong_fee_payer');
   if (tx.transactionMemo !== `kosha:${q.id}`) fail('memo_mismatch');
+  if (!sameIds(tx.nodeAccountIds, q.nodeAccountIds)) fail('wrong_nodes');   // signed for every quoted node
+  if (tx.maxTransactionFee.toTinybars().gt(MAX_FEE_TINYBARS)) fail('fee_too_high');
   if (tx.hbarTransfers.size > 0) fail('hbar_movement');          // nothing may debit Core in HBAR
   if (Date.now() > q.expiresAt) fail('quote_expired');
   if (await store.isUsed(q.id) || await store.isUsedTx(tx.transactionId!.toString())) fail('replay');
+  if (q.reserveLeg && q.reserveLeg.account !== q.payerReserveAccount) fail('reserve_not_payers'); // mode C
 
   const expected = new Map<string, bigint>([[q.payer, -q.totalMicro], ...q.transfers.map(t => [t.account, t.amount] as const)]);
   let tokenCount = 0;
@@ -289,7 +292,7 @@ export async function verify(bytes: Uint8Array, q: Quote, payerKey: PublicKey) {
 }
 ```
 
-Check the SDK's exact types for `tokenTransfers` against the version you install.
+Check the SDK's exact types for `tokenTransfers` against the version you install. The pseudo-code shows the checks; the real verifier returns a `{ ok, code }` result instead of throwing. Expiry, replay and the payer's reserve need the database, so Core runs them around the pure verifier in `@kosha/hedera`.
 
 ### Settler
 
@@ -297,36 +300,43 @@ Check the SDK's exact types for `tokenTransfers` against the version you install
 export async function settle(tx: TransferTransaction, q: Quote) {
   await store.markUsed(q.id, tx.transactionId!.toString());     // before execute: no double spend on retry
   const resp = await (await tx.sign(coreKey)).execute(client);
-  const receipt = await resp.getReceipt(client);                 // throws unless SUCCESS
+  const receipt = await resp.getReceipt(client);                 // throws unless SUCCESS; on timeout, reconcile via Mirror Node
   const txId = resp.transactionId.toString();
-  await ledger.record(q, txId);                                  // payment, decision, aggregate += value
-  const seq = await hcs.log({ v: 1, t: 'pay', pid: q.paymentId, tx: txId, rp: q.tax.rulepack,
+  const agg = await ledger.record(q, txId);                      // one DB transaction: payment, aggregate += value, HCS outbox row
+  const seq = await hcs.log({ v: 2, t: 'pay', pid: q.paymentId, tx: txId, rp: q.tax.rulepack, rph: rulepackHash8,
                               price: q.price.toString(), tds: q.tds.toString(), bps: q.tax.rateBps,
-                              pair: hmac(q.payerId + ':' + q.receiverId), fy: '2026-27' });
+                              pair: hmac(q.payerId + ':' + q.receiverId), fy: '2026-27', agg: agg.toString() });
   return { txId, hashscan: `https://hashscan.io/testnet/transaction/${txId}`, hcsSequence: seq };
 }
 ```
 
-HCS messages are public, so they carry an HMAC pair ID, never PAN or names. Logging the HCS message after a successful settlement is retried until it succeeds.
+HCS messages are public, so they carry an HMAC pair ID, never PAN or names. `agg` is the pair's running total in paise after this payment, and `rph` is the first 8 bytes of the rule-pack hash. With both, anyone can recompute each decision. The message stays under HCS's 1,024-byte limit. The payments topic has a **submit key held by Core**, so nobody else can post to the log. The message is written through an outbox and retried until it succeeds.
+
+Other HCS message types on the same topic: `rulepack` (pack ID and full hash, once per pack), `decision` (from `POST /v1/decide`, with the settlement chain), `outside` and `outside_resolved` (watcher flags and the owner's classification), and `challan` (month, receiver and a hash of the challan reference).
 
 ### Data model (PostgreSQL)
 
 | Table | Key columns |
 | --- | --- |
-| `receivers` | id, legal\_name, pan\_commitment, tan, gstin, wallets\[\], mode (threshold or first\_rupee), funding, api\_key\_hash |
-| `agents` | id, hcs14\_id, owner\_ref, residency, pan\_on\_file, specified\_person, credential\_ref, credential\_issuer, wallets\[\], verified\_at |
-| `quotes` | id, receiver\_id, agent\_id, resource, price\_micro, tds\_micro, rate\_bps, rulepack, fx\_micro, expires\_at, used\_tx\_id |
-| `payments` | id, quote\_id, tx\_id, consensus\_ts, price\_micro, tds\_micro, inr\_value\_paise, hcs\_seq, status |
+| `receivers` | id, legal\_name, pan\_commitment, tan (nullable: specified persons need none), gstin, residency, specified\_person, wallets\[\] (each with a verified ownership signature), mode (threshold or first\_rupee), unverified\_policy (strict or threshold\_tolerant), api\_key\_hash |
+| `agents` | id, hcs14\_id (UAID, or CAIP-10 account for Level 0), owner\_ref, level (0, 1, 2), residency, pan\_on\_file, credential\_ref, credential\_issuer, wallets\[\], reserve\_account\_id, verified\_at |
+| `quotes` | id, scheme (kosha\_split or exact\_compat), receiver\_id, agent\_id, resource, price\_micro, tds\_micro, total\_micro, rate\_bps, rulepack, fx\_micro, node\_ids\[\], expires\_at, used\_tx\_id |
+| `payments` | id, quote\_id, tx\_id, forward\_tx\_id (compat only), consensus\_ts, price\_micro, tds\_micro, reserve\_account\_id, inr\_value\_paise, hcs\_seq, status |
 | `aggregates` | (agent\_id, receiver\_id, fy) primary key, value\_paise, payments\_count, outside\_value\_paise |
-| `outside_payments` | id, receiver\_id, from\_wallet, tx\_id, value\_paise, shortfall\_paise, resolved\_by |
+| `decisions` | id, source (kosha or external), chain, external\_tx\_ref, receiver\_id, agent\_id, decision fields, hcs\_seq |
+| `outside_payments` | id, receiver\_id, from\_wallet, tx\_id, value\_paise, shortfall\_paise, classification (pending, consideration, not\_consideration\_gift), note, hcs\_seq |
+| `challans` | id, receiver\_id, month, tds\_paise, challan\_ref\_hash, recorded\_at, hcs\_seq |
+| `releases` | id, challan\_id, agent\_id, reserve\_account\_id, micro, schedule\_id, status, cosigned\_by |
 | `lots` | id, agent\_id, acquired\_ts, micro, cost\_paise, spent\_payment\_id, gain\_paise |
-| `sweeps` | id, month, escrow\_micro, schedule\_id, status, cosigned\_by |
 | `policies` | agent\_id, per\_payment\_micro, daily\_micro, fy\_budget\_micro, allowlist\[\], threshold\_action (warn, block, allow) |
+
+**Reserve accounts.** Core creates one per agent at registration: key `KeyList([agentKey, coreKey], 2)`, where the agent's public key comes from the Mirror Node, and `maxAutomaticTokenAssociations: 1`. The first USDC credit therefore associates the account with no agent signature; Core pays that fee as fee payer, inside the `MAX_TX_FEE_HBAR` cap. Bootstrap creates the demo agents' reserves and associates them explicitly, because it holds both keys.
 
 ### Jobs
 
-- **Watcher** (every 30 s): for each receiver wallet, `GET /api/v1/transactions?account.id=<wallet>&transactiontype=CRYPTOTRANSFER&timestamp=gt:<cursor>`. A USDC credit whose memo isn't `kosha:*`, from a declared payer wallet, raises that pair's aggregate. If TDS should have applied, it records a shortfall, emits `outside.payment`, and the Console asks the payer to top up or the receiver to pay it.
-- **Sweep** (monthly, before the 7th): a `TransferTransaction` from escrow to the receiver's tax-deposit account, wrapped in a `ScheduleCreateTransaction`. The escrow has a 2-of-2 key (Core plus the receiver's compliance signer), who co-signs in the Console with `ScheduleSignTransaction`. Check that long-term scheduled transactions (HIP-423, `setWaitForExpiry`) are enabled on testnet; if not, schedule with a short expiry and run it from cron. Conversion to INR and the actual deposit are mocked in the MVP.
+- **Watcher** (every 30 s): for each receiver wallet, `GET /api/v1/transactions?account.id=<wallet>&transactiontype=CRYPTOTRANSFER&timestamp=gt:<cursor>`. A USDC credit whose memo isn't `kosha:*`, from a declared payer wallet, is **flagged**, never withheld. It counts toward the pair's aggregate (to stay safe) until the owner classifies it. If it is consideration and TDS should have applied, Core records a shortfall, emits `outside.payment`, and the Console asks the payer to top up or the receiver to pay it. If the owner marks it "not consideration: gift from a relative" with a note, it leaves the threshold count and the export. Both outcomes are logged to HCS.
+- **Monthly close and release** (findings §1.2): on the 1st, Core totals each receiver's TDS by payer for the past month and shows a payment summary (amount, TAN or PAN, month, section). The deductor pays the challan in INR on the income-tax portal and enters the reference in Console; Core logs its hash to HCS. Core then creates one `ScheduleCreateTransaction` per payer reserve: a `TransferTransaction` from the reserve to the deductor (reimbursement), memo `kosha-release:<month>:<agent>`, `setWaitForExpiry(false)`, expiry 7 days out. HIP-423 is live on testnet (`docs/research/scheduled-transactions.md`). Core's signature counts at creation; the agent operator co-signs with `ScheduleSignTransaction`, and the transfer runs on that signature. Treat `IDENTICAL_SCHEDULE_ALREADY_CREATED` as success. In the MVP the INR payment is mocked and labelled as such.
+- **HCS outbox** publisher, plus the one-off `rulepack` message when a new pack is loaded.
 
 ## Component 2: Kosha Gate (server SDK)
 
