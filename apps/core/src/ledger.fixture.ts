@@ -1,6 +1,9 @@
+import { readRulePack } from './active-rule-pack';
 import { hashApiKey } from './auth';
 import type { KoshaDb } from './db/client';
 import { agent, payment, quote, receiver } from './db/schema';
+import { findRepoRoot } from '@kosha/shared/env';
+import type { RulePack } from '@kosha/tax-engine/rule-pack';
 
 // Two receivers and two agents with settled history, for the Console read endpoints
 
@@ -12,6 +15,13 @@ export const receiverAuth = (name: keyof typeof RECEIVER_KEYS) => ({
 });
 export const FY = '2026-27';
 export const NOW = new Date('2026-11-06T10:30:00Z');
+
+// The rule pack the demo runs: ₹10,000 and ₹50,000 thresholds, ₹5,000 tolerance
+export const loadTestPack = async (): Promise<RulePack> => {
+  const loaded = await readRulePack('rulepacks/in-2026.2.json', findRepoRoot(process.cwd()) ?? '');
+  if (!loaded.ok) throw new Error(`[ledger-fixture]: ${loaded.data.reason}`);
+  return loaded.data.pack;
+};
 
 export type LedgerSeed = {
   receivers: { in: string; solo: string };

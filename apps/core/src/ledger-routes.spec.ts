@@ -6,6 +6,7 @@ import {
   ADMIN,
   ADMIN_TOKEN,
   type LedgerSeed,
+  loadTestPack,
   NOW,
   receiverAuth,
   seedParties
@@ -61,7 +62,14 @@ describe('GET /v1/ledger', () => {
     });
     app = buildApp({
       logger: false,
-      routes: [ledgerRoutes({ db: handle.db, adminToken: ADMIN_TOKEN, network: 'testnet' })]
+      routes: [
+        ledgerRoutes({
+          db: handle.db,
+          adminToken: ADMIN_TOKEN,
+          network: 'testnet',
+          pack: await loadTestPack()
+        })
+      ]
     });
   });
 

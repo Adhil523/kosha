@@ -97,7 +97,12 @@ export const wireCore = (
       network: config.network,
       nodeAccountIds: SETTLEMENT_NODE_ACCOUNT_IDS
     }),
-    ledgerRoutes({ db, adminToken: config.adminToken, network: config.network }),
+    ledgerRoutes({
+      db,
+      adminToken: config.adminToken,
+      network: config.network,
+      pack: rulePack.pack
+    }),
     facilitatorRoutes({
       ...settlement,
       payerKey,
