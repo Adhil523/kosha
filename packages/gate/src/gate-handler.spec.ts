@@ -321,6 +321,17 @@ describe('createGateHandler: Core unavailable', () => {
 
     expect(result).toMatchObject({ status: 503, body: { error: 'unauthorized' } });
   });
+
+  it("passes Core's policy refusal through to the agent as a 403", async () => {
+    const refusal = { error: 'policy_per_payment', message: 'over the 1 USDC per-payment cap' };
+    const { handle } = setup({ quote: () => json(refusal, 403) });
+
+    const result = expectRespond(await handle(request()));
+
+    expect(result.status).toBe(403);
+    expect(result.body).toEqual(refusal);
+    expect(result.headers).not.toHaveProperty(HEADERS.paymentRequired);
+  });
 });
 
 describe('createGateHandler: on-chain reserve proof', () => {

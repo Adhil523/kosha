@@ -1,3 +1,4 @@
+import { type ErrorCode, errorResponseSchema } from '@kosha/shared/error-codes';
 import {
   type FacilitatorRequest,
   type QuoteRequest,
@@ -22,8 +23,33 @@ export type CoreFailure =
   | { reason: 'core_unavailable'; status?: number }
   // Core rejected Gate's API key
   | { reason: 'unauthorized'; status: number }
+  // Core refused the quote under the agent's spending policy (403 with a policy_* code)
+  | { reason: 'policy_refused'; status: number; error: PolicyCode; message?: string }
   // Core answered, but not with the shape the contract promises
   | { reason: 'invalid_response'; status: number };
+
+export type PolicyCode = Extract<ErrorCode, `policy_${string}`>;
+
+const isPolicyCode = (code: ErrorCode): code is PolicyCode => code.startsWith('policy_');
+
+// A 403 is a policy refusal only when its body says so; anything else keeps meaning a bad API key
+const readPolicyRefusal = async (response: Response): Promise<CoreFailure | null> => {
+  let json: unknown;
+  try {
+    json = await response.json();
+  } catch {
+    return null;
+  }
+  const parsed = errorResponseSchema.safeParse(json);
+  if (!parsed.success || !isPolicyCode(parsed.data.error)) return null;
+  const { error, message } = parsed.data;
+  return {
+    reason: 'policy_refused',
+    status: response.status,
+    error,
+    ...(message ? { message } : {})
+  };
+};
 
 export type CoreResult<T> = { ok: true; data: T } | { ok: false; data: CoreFailure };
 
@@ -72,6 +98,10 @@ export const createCoreClient = (options: CoreClientOptions): CoreClient => {
     }
 
     const { status } = response;
+    const refusal = status === 403 ? await readPolicyRefusal(response) : null;
+    if (refusal) {
+      return { ok: false, data: refusal } satisfies CoreResult<T>;
+    }
     if (status === 401 || status === 403) {
       return { ok: false, data: { reason: 'unauthorized', status } } satisfies CoreResult<T>;
     }

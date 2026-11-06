@@ -22,7 +22,13 @@ import {
   type SettlementResponse
 } from '@kosha/shared/x402-payment';
 
-const STATUS = { ok: 200, noContent: 204, paymentRequired: 402, unavailable: 503 } as const;
+const STATUS = {
+  ok: 200,
+  noContent: 204,
+  paymentRequired: 402,
+  forbidden: 403,
+  unavailable: 503
+} as const;
 type X402Network = (typeof X402_NETWORKS)[keyof typeof X402_NETWORKS];
 
 export type GateHeaders = Readonly<Record<string, string | readonly string[] | undefined>>;
@@ -108,12 +114,24 @@ const failure = (
   };
 };
 
-const unavailable = (data: CoreFailure): SettledResult => ({
-  action: 'respond',
-  status: STATUS.unavailable,
-  headers: EXPOSE_HEADERS,
-  body: { error: data.reason === 'unauthorized' ? 'unauthorized' : 'core_unavailable' }
-});
+// Core's policy refusals reach the agent as Core sent them; every other failure is a 503
+const unavailable = (data: CoreFailure): SettledResult => {
+  if (data.reason === 'policy_refused') {
+    const { error, message } = data;
+    return {
+      action: 'respond',
+      status: STATUS.forbidden,
+      headers: EXPOSE_HEADERS,
+      body: { error, ...(message ? { message } : {}) }
+    };
+  }
+  return {
+    action: 'respond',
+    status: STATUS.unavailable,
+    headers: EXPOSE_HEADERS,
+    body: { error: data.reason === 'unauthorized' ? 'unauthorized' : 'core_unavailable' }
+  };
+};
 
 // The paid entry must be for this route: the split's net credit is exactly the route's price, and
 // the compatibility entry's all-in total is at least it. Stops a cheap quote paying for a dear route.
