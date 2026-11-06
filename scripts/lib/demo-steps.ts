@@ -59,7 +59,10 @@ const quote = async (pay: KoshaPay, url: string): Promise<CoreResult<Quote>> => 
     return { ok: false, data: `${prepared.data.reason}: ${prepared.data.message} ${body}`.trim() };
   }
   if (prepared.data.kind === 'free') {
-    return { ok: false, data: `${url} was not priced (${prepared.data.response.status})` };
+    // Gate relays a policy refusal from Core as a 403 with Core's body (#44)
+    const { status } = prepared.data.response;
+    const body = await prepared.data.response.text().catch(() => '');
+    return { ok: false, data: `${url} was not priced (${status}) ${body}`.trim() };
   }
   const { payment } = prepared.data;
   return { ok: true, data: { payment, tax: payment.quote.extra.kosha.tax } };
