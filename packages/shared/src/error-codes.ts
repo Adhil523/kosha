@@ -51,15 +51,15 @@ export type ErrorResponse = z.output<typeof errorResponseSchema>;
 // Standard x402 reasons (docs/research/x402.md) for codes that have a direct equivalent. The
 // facilitator puts these in invalidReason/errorReason and the Kosha code in extra/extensions.
 const HEDERA_REASON_PREFIX = 'invalid_exact_hedera_payload_';
-const X402_REASON_BY_CODE: Partial<Record<ErrorCode, string>> = {
-  not_transfer: `${HEDERA_REASON_PREFIX}contains_non_transfer_ops`,
-  wrong_fee_payer: `${HEDERA_REASON_PREFIX}fee_payer_mismatch`,
-  wrong_token: `${HEDERA_REASON_PREFIX}asset_mismatch`,
-  amount_mismatch: `${HEDERA_REASON_PREFIX}amount_mismatch`,
-  bad_signature: `${HEDERA_REASON_PREFIX}signature_invalid`,
-  unsupported_scheme: 'unsupported_scheme'
-};
+const X402_REASON_BY_CODE = new Map<ErrorCode, string>([
+  ['not_transfer', `${HEDERA_REASON_PREFIX}contains_non_transfer_ops`],
+  ['wrong_fee_payer', `${HEDERA_REASON_PREFIX}fee_payer_mismatch`],
+  ['wrong_token', `${HEDERA_REASON_PREFIX}asset_mismatch`],
+  ['amount_mismatch', `${HEDERA_REASON_PREFIX}amount_mismatch`],
+  ['bad_signature', `${HEDERA_REASON_PREFIX}signature_invalid`],
+  ['unsupported_scheme', 'unsupported_scheme']
+]);
 const DEFAULT_X402_REASON = 'invalid_payload';
 
 export const toX402Reason = (code: ErrorCode): string =>
-  X402_REASON_BY_CODE[code] ?? DEFAULT_X402_REASON;
+  X402_REASON_BY_CODE.get(code) ?? DEFAULT_X402_REASON;
