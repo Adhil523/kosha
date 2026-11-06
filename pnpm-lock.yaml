@@ -303,6 +303,9 @@ importers:
       '@kosha/hedera':
         specifier: workspace:*
         version: link:../packages/hedera
+      '@kosha/pay':
+        specifier: workspace:*
+        version: link:../packages/pay
       '@kosha/shared':
         specifier: workspace:*
         version: link:../packages/shared

@@ -11,6 +11,7 @@
   "dependencies": {
     "@hiero-ledger/sdk": "2.90.1",
     "@kosha/hedera": "workspace:*",
+    "@kosha/pay": "workspace:*",
     "@kosha/shared": "workspace:*",
     "zod": "4.6.7"
   },
