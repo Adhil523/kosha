@@ -1,7 +1,17 @@
 import { RECEIVER_MODES, THRESHOLD_ACTIONS, UNVERIFIED_POLICIES } from '@kosha/shared/registry';
 import { createId } from '@paralleldrive/cuid2';
 import { sql } from 'drizzle-orm';
-import { bigint, boolean, check, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  boolean,
+  check,
+  integer,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp
+} from 'drizzle-orm/pg-core';
 
 // The source of truth for Core's database; migrations are generated from it (`pnpm db:generate`).
 // Money is an integer count of minor units (micro-USDC or paise) in a bigint column: exact, like
@@ -94,4 +104,111 @@ export const policy = pgTable('Policy', {
   allowlist: text('allowlist').array().notNull(),
   thresholdAction: text('thresholdAction', { enum: THRESHOLD_ACTIONS }).notNull(),
   acceptRulepacks: text('acceptRulepacks').array().notNull()
+});
+
+export const QUOTE_SCHEMES = ['kosha_split', 'exact_compat'] as const;
+export const PAYMENT_STATUSES = ['pending', 'settled', 'failed'] as const;
+
+// One priced request. Its id is the x402 quote id (q_…), bound into the transaction memo.
+export const quote = pgTable(
+  'Quote',
+  {
+    ...base,
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => `q_${createId()}`),
+    scheme: text('scheme', { enum: QUOTE_SCHEMES }).notNull(),
+    receiverID: text('receiverID')
+      .notNull()
+      .references(() => receiver.id),
+    // Null for an unidentified caller of the compatibility entry
+    agentID: text('agentID').references(() => agent.id),
+    resource: text('resource').notNull(),
+    payToAccountID: text('payToAccountID').notNull(),
+    reserveAccountID: text('reserveAccountID'),
+    priceMicro: money('priceMicro').notNull(),
+    tdsMicro: money('tdsMicro').notNull(),
+    totalMicro: money('totalMicro').notNull(),
+    inrValuePaise: money('inrValuePaise').notNull(),
+    rateBps: integer('rateBps').notNull(),
+    reason: text('reason').notNull(),
+    rulepack: text('rulepack').notNull(),
+    // Micro-rupees per USD at quote time
+    inrPerUsdMicro: money('inrPerUsdMicro').notNull(),
+    nodeAccountIDs: text('nodeAccountIDs').array().notNull(),
+    fy: text('fy').notNull(),
+    expiresAt: utc('expiresAt').notNull(),
+    // Set before execution, so a retried settle can't spend the quote twice
+    usedTransactionID: text('usedTransactionID').unique()
+  },
+  (table) => [
+    check('quoteTotal', sql`${table.totalMicro} = ${table.priceMicro} + ${table.tdsMicro}`)
+  ]
+);
+
+export const payment = pgTable('Payment', {
+  ...base,
+  quoteID: text('quoteID')
+    .notNull()
+    .unique()
+    .references(() => quote.id),
+  transactionID: text('transactionID').notNull().unique(),
+  // Compatibility mode only: Core's second transaction to the API and the pooled reserve
+  forwardTransactionID: text('forwardTransactionID').unique(),
+  consensusAt: utc('consensusAt'),
+  receiverID: text('receiverID')
+    .notNull()
+    .references(() => receiver.id),
+  agentID: text('agentID').references(() => agent.id),
+  priceMicro: money('priceMicro').notNull(),
+  tdsMicro: money('tdsMicro').notNull(),
+  reserveAccountID: text('reserveAccountID'),
+  inrValuePaise: money('inrValuePaise').notNull(),
+  fy: text('fy').notNull(),
+  hcsSequence: integer('hcsSequence'),
+  status: text('status', { enum: PAYMENT_STATUSES }).notNull().default('pending')
+});
+
+// One payer–receiver pair's running total for a financial year. The quote service adds open
+// quotes on top, so concurrent quotes can't both slip under the threshold.
+export const aggregate = pgTable(
+  'Aggregate',
+  {
+    agentID: text('agentID')
+      .notNull()
+      .references(() => agent.id),
+    receiverID: text('receiverID')
+      .notNull()
+      .references(() => receiver.id),
+    fy: text('fy').notNull(),
+    valuePaise: money('valuePaise').notNull().default(0n),
+    outsideValuePaise: money('outsideValuePaise').notNull().default(0n),
+    paymentsCount: integer('paymentsCount').notNull().default(0),
+    createdAt: base.createdAt,
+    updatedAt: base.updatedAt
+  },
+  (table) => [primaryKey({ columns: [table.agentID, table.receiverID, table.fy] })]
+);
+
+export const HCS_MESSAGE_KINDS = [
+  'pay',
+  'rulepack',
+  'decision',
+  'outside',
+  'outside_resolved',
+  'challan'
+] as const;
+
+// Written in the same transaction as the payment; a loop publishes it to HCS and records the
+// sequence number (PROTOCOL design fix 6)
+export const hcsOutbox = pgTable('HcsOutbox', {
+  ...base,
+  kind: text('kind', { enum: HCS_MESSAGE_KINDS }).notNull(),
+  topicID: text('topicID').notNull(),
+  payload: jsonb('payload').notNull(),
+  paymentID: text('paymentID').references(() => payment.id),
+  attempts: integer('attempts').notNull().default(0),
+  lastError: text('lastError'),
+  hcsSequence: integer('hcsSequence'),
+  publishedAt: utc('publishedAt')
 });
