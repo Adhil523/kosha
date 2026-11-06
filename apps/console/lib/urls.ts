@@ -12,7 +12,9 @@ export const URLS = {
     aggregates: (base: string, receiverId: string) =>
       coreUrl(base, '/v1/aggregates', { receiverId }),
     stream: (base: string, receiverId: string) => coreUrl(base, '/v1/stream', { receiverId }),
-    agents: (base: string) => coreUrl(base, '/v1/agents')
+    agents: (base: string) => coreUrl(base, '/v1/agents'),
+    agentPolicy: (base: string, agentId: string) =>
+      coreUrl(base, `/v1/agents/${encodeURIComponent(agentId)}/policy`)
   },
   mirror: {
     accountTokens: (base: string, accountId: string, tokenId: string) =>
@@ -24,7 +26,9 @@ export const URLS = {
     aggregates: '/api/aggregates',
     overview: '/api/overview',
     stream: '/api/stream',
-    agents: '/api/agents'
+    agents: '/api/agents',
+    agentSpend: (agentId: string) => `/api/agents/${encodeURIComponent(agentId)}/spend`,
+    agentPolicy: (agentId: string) => `/api/agents/${encodeURIComponent(agentId)}/policy`
   },
   hashscan: {
     transaction: (txId: string) => `https://hashscan.io/testnet/transaction/${txId}`,
