@@ -12,6 +12,8 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@hiero-ledger/sdk": "2.90.1",
+    "@kosha/hedera": "workspace:*",
     "@kosha/shared": "workspace:*",
     "@kosha/tax-engine": "workspace:*",
     "@paralleldrive/cuid2": "^3.3.0",
