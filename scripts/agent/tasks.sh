@@ -3,6 +3,8 @@
 #
 # Task IDs look like A07 or B12. A task's branch is <agent>/<nn>-<slug>, e.g. a/07-registry; a
 # batch of tasks lists them all, joined with +, e.g. a/10+11-settle-seed (PROTOCOL §6).
+# An unassigned task (docs/agents/UNASSIGNED.md) looks like U01; whichever agent the human assigns
+# it to builds it on a/u01-<slug> or b/u01-<slug>, never batched.
 # A task counts as done only when a PR from a branch that lists it is merged into main.
 # A cross-agent request is a GitHub issue, written as #12; it counts as done once it is closed.
 #
@@ -13,8 +15,12 @@ set -euo pipefail
 
 branch_pattern() { # A07 -> a jq regex matching a/07-…, a/06+07-… and a/07+08-…
   if [[ "$1" =~ ^#[0-9]+$ ]]; then return 0; fi
+  if [[ "$1" =~ ^[Uu]([0-9][0-9])$ ]]; then
+    printf '^[ab]/u%s-' "${BASH_REMATCH[1]}"
+    return 0
+  fi
   if [[ ! "$1" =~ ^([ABab])([0-9][0-9])$ ]]; then
-    echo "bad task id: $1 (expected something like A07 or B12)" >&2
+    echo "bad task id: $1 (expected something like A07, B12 or U01)" >&2
     exit 2
   fi
   printf '^%s/([0-9]{2}\\\\+)*%s(\\\\+[0-9]{2})*-' \
@@ -56,7 +62,7 @@ cmd_wait() {
 cmd_status() {
   gh pr list --state all --limit 300 \
     --json number,state,isDraft,headRefName,baseRefName,title \
-    --jq '.[] | select(.headRefName | test("^[ab]/([0-9]{2}(\\+[0-9]{2})*|r[0-9]+)-"))
+    --jq '.[] | select(.headRefName | test("^[ab]/([0-9]{2}(\\+[0-9]{2})*|r[0-9]+|u[0-9]{2})-"))
           | [.headRefName, (if .isDraft then "DRAFT" else .state end),
              ("#" + (.number | tostring)), ("base:" + .baseRefName), .title] | @tsv' |
     sort
