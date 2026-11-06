@@ -237,10 +237,7 @@ export const decision = pgTable(
     transactionRef: text('transactionRef')
   },
   (table) => [
-    check(
-      'decisionPayer',
-      sql`(${table.agentID} is null) <> (${table.payerReference} is null)`
-    )
+    check('decisionPayer', sql`(${table.agentID} is null) <> (${table.payerReference} is null)`)
   ]
 );
 
