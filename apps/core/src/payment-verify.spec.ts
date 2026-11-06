@@ -1,3 +1,4 @@
+import { savePolicy } from './agent-policy';
 import type { DbHandle } from './db/client';
 import { quote } from './db/schema';
 import { testDb } from './db/test-db';
@@ -5,6 +6,7 @@ import { EXPIRES_AT, payloadFor, QUOTE_ID, seedQuotedPayment, verifyDeps } from 
 import { verifyPayment } from './payment-verify';
 import { PrivateKey, Transaction } from '@hiero-ledger/sdk';
 import { signedVariant } from '@kosha/hedera/transfer-verifier.fixture';
+import { amountSchema } from '@kosha/shared/money';
 import { paymentRequirementsSchema } from '@kosha/shared/x402-payment';
 import { exactEntry } from '@kosha/shared/x402-payment.fixture';
 import { eq } from 'drizzle-orm';
@@ -13,10 +15,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 describe('verifyPayment', () => {
   let handle: DbHandle;
   let receiverId: string;
+  let agentId: string;
 
   beforeEach(async () => {
     handle = await testDb();
-    ({ receiverId } = await seedQuotedPayment(handle.db));
+    ({ receiverId, agentId } = await seedQuotedPayment(handle.db));
   });
 
   afterEach(async () => {
@@ -89,5 +92,28 @@ describe('verifyPayment', () => {
       payerKey: async () => ({ ok: false as const, data: { reason: 'unavailable' as const } })
     };
     expect(codeOf(await verify(await signedVariant(), down))).toBe('core_unavailable');
+  });
+
+  it("re-checks the agent's policy, so a cap tightened after the quote holds", async () => {
+    const rules = {
+      perPaymentMicro: amountSchema.parse('500000'),
+      dailyMicro: amountSchema.parse('5000000'),
+      fyBudgetMicro: amountSchema.parse('200000000'),
+      allowlist: ['api.demo-in.dev'],
+      thresholdAction: 'warn' as const,
+      acceptRulepacks: ['in-2026.2']
+    };
+    await savePolicy(handle.db, agentId, rules);
+    expect(codeOf(await verify(await signedVariant()))).toBe('ok');
+
+    // The quote is 100000 of price plus 1019 of TDS
+    await savePolicy(handle.db, agentId, {
+      ...rules,
+      perPaymentMicro: amountSchema.parse('100000')
+    });
+    expect(codeOf(await verify(await signedVariant()))).toBe('policy_per_payment');
+
+    await savePolicy(handle.db, agentId, { ...rules, thresholdAction: 'block' });
+    expect(codeOf(await verify(await signedVariant()))).toBe('policy_threshold_block');
   });
 });
