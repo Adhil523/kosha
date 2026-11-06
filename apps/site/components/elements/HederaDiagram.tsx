@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react';
 
 // The native services Kosha uses, round Core; no smart contract anywhere
 const SPOKES = [
-  { label: 'HTS transfer', meta: 'price + TDS, one transaction', angle: -90 },
+  { label: 'HTS transfer', meta: 'one transfer, two legs', angle: -90 },
   { label: 'HCS topic', meta: 'ordered, append-only log', angle: -18 },
   { label: 'Scheduled transaction', meta: '2-of-2 reserve release', angle: 54 },
   { label: 'Mirror Node', meta: 'the reserve proof', angle: 126 },
@@ -65,16 +65,16 @@ export const HederaDiagram = () => (
         return (
           <div
             key={spoke.label}
-            className="ui absolute flex flex-col justify-center px-3 py-2"
+            className="ui absolute flex flex-col justify-center px-3 py-2 leading-tight"
             style={{
               left: `${((point.x - NODE_W / 2) / SIZE) * 100}%`,
               top: `${((point.y - NODE_H / 2) / SIZE) * 100}%`,
               width: `${(NODE_W / SIZE) * 100}%`,
-              height: `${(NODE_H / SIZE) * 100}%`
+              minHeight: `${(NODE_H / SIZE) * 100}%`
             }}
           >
             <span className="text-ui font-medium">{spoke.label}</span>
-            <span className="text-ui-meta text-muted">{spoke.meta}</span>
+            <span className="hidden text-ui-meta text-muted sm:block">{spoke.meta}</span>
           </div>
         );
       })}

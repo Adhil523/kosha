@@ -6,7 +6,7 @@ import { SECTION_IDS } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import type { ReactNode } from 'react';
 
-type Tool = { name: string; icon: string; ink?: boolean };
+type Tool = { name: string; icon: string; ink?: boolean; wide?: boolean };
 
 type Product = {
   name: string;
@@ -23,7 +23,7 @@ const GATE_LINES = [
   '',
   'app.use(',
   '  koshaGate({',
-  "    core: 'https://core.kosha.example',",
+  '    core: process.env.KOSHA_CORE_URL,',
   '    apiKey: process.env.KOSHA_API_KEY,',
   '    routes: {',
   '      // Net prices: you receive exactly this',
@@ -48,7 +48,7 @@ const PAY_LINES = [
   '  }',
   '});',
   '',
-  "const res = await pay.fetch('https://api.demo-in.example/v1/gst-lookup');"
+  "const res = await pay.fetch(API + '/v1/gst-lookup?gstin=29AAKCK4821M1ZQ');"
 ];
 
 const CORE_LINES = [
@@ -74,7 +74,7 @@ const PRODUCTS: Product[] = [
     body: 'Express or Hono middleware. Unpaid requests get a 402 quote; paid ones pass once Core has settled them on Hedera.',
     href: LINKS.gateDocs,
     tools: [
-      { name: 'Express', icon: 'express', ink: true },
+      { name: 'Express', icon: 'express', ink: true, wide: true },
       { name: 'Hono', icon: 'hono' }
     ],
     visual: <CodeBlock title="server.ts" lines={GATE_LINES} />
@@ -116,7 +116,7 @@ const ProductCard = ({ name, title, body, href, tools, visual }: Product) => (
     className="card card-link flex flex-col overflow-hidden p-6 lg:p-8"
   >
     <span className="text-label font-medium text-accent">{name}</span>
-    <h3 className="mt-2 text-card font-medium">{title}</h3>
+    <h3 className="mt-2 text-lead leading-tight font-medium">{title}</h3>
     <p className="mt-2 max-w-[46ch] text-body text-ink/85">{body}</p>
     <ul className="mt-4 flex flex-wrap gap-2">
       {tools.map((tool) => (
@@ -127,7 +127,7 @@ const ProductCard = ({ name, title, body, href, tools, visual }: Product) => (
           <img
             src={`/icons/${tool.icon}.svg`}
             alt=""
-            className={cn('size-4 object-contain', tool.ink && 'ic-ink')}
+            className={cn('h-4 object-contain', tool.wide ? 'w-10' : 'w-4', tool.ink && 'ic-ink')}
           />
           {tool.name}
         </li>
