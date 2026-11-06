@@ -13,7 +13,15 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "check-env": "pnpm --filter @kosha/scripts exec tsx check-env.ts",
+    "bootstrap": "pnpm --filter @kosha/scripts exec tsx bootstrap.ts",
+    "seed": "pnpm --filter @kosha/scripts exec tsx seed.ts",
+    "register-agents": "pnpm --filter @kosha/scripts exec tsx register-agents.ts",
+    "smoke-settle": "pnpm --filter @kosha/scripts exec tsx smoke-settle.ts",
+    "pay-once": "pnpm --filter @kosha/scripts exec tsx pay-once.ts",
+    "burst": "pnpm --filter @kosha/scripts exec tsx burst.ts",
+    "demo": "pnpm --filter @kosha/scripts exec tsx demo.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

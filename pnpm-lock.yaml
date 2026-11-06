@@ -44,6 +44,16 @@ importers:
 
   packages/shared: {}
 
+  scripts:
+    dependencies:
+      '@kosha/shared':
+        specifier: workspace:*
+        version: link:../packages/shared
+    devDependencies:
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+
 packages:
 
   '@cacheable/memory@2.2.0':
@@ -1467,7 +1477,6 @@ snapshots:
       '@esbuild/win32-arm64': 0.28.2
       '@esbuild/win32-ia32': 0.28.2
       '@esbuild/win32-x64': 0.28.2
-    optional: true
 
   escape-string-regexp@4.0.0: {}
 
@@ -1781,7 +1790,6 @@ snapshots:
       esbuild: 0.28.2
     optionalDependencies:
       fsevents: 2.3.3
-    optional: true
 
   turbo@2.11.10:
     optionalDependencies:
