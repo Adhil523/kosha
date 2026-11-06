@@ -93,20 +93,24 @@ export const queueRulepackOnce = async (
 
 export type OutboxLoopOptions = { intervalMs: number; maxIntervalMs: number };
 
-// Runs publishQueued on a timer. After a pass with failures the wait doubles, up to the maximum,
-// and drops back once a pass is clean. Returns a stop function.
-export const startOutboxLoop = (deps: OutboxDeps, options: OutboxLoopOptions): (() => void) => {
+// Runs a pass on a timer. After a pass with failures the wait doubles, up to the maximum, and
+// drops back once a pass is clean. Returns a stop function.
+export const startRetryLoop = (
+  label: string,
+  pass: () => Promise<{ failed: number }>,
+  options: OutboxLoopOptions
+): (() => void) => {
   let wait = options.intervalMs;
   let timer: NodeJS.Timeout | undefined;
   let stopped = false;
 
   const tick = async () => {
     try {
-      const report = await publishQueued(deps);
+      const report = await pass();
       wait = report.failed > 0 ? Math.min(wait * 2, options.maxIntervalMs) : options.intervalMs;
     } catch (error) {
       wait = Math.min(wait * 2, options.maxIntervalMs);
-      console.error('[hcs-outbox]: publish pass failed', error);
+      console.error(`[${label}]: pass failed`, error);
     }
     if (!stopped) timer = setTimeout(() => void tick(), wait);
   };
@@ -117,3 +121,6 @@ export const startOutboxLoop = (deps: OutboxDeps, options: OutboxLoopOptions): (
     clearTimeout(timer);
   };
 };
+
+export const startOutboxLoop = (deps: OutboxDeps, options: OutboxLoopOptions): (() => void) =>
+  startRetryLoop('hcs-outbox', () => publishQueued(deps), options);

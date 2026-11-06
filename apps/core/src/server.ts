@@ -1,13 +1,16 @@
 import { readRulePack } from './active-rule-pack';
 import { buildApp } from './app';
+import { forwardDue } from './compat-forwarder';
 import { loadConfig } from './config';
 import { wireCore } from './core-wiring';
 import { createDb, migrateDb } from './db/client';
-import { queueRulepackOnce, startOutboxLoop } from './hcs-outbox';
+import { queueRulepackOnce, startOutboxLoop, startRetryLoop } from './hcs-outbox';
 import { buildClient } from '@kosha/hedera/client';
 import { loadEnv } from '@kosha/shared/env';
 
 const OUTBOX_LOOP = { intervalMs: 2_000, maxIntervalMs: 60_000 };
+// Compatibility forwards: the funds sit in Kosha's settlement account until this runs
+const FORWARD_LOOP = { intervalMs: 3_000, maxIntervalMs: 60_000 };
 
 // Kosha Core's entry point: `pnpm --filter @kosha/core dev`. Fails fast, naming every problem.
 const main = async (): Promise<void> => {
@@ -65,10 +68,17 @@ const main = async (): Promise<void> => {
     rulePack.data.hash
   );
   const stopOutbox = startOutboxLoop(wiring.data.outbox, OUTBOX_LOOP);
+  const { forwarder } = wiring.data;
+  const stopForwarder = startRetryLoop(
+    'compat-forwarder',
+    () => forwardDue(forwarder),
+    FORWARD_LOOP
+  );
   const app = buildApp({ routes: wiring.data.routes });
 
   const shutdown = async () => {
     stopOutbox();
+    stopForwarder();
     await app.close();
     await database.close();
     operator.data.client.close();
