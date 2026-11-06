@@ -6,5 +6,9 @@ export const TEST_IDS = {
   signInRole: (role: string) => `sign-in-${role}`,
   signOut: 'sign-out',
   footerLabels: 'footer-labels',
-  rulePackBadge: 'rule-pack-badge'
+  rulePackBadge: 'rule-pack-badge',
+  queryRetry: 'query-retry',
+  paymentsFeed: 'payments-feed',
+  feedStatus: 'feed-status',
+  paymentRow: (paymentId: string) => `payment-row-${paymentId}`
 } as const;
