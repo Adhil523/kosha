@@ -1,4 +1,5 @@
 import {
+  offeredPaymentRequiredSchema,
   paymentPayloadSchema,
   paymentRequiredSchema,
   settlementResponseSchema
@@ -24,6 +25,19 @@ describe('payment required', () => {
     expect(paymentRequiredSchema.safeParse({ ...paymentRequired, accepts: [slow] }).success).toBe(
       false
     );
+  });
+
+  it('lets a client read a 402 that also offers entries Kosha does not model', () => {
+    const evm = { ...splitEntry, scheme: 'exact', network: 'eip155:8453', asset: '0xabc' };
+    const upto = { ...splitEntry, scheme: 'upto' };
+    const offered = { ...paymentRequired, accepts: [evm, upto, ...paymentRequired.accepts] };
+    expect(paymentRequiredSchema.safeParse(offered).success).toBe(false);
+
+    const parsed = offeredPaymentRequiredSchema.parse(offered);
+    expect(parsed.accepts.map((entry) => entry.scheme)).toEqual(['kosha-split', 'exact']);
+    expect(
+      offeredPaymentRequiredSchema.safeParse({ ...paymentRequired, accepts: [evm, upto] }).success
+    ).toBe(false);
   });
 });
 
