@@ -11,6 +11,7 @@ import {
   outsidePaymentRowSchema
 } from '@kosha/shared/console-api';
 import { policySchema } from '@kosha/shared/registry';
+import { challanRowSchema, monthlyCloseSchema, releaseRowSchema } from '@kosha/shared/tax-reports';
 import { z } from 'zod';
 
 // Fetches a Console route and validates it at the boundary; query functions throw on failure
@@ -61,4 +62,24 @@ export const getTaxReportQueryParams = (quarter: string) => ({
 export const getOutsidePaymentsQueryParams = () => ({
   queryKey: QUERY_KEYS.outsidePayments,
   queryFn: () => getValidated(URLS.console.outsidePayments, z.array(outsidePaymentRowSchema))
+});
+
+export const getCloseQueryParams = (month: string) => ({
+  queryKey: QUERY_KEYS.close(month),
+  queryFn: () => getValidated(URLS.console.close(month), monthlyCloseSchema)
+});
+
+export const getChallansQueryParams = () => ({
+  queryKey: QUERY_KEYS.challans,
+  queryFn: () => getValidated(URLS.console.challans, z.array(challanRowSchema))
+});
+
+export const getReleasesQueryParams = () => ({
+  queryKey: QUERY_KEYS.releases,
+  queryFn: () => getValidated(URLS.console.releases, z.array(releaseRowSchema))
+});
+
+export const getAgentReleasesQueryParams = (agentId: string) => ({
+  queryKey: QUERY_KEYS.agentReleases(agentId),
+  queryFn: () => getValidated(URLS.console.agentReleases(agentId), z.array(releaseRowSchema))
 });
