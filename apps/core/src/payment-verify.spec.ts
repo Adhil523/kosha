@@ -59,6 +59,21 @@ describe('verifyPayment', () => {
     expect(codeOf(await verify(await signedVariant(), late))).toBe('quote_expired');
   });
 
+  it("refuses an entry whose amount, payTo or asset differs from the quote's terms", async () => {
+    const signed = await signedVariant();
+    const base = payloadFor(signed);
+    const changed = [
+      { amount: amountSchema.parse((BigInt(base.accepted.amount) * 100n).toString()) },
+      { payTo: '0.0.9999' },
+      { asset: '0.0.9998' }
+    ];
+    for (const change of changed) {
+      const accepted = paymentRequirementsSchema.parse({ ...base.accepted, ...change });
+      const result = await verifyPayment(verifyDeps(handle.db), receiverId, { ...base, accepted });
+      expect(codeOf(result)).toBe('amount_mismatch');
+    }
+  });
+
   it('refuses a used quote', async () => {
     await handle.db
       .update(quote)

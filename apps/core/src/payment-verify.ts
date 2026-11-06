@@ -75,6 +75,16 @@ export const verifyPayment = async (
   if (row.usedTransactionID) return fail('replay');
   // A quote made for an unidentified caller has only the compatibility entry
   if (split && row.scheme !== 'kosha_split') return fail('unsupported_scheme');
+  // The echoed entry must carry the terms Core issued. Gate prices the route from accepted.amount,
+  // so a quote for a cheaper route must not pass by raising that amount.
+  const issued = split
+    ? { amount: row.priceMicro, payTo: row.payToAccountID }
+    : { amount: row.totalMicro, payTo: deps.compatSettlementAccountId };
+  const echoed =
+    accepted.amount === issued.amount.toString() &&
+    accepted.payTo === issued.payTo &&
+    accepted.asset === deps.settlementTokenId;
+  if (!echoed) return fail('amount_mismatch');
 
   const window = {
     notBefore: new Date(row.createdAt.getTime() - CLOCK_SKEW_SECONDS * 1000),
