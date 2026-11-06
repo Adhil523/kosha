@@ -88,6 +88,23 @@ describe('mirror client', () => {
     ]);
   });
 
+  it('reads the result of the transaction at a consensus timestamp', async () => {
+    const ran = { ...transfer('0.0.4000-1796529900-000000000', '1796529960.000000000', []) };
+    const { fetchImpl } = fakeFetch({
+      '/api/v1/transactions?timestamp=1796529960.000000000': {
+        body: { transactions: [{ ...ran, result: 'INSUFFICIENT_PAYER_BALANCE' }] }
+      },
+      '/api/v1/transactions?timestamp=1796529961.000000000': { body: { transactions: [] } }
+    });
+    const mirror = createMirrorClient(BASE, fetchImpl);
+    const found = await mirror.transactionAt('1796529960.000000000');
+    expect(found.ok && found.data.result).toBe('INSUFFICIENT_PAYER_BALANCE');
+    expect(await mirror.transactionAt('1796529961.000000000')).toEqual({
+      ok: false,
+      data: { reason: 'not_found' }
+    });
+  });
+
   it('finds the HCS message a transaction posted by its consensus timestamp', async () => {
     const { fetchImpl } = fakeFetch({
       '/api/v1/topics/messages/1794911401.000000001': {

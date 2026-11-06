@@ -148,6 +148,19 @@ export const createMirrorClient = (baseUrl: string, fetchImpl: FetchLike = fetch
     return { ok: true, data: toTransaction(first) };
   };
 
+  // The transaction that reached consensus at a timestamp, e.g. the transfer a schedule ran:
+  // the schedule shows as executed even when that transfer failed, so its result is read here
+  const transactionAt = async (
+    consensusTimestamp: string
+  ): Promise<MirrorResult<MirrorTransaction>> => {
+    const path = `/api/v1/transactions?timestamp=${consensusTimestamp}`;
+    const result = await getJson(path, transactionsPageSchema);
+    if (!result.ok) return result;
+    const [first] = result.data.transactions;
+    if (!first) return { ok: false, data: { reason: 'not_found' } };
+    return { ok: true, data: toTransaction(first) };
+  };
+
   // Credits of one token to one account after the cursor (a consensus timestamp), oldest first,
   // across every page. The watcher stores the returned cursor and resumes from it.
   const tokenCreditsSince = async (
@@ -219,6 +232,7 @@ export const createMirrorClient = (baseUrl: string, fetchImpl: FetchLike = fetch
     accountKey,
     accountMemo,
     transactionById,
+    transactionAt,
     tokenCreditsSince,
     scheduleStatus,
     topicMessageAt
