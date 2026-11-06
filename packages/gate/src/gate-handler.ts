@@ -1,9 +1,14 @@
-import { type CoreClientOptions, type CoreFailure, createCoreClient } from './core-client';
+import {
+  type CoreClientOptions,
+  type CoreFailure,
+  type CoreResult,
+  createCoreClient
+} from './core-client';
 import { buildTerms, TERMS_PATH, type TermsOptions } from './kosha-terms';
 import { createReserveProver, type ReserveProofOptions } from './reserve-proof';
 import { compileRoutes, type MatchedRoute, type Routes } from './route-match';
 import { type ErrorCode, errorCodeSchema } from '@kosha/shared/error-codes';
-import { type FacilitatorRequest } from '@kosha/shared/facilitator-api';
+import { type FacilitatorRequest, type QuoteRequest } from '@kosha/shared/facilitator-api';
 import {
   CORS_ALLOWED_HEADERS,
   CORS_EXPOSED_HEADERS,
@@ -19,6 +24,7 @@ import { bigintToAmount } from '@kosha/shared/money';
 import {
   type PaymentPayload,
   paymentPayloadSchema,
+  type PaymentRequired,
   type SettlementResponse
 } from '@kosha/shared/x402-payment';
 
@@ -93,12 +99,17 @@ const readHeader = (headers: GateHeaders, name: string): string | undefined => {
 
 const pathOf = (url: string): string => new URL(url, 'http://gate.invalid').pathname;
 
+type Responded = Extract<GateResult, { action: 'respond' }>;
+
+// Asks Core for a fresh quote on the same route, for the same agent
+type Requote = () => Promise<CoreResult<PaymentRequired>>;
+
 const failure = (
   code: ErrorCode,
   network: X402Network,
   settlement?: SettlementResponse,
   message?: string
-): SettledResult => {
+): Responded => {
   const response: SettlementResponse = settlement ?? {
     success: false,
     errorReason: code,
@@ -111,6 +122,29 @@ const failure = (
     headers: { ...EXPOSE_HEADERS, [HEADERS.paymentResponse]: encodeHeader(response) },
     body: { x402Version: X402_VERSION, error: code, ...(message ? { message } : {}) }
   };
+};
+
+// A stock x402 v2 client reads terms only from PAYMENT-REQUIRED, so a failure the payer can fix by
+// signing again carries a fresh quote. None after settlement_pending or replay: the first payment
+// may still land or already has, and a fresh quote invites paying twice. None after a policy_*
+// refusal: the agent's own cap would refuse the next payment just the same.
+const offersRetry = (code: ErrorCode): boolean =>
+  code !== 'settlement_pending' && code !== 'replay' && !code.startsWith('policy_');
+
+const refuse = async (
+  requote: Requote,
+  code: ErrorCode,
+  network: X402Network,
+  settlement?: SettlementResponse,
+  message?: string
+): Promise<Responded> => {
+  const failed = failure(code, network, settlement, message);
+  if (!offersRetry(code)) return failed;
+  const quoted = await requote();
+  // Core couldn't quote: the bare failure still tells the payer what went wrong
+  if (!quoted.ok) return failed;
+  const terms = encodeHeader({ ...quoted.data, error: code });
+  return { ...failed, headers: { ...failed.headers, [HEADERS.paymentRequired]: terms } };
 };
 
 // Core's refusals (a spending policy, a bad request) reach the agent with Core's status and body;
@@ -193,13 +227,19 @@ export const createGateHandler = (options: GateOptions) => {
     };
   };
 
+  const quoteRequest = (
+    request: GateRequest,
+    route: MatchedRoute,
+    agent?: AgentIdentity
+  ): QuoteRequest => ({
+    method: request.method.toUpperCase(),
+    resource: { url: request.url, description: route.description, mimeType: route.mimeType },
+    priceMicroUsdc: bigintToAmount(route.priceMicroUsdc),
+    agent
+  });
+
   const quote = async (request: GateRequest, route: MatchedRoute, agent?: AgentIdentity) => {
-    const quoted = await core.quote({
-      method: request.method.toUpperCase(),
-      resource: { url: request.url, description: route.description, mimeType: route.mimeType },
-      priceMicroUsdc: bigintToAmount(route.priceMicroUsdc),
-      agent
-    });
+    const quoted = await core.quote(quoteRequest(request, route, agent));
     if (!quoted.ok) {
       return unavailable(quoted.data);
     }
@@ -215,16 +255,17 @@ export const createGateHandler = (options: GateOptions) => {
     rawPayment: string,
     route: MatchedRoute,
     agent: AgentIdentity | undefined,
+    requote: Requote,
     deferSettle: boolean
   ): Promise<GateResult> => {
     const decoded = decodeHeader(paymentPayloadSchema, rawPayment);
     if (!decoded.ok) {
-      return failure('invalid_payload', fallbackNetwork);
+      return refuse(requote, 'invalid_payload', fallbackNetwork);
     }
     const paymentPayload = decoded.data;
     const { accepted } = paymentPayload;
     if (!coversRoute(accepted, route)) {
-      return failure('amount_mismatch', accepted.network);
+      return refuse(requote, 'amount_mismatch', accepted.network);
     }
 
     const body: FacilitatorRequest = {
@@ -236,14 +277,14 @@ export const createGateHandler = (options: GateOptions) => {
     if (!verified.ok) {
       return unavailable(verified.data);
     }
-    const settle = () => settlePayment(body, route, agent);
+    const settle = () => settlePayment(body, route, agent, requote);
     if (!verified.data.isValid) {
       const code = verified.data.extra?.kosha.errorCode ?? 'invalid_payload';
       // A client resending the payment after a lost settle response gets replay from verify. Settle
       // answers it with the earlier result (and keeps any other transaction on a used quote as
       // replay), so it goes there now, deferred or not: the handler never runs on a bare replay.
       if (code === 'replay') return settle();
-      return failure(code, accepted.network, undefined, verified.data.invalidMessage);
+      return refuse(requote, code, accepted.network, undefined, verified.data.invalidMessage);
     }
 
     return deferSettle ? { action: 'verified', settle } : settle();
@@ -252,7 +293,8 @@ export const createGateHandler = (options: GateOptions) => {
   const settlePayment = async (
     body: FacilitatorRequest,
     route: MatchedRoute,
-    agent: AgentIdentity | undefined
+    agent: AgentIdentity | undefined,
+    requote: Requote
   ): Promise<SettledResult> => {
     const accepted = body.paymentRequirements;
     const settled = await core.settle(body);
@@ -261,7 +303,7 @@ export const createGateHandler = (options: GateOptions) => {
     }
     const settlement = settled.data;
     if (!settlement.success) {
-      return failure(settleErrorCode(settlement), accepted.network, settlement);
+      return refuse(requote, settleErrorCode(settlement), accepted.network, settlement);
     }
 
     const proof =
@@ -269,7 +311,8 @@ export const createGateHandler = (options: GateOptions) => {
         ? await proveReserve(settlement.transaction, accepted)
         : { status: proveReserve ? ('unconfirmed' as const) : ('off' as const) };
     if (proof.status === 'failed') {
-      // Core said settled but the chain disagrees: the API must not serve on Core's word alone
+      // Core said settled but the chain disagrees: the API must not serve on Core's word alone. No
+      // fresh quote: a transfer did land, and the payer should not be invited to pay again.
       const refused = { ...settlement, success: false, errorReason: 'amount_mismatch' } as const;
       return failure(
         'amount_mismatch',
@@ -326,9 +369,11 @@ export const createGateHandler = (options: GateOptions) => {
       readHeader(request.headers, HEADERS.paymentSignature) ??
       readHeader(request.headers, HEADERS.legacyPayment);
 
-    return rawPayment
-      ? pay(rawPayment, route, agent, handleOptions.deferSettle ?? false)
-      : quote(request, route, agent);
+    if (!rawPayment) {
+      return quote(request, route, agent);
+    }
+    const requote = () => core.quote(quoteRequest(request, route, agent));
+    return pay(rawPayment, route, agent, requote, handleOptions.deferSettle ?? false);
   };
 };
 

@@ -38,8 +38,10 @@ app.get('/v1/gst-lookup', (req, res) => {
 | `timeoutMs`, `settleTimeoutMs`, `fetch` | Core timeout for quote and verify (default 10 s), for settle (default 75 s, which outlasts Core's receipt and Mirror Node wait), and a `fetch` override                                                                                                                                                                        |
 
 A settled request carries `req.kosha` (with `settleMode: 'before'`) and the response headers
-`PAYMENT-RESPONSE` and `X-KOSHA-TAX`. A failed payment gets a `402` with a Kosha error code; Core
-being unreachable gets a `503`.
+`PAYMENT-RESPONSE` and `X-KOSHA-TAX`. A failed payment gets a `402` with a Kosha error code and,
+when signing again can fix it, a fresh quote in `PAYMENT-REQUIRED`. There is none after
+`settlement_pending`, `replay` or a `policy_*` refusal, so the payer is not invited to pay twice.
+Core being unreachable gets a `503`.
 
 ## Hono
 

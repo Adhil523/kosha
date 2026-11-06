@@ -223,18 +223,26 @@ describe('createGateHandler: deferred settlement', () => {
 
 const VERIFIER_CODES = ERROR_CODES.slice(0, ERROR_CODES.indexOf('bad_signature') + 1);
 
+const rejectedAs = (code: string) => () =>
+  json({
+    isValid: false,
+    invalidReason: 'invalid_payload',
+    extra: { kosha: { quoteId: 'q_7f3a', errorCode: code } }
+  });
+
+const settledAs = (code: string) => () =>
+  json({
+    success: false,
+    errorReason: code,
+    transaction: SETTLED.transaction,
+    network: 'hedera:testnet'
+  });
+
 describe('createGateHandler: failed payment', () => {
   it.each([...VERIFIER_CODES, 'quote_expired', 'quote_not_found', 'policy_daily'])(
     'answers 402 with %s when Core rejects the payment, and never settles',
     async (code) => {
-      const { handle, calls } = setup({
-        verify: () =>
-          json({
-            isValid: false,
-            invalidReason: 'invalid_payload',
-            extra: { kosha: { quoteId: 'q_7f3a', errorCode: code } }
-          })
-      });
+      const { handle, calls } = setup({ verify: rejectedAs(code) });
 
       const result = expectRespond(
         await handle(request({ 'payment-signature': paymentFor(splitEntry) }))
@@ -312,6 +320,63 @@ describe('createGateHandler: failed payment', () => {
   });
 
   it.each([
+    ['verify', 'quote_expired', { verify: rejectedAs('quote_expired') }],
+    ['settle', 'settlement_failed', { settle: settledAs('settlement_failed') }]
+  ] as const)(
+    'offers a fresh quote in PAYMENT-REQUIRED when %s fails with %s',
+    async (_label, code, replies) => {
+      const { handle, calls } = setup(replies);
+
+      const result = expectRespond(
+        await handle(
+          request({ 'payment-signature': paymentFor(splitEntry), 'x-kosha-agent': AGENT })
+        )
+      );
+
+      expect(result.body).toEqual({ x402Version: 2, error: code });
+      const offered = decodePaymentRequiredHeader(result.headers[HEADERS.paymentRequired] ?? '');
+      expect(offered).toEqual({ ...paymentRequired, error: code });
+      expect(calls(CORE_PATHS.quote)).toEqual([expect.objectContaining({ agent: AGENT })]);
+    }
+  );
+
+  it.each([
+    [
+      'settlement_pending: the first payment may still land',
+      { settle: settledAs('settlement_pending') }
+    ],
+    ['replay from settle: a payment on this quote already landed', { settle: settledAs('replay') }],
+    [
+      'a policy refusal: the cap would refuse the next one too',
+      { verify: rejectedAs('policy_daily') }
+    ]
+  ] as const)('offers no fresh quote after %s', async (_label, replies) => {
+    const { handle, calls } = setup(replies);
+
+    const result = expectRespond(
+      await handle(request({ 'payment-signature': paymentFor(splitEntry) }))
+    );
+
+    expect(result.status).toBe(402);
+    expect(result.headers).not.toHaveProperty(HEADERS.paymentRequired);
+    expect(calls(CORE_PATHS.quote)).toEqual([]);
+  });
+
+  it('answers the bare failure when Core cannot quote again', async () => {
+    const { handle } = setup({
+      verify: rejectedAs('quote_expired'),
+      quote: () => json({}, 503)
+    });
+
+    const result = expectRespond(
+      await handle(request({ 'payment-signature': paymentFor(splitEntry) }))
+    );
+
+    expect(result).toMatchObject({ status: 402, body: { x402Version: 2, error: 'quote_expired' } });
+    expect(result.headers).not.toHaveProperty(HEADERS.paymentRequired);
+  });
+
+  it.each([
     ['a header that is not base64 JSON', 'not-base64!'],
     ['a payload of the wrong shape', encodeHeader({ x402Version: 1 })]
   ])('answers 402 invalid_payload for %s without calling Core', async (_label, header) => {
@@ -320,6 +385,7 @@ describe('createGateHandler: failed payment', () => {
     const result = expectRespond(await handle(request({ 'payment-signature': header })));
 
     expect(result.body).toEqual({ x402Version: 2, error: 'invalid_payload' });
+    expect(result.headers).toHaveProperty(HEADERS.paymentRequired);
     expect(calls(CORE_PATHS.verify)).toEqual([]);
   });
 
@@ -432,6 +498,7 @@ describe('createGateHandler: on-chain reserve proof', () => {
       errorReason: 'amount_mismatch',
       transaction: SETTLED.transaction
     });
+    expect(result.headers).not.toHaveProperty(HEADERS.paymentRequired);
   });
 
   it('still serves, marked unconfirmed, when the Mirror Node lags past the timeout', async () => {
