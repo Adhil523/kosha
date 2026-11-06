@@ -19,13 +19,15 @@ const receiver: TokenHolder = {
   isAgent: false
 };
 
-// Mirror answers: undefined means "not associated" (404), a number is the associated balance
+// Mirror answers: undefined means "not associated" (no token in the list), a number is the
+// associated balance, and 'down' is an outage
 const mirror =
-  (balances: Record<string, number | undefined>): typeof fetch =>
+  (balances: Record<string, number | 'down' | undefined>): typeof fetch =>
   async (input) => {
     const accountId = String(input).match(/accounts\/([\d.]+)\//)?.[1] ?? '';
     const balance = balances[accountId];
-    if (balance === undefined) return new Response('{}', { status: 404 });
+    if (balance === 'down') return new Response('{}', { status: 503 });
+    if (balance === undefined) return Response.json({ tokens: [] });
     return Response.json({ tokens: [{ token_id: TOKEN, balance }] });
   };
 
@@ -50,6 +52,13 @@ describe('ensureTokenHoldings', () => {
       mirror({ '0.0.2001': 5, '0.0.2002': 0 })
     );
     expect(context.transactions).toHaveLength(0);
+  });
+
+  it('associates but never funds an agent whose balance the mirror could not read', async () => {
+    const context = fakeContext({}, () => receipt({}));
+    await ensureTokenHoldings(context, [agent], TOKEN, mirror({ '0.0.2001': 'down' }));
+    const kinds = context.transactions.map((tx) => tx.constructor);
+    expect(kinds).toEqual([TokenAssociateTransaction]);
   });
 
   it('treats an association the mirror has not seen yet as success', async () => {

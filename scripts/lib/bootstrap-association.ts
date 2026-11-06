@@ -13,22 +13,31 @@ const tokenHoldingsSchema = z.object({
   tokens: z.array(z.object({ token_id: z.string(), balance: z.union([z.number(), z.string()]) }))
 });
 
-// The holder's balance, or null when the Mirror Node shows no association (it lags a few
-// seconds behind consensus, so an association can be missing here; the associate call settles it)
-const mirrorBalance = async (
+// What the Mirror Node says the holder has: a balance, no association, or nothing it could read.
+// It lags a few seconds behind consensus, so a missing association is settled by the associate
+// call; an unreadable answer never counts as an empty balance, or a rerun would fund twice.
+type Holding =
+  { state: 'held'; balance: bigint } | { state: 'not_associated' } | { state: 'unknown' };
+
+const mirrorHolding = async (
   context: BootstrapContext,
   accountId: string,
   tokenId: string,
   fetchImpl: typeof fetch
-): Promise<bigint | null> => {
+): Promise<Holding> => {
   const url = `${context.mirrorUrl}/api/v1/accounts/${accountId}/tokens?token.id=${tokenId}`;
-  const response = await fetchImpl(url);
-  if (!response.ok) return null;
-  const parsed = tokenHoldingsSchema.safeParse(await response.json());
-  const holding = parsed.success
-    ? parsed.data.tokens.find((t) => t.token_id === tokenId)
-    : undefined;
-  return holding ? BigInt(holding.balance) : null;
+  try {
+    const response = await fetchImpl(url);
+    if (!response.ok) return { state: 'unknown' };
+    const parsed = tokenHoldingsSchema.safeParse(await response.json());
+    if (!parsed.success) return { state: 'unknown' };
+    const holding = parsed.data.tokens.find((t) => t.token_id === tokenId);
+    return holding
+      ? { state: 'held', balance: BigInt(holding.balance) }
+      : { state: 'not_associated' };
+  } catch {
+    return { state: 'unknown' };
+  }
 };
 
 // Association isn't idempotent on Hedera, so an existing one counts as success. Both keys of a
@@ -65,8 +74,15 @@ export const ensureTokenHoldings = async (
   fetchImpl: typeof fetch = fetch
 ): Promise<void> => {
   for (const holder of holders) {
-    const balance = await mirrorBalance(context, holder.accountId, tokenId, fetchImpl);
-    if (balance === null) await associate(context, holder, tokenId);
-    if (holder.isAgent && (balance ?? 0n) === 0n) await fundAgent(context, holder, tokenId);
+    const holding = await mirrorHolding(context, holder.accountId, tokenId, fetchImpl);
+    if (holding.state !== 'held') await associate(context, holder, tokenId);
+    if (!holder.isAgent) continue;
+    if (holding.state === 'unknown') {
+      bootstrapLog(`could not read ${holder.label}'s balance; rerun to fund it if it holds none`);
+      continue;
+    }
+    if (holding.state === 'not_associated' || holding.balance === 0n) {
+      await fundAgent(context, holder, tokenId);
+    }
   }
 };
