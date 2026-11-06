@@ -1,5 +1,5 @@
 import type { Executor } from './executor';
-import { TopicMessageSubmitTransaction } from '@hiero-ledger/sdk';
+import { AccountId, TopicMessageSubmitTransaction, TransactionId } from '@hiero-ledger/sdk';
 
 // Kosha's HCS records fit in one message, so each is one transaction and one sequence number
 export const HCS_MESSAGE_LIMIT_BYTES = 1024;
@@ -11,12 +11,18 @@ export type Submitted =
   | { ok: false; data: { reason: 'too_large'; bytes: number } }
   | { ok: false; data: { reason: 'rejected'; status: string } };
 
+// A fresh transaction ID for the payer. A caller that stores it before submitting can ask the
+// Mirror Node later whether that submission reached consensus, instead of posting twice.
+export const newTransactionId = (payer: string): string =>
+  TransactionId.generate(AccountId.fromString(payer)).toString();
+
 // Submits one JSON message. Every Kosha topic has Core's key as its submit key, and Core's client
 // is the operator, so the operator's signature satisfies it.
 export const submitMessage = async (
   execute: Executor,
   topicId: string,
-  message: HcsJson
+  message: HcsJson,
+  transactionId?: string
 ): Promise<Submitted> => {
   const text = JSON.stringify(message);
   const bytes = new TextEncoder().encode(text).length;
@@ -26,6 +32,7 @@ export const submitMessage = async (
     .setTopicId(topicId)
     .setMessage(text)
     .setMaxChunks(1);
+  if (transactionId) transaction.setTransactionId(TransactionId.fromString(transactionId));
   const executed = await execute(transaction);
   if (!executed.ok)
     return { ok: false, data: { reason: 'rejected', status: executed.data.status } };

@@ -1,5 +1,5 @@
 import type { Executed, Executor, ReceiptLike } from './executor';
-import { HCS_MESSAGE_LIMIT_BYTES, submitMessage } from './hcs';
+import { HCS_MESSAGE_LIMIT_BYTES, newTransactionId, submitMessage } from './hcs';
 import { TopicMessageSubmitTransaction, type Transaction } from '@hiero-ledger/sdk';
 import { describe, expect, it } from 'vitest';
 
@@ -41,6 +41,18 @@ describe('submitMessage', () => {
       JSON.stringify(PAY_RECORD)
     );
     expect(transaction.maxChunks).toBe(1);
+  });
+
+  it('submits under a transaction ID assigned beforehand', async () => {
+    const { execute, seen } = fakeExecutor({
+      ok: true,
+      data: receipt({ topicSequenceNumber: 7n })
+    });
+    const assigned = newTransactionId('0.0.4000');
+    expect(assigned).toMatch(/^0\.0\.4000@\d+\.\d+$/);
+
+    await submitMessage(execute, '0.0.7001', PAY_RECORD, assigned);
+    expect(seen[0]?.transactionId?.toString()).toBe(assigned);
   });
 
   it('refuses a message over the 1,024-byte limit without submitting it', async () => {

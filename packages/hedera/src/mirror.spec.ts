@@ -88,6 +88,23 @@ describe('mirror client', () => {
     ]);
   });
 
+  it('finds the HCS message a transaction posted by its consensus timestamp', async () => {
+    const { fetchImpl } = fakeFetch({
+      '/api/v1/topics/messages/1794911401.000000001': {
+        body: { topic_id: '0.0.7100', sequence_number: 42, consensus_timestamp: '1794911401.0' }
+      }
+    });
+    const mirror = createMirrorClient(BASE, fetchImpl);
+    expect(await mirror.topicMessageAt('1794911401.000000001')).toEqual({
+      ok: true,
+      data: { topicId: '0.0.7100', sequence: 42 }
+    });
+    expect(await mirror.topicMessageAt('1794911402.000000001')).toEqual({
+      ok: false,
+      data: { reason: 'not_found', status: 404 }
+    });
+  });
+
   it('collects credits across pages and returns the last timestamp as the cursor', async () => {
     const first = `/api/v1/transactions?account.id=0.0.5001&transactiontype=CRYPTOTRANSFER&timestamp=gt:100.0&order=asc&limit=100`;
     const second = '/api/v1/transactions?account.id=0.0.5001&timestamp=gt:200.0&page=2';

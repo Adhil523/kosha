@@ -47,7 +47,10 @@ const scheduleSchema = z.object({
   payer_account_id: z.string().nullable()
 });
 
+const topicMessageSchema = z.object({ topic_id: z.string(), sequence_number: z.number().int() });
+
 export type MirrorAccountKey = { type: string; hex: string };
+export type MirrorTopicMessage = { topicId: string; sequence: number };
 export type MirrorTokenTransfer = { tokenId: string; account: string; amount: bigint };
 export type MirrorTransaction = {
   transactionId: string;
@@ -199,7 +202,27 @@ export const createMirrorClient = (baseUrl: string, fetchImpl: FetchLike = fetch
     };
   };
 
-  return { accountKey, accountMemo, transactionById, tokenCreditsSince, scheduleStatus };
+  // The HCS message a transaction posted, found by that transaction's consensus timestamp
+  const topicMessageAt = async (
+    consensusTimestamp: string
+  ): Promise<MirrorResult<MirrorTopicMessage>> => {
+    const path = `/api/v1/topics/messages/${consensusTimestamp}`;
+    const result = await getJson(path, topicMessageSchema);
+    if (!result.ok) return result;
+    return {
+      ok: true,
+      data: { topicId: result.data.topic_id, sequence: result.data.sequence_number }
+    };
+  };
+
+  return {
+    accountKey,
+    accountMemo,
+    transactionById,
+    tokenCreditsSince,
+    scheduleStatus,
+    topicMessageAt
+  };
 };
 
 export type MirrorClient = ReturnType<typeof createMirrorClient>;
