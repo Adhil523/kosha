@@ -2,13 +2,7 @@ import type { DbHandle } from './db/client';
 import { aggregate, hcsOutbox, payment, quote } from './db/schema';
 import { testDb } from './db/test-db';
 import { pairTotalPaise } from './pair-total';
-import {
-  ISSUED_AT,
-  payloadFor,
-  QUOTE_ID,
-  seedQuotedPayment,
-  verifyDeps
-} from './payment.fixture';
+import { ISSUED_AT, payloadFor, QUOTE_ID, seedQuotedPayment, verifyDeps } from './payment.fixture';
 import { type SettleDeps, settlePayment } from './payment-settle';
 import { type Executed, UNKNOWN_EXECUTION_STATUS } from '@kosha/hedera/executor';
 import { signedVariant } from '@kosha/hedera/transfer-verifier.fixture';
