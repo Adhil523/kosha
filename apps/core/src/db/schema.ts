@@ -171,7 +171,9 @@ export const payment = pgTable('Payment', {
   inrValuePaise: money('inrValuePaise').notNull(),
   fy: text('fy').notNull(),
   hcsSequence: integer('hcsSequence'),
-  status: text('status', { enum: PAYMENT_STATUSES }).notNull().default('pending')
+  status: text('status', { enum: PAYMENT_STATUSES }).notNull().default('pending'),
+  // Seeded demo history (A14): never on chain, labelled as sample in the Console
+  sample: boolean('sample').notNull().default(false)
 });
 
 // One payer–receiver pair's running total for a financial year. The quote service adds open

@@ -4,6 +4,7 @@ import type { RegisterRoutes } from './app';
 import { createChallengeStore } from './challenges';
 import { type CoreConfig, SETTLEMENT_NODE_ACCOUNT_IDS } from './config';
 import type { KoshaDb } from './db/client';
+import { demoRoutes } from './demo-routes';
 import { createEventBus } from './event-bus';
 import { facilitatorRoutes } from './facilitator-routes';
 import { demoFixedFx } from './fx';
@@ -97,6 +98,7 @@ export const wireCore = (
       profileReader: createProfileReader({ mirror, network: config.network })
     }),
     policyRoutes({ db, adminToken: config.adminToken }),
+    demoRoutes({ db, adminToken: config.adminToken, pack: rulePack.pack, fx }),
     quoteRoutes({
       ...settlement,
       rulePack,

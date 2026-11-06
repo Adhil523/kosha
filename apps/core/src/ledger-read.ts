@@ -37,7 +37,8 @@ const selection = {
   rateBps: quote.rateBps,
   reason: quote.reason,
   reserveAccountId: payment.reserveAccountID,
-  hcsSequence: payment.hcsSequence
+  hcsSequence: payment.hcsSequence,
+  sample: payment.sample
 };
 
 const selectSettled = (db: KoshaDb, where: SQL | undefined) =>
@@ -86,8 +87,7 @@ const toLedgerRow = (network: HederaNetwork, row: Selected): LedgerRow => {
     reserveAccountId: row.reserveAccountId,
     hashscanUrl: hashscanTransaction(network, transactionId),
     hcsSequence: row.hcsSequence,
-    // Seeded history arrives with A14's sample flag
-    sample: false
+    sample: row.sample
   });
 };
 

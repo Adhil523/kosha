@@ -18,7 +18,7 @@ export const istDayStart = (date: Date): Date => new Date(`${istDayKey(date)}T00
 // What the agent has committed, all-in, today (IST) and this financial year: payments that settled
 // or are still in flight, plus open quotes. Counting open quotes keeps two concurrent quotes from
 // both fitting under a cap; an abandoned quote holds its share only until it expires. A failed
-// payment counts for nothing.
+// payment counts for nothing, and neither does seeded sample history: it was never spent.
 export const committedSpend = async (db: KoshaDb, window: SpendWindow): Promise<SpendTotals> => {
   const dayStart = istDayStart(window.now);
   const [row] = await db
@@ -34,7 +34,7 @@ export const committedSpend = async (db: KoshaDb, window: SpendWindow): Promise<
         eq(quote.fy, window.fy),
         window.excludeQuoteId ? ne(quote.id, window.excludeQuoteId) : undefined,
         or(
-          inArray(payment.status, ['settled', 'pending']),
+          and(inArray(payment.status, ['settled', 'pending']), eq(payment.sample, false)),
           and(
             isNull(payment.id),
             or(gt(quote.expiresAt, window.now), isNotNull(quote.usedTransactionID))

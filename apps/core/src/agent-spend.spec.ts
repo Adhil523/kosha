@@ -40,7 +40,7 @@ describe('committedSpend', () => {
     return row?.id ?? '';
   };
 
-  const pay = (quoteID: string, status: 'settled' | 'pending' | 'failed') =>
+  const pay = (quoteID: string, status: 'settled' | 'pending' | 'failed', sample = false) =>
     handle.db.insert(payment).values({
       quoteID,
       transactionID: `0.0.6001@${quoteID}`,
@@ -50,7 +50,8 @@ describe('committedSpend', () => {
       tdsMicro: 0n,
       inrValuePaise: 0n,
       fy: FY,
-      status
+      status,
+      sample
     });
 
   const spend = (excludeQuoteId?: string) =>
@@ -117,6 +118,12 @@ describe('committedSpend', () => {
       await addQuote(7_000n, { fy: '2025-26', usedTransactionID: 'tx-last-fy' }),
       'settled'
     );
+
+    expect((await spend()).fyMicro).toBe(1_127n);
+  });
+
+  it('leaves out seeded sample history', async () => {
+    await pay(await addQuote(5_000n, { usedTransactionID: 'tx-sample' }), 'settled', true);
 
     expect((await spend()).fyMicro).toBe(1_127n);
   });

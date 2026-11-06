@@ -1,7 +1,7 @@
 import type { KoshaDb } from './db/client';
 import { aggregate, hcsOutbox, payment } from './db/schema';
 import { pairId, payMessage } from './hcs-messages';
-import { withPairLock } from './pair-total';
+import { type PairKey, withPairLock } from './pair-total';
 import type { QuoteRow } from './quote-terms';
 import { sql } from 'drizzle-orm';
 
@@ -21,6 +21,35 @@ export type SettlementOutcome = 'settled' | 'pending' | 'failed';
 const agentOf = (row: QuoteRow): string => {
   if (!row.agentID) throw new Error(`[ledger]: quote ${row.id} has no agent`);
   return row.agentID;
+};
+
+// Adds one payment to its pair's year total and returns the new total, outside payments included.
+// Call it inside the pair's lock (withPairLock).
+export const addToAggregate = async (
+  tx: KoshaDb,
+  pair: PairKey,
+  valuePaise: bigint
+): Promise<bigint> => {
+  const [total] = await tx
+    .insert(aggregate)
+    .values({
+      agentID: pair.agentId,
+      receiverID: pair.receiverId,
+      fy: pair.fy,
+      valuePaise,
+      paymentsCount: 1
+    })
+    .onConflictDoUpdate({
+      target: [aggregate.agentID, aggregate.receiverID, aggregate.fy],
+      set: {
+        valuePaise: sql`${aggregate.valuePaise} + excluded."valuePaise"`,
+        paymentsCount: sql`${aggregate.paymentsCount} + 1`,
+        updatedAt: sql`now()`
+      }
+    })
+    .returning({ value: aggregate.valuePaise, outside: aggregate.outsideValuePaise });
+  if (!total) throw new Error('[ledger]: the aggregate was not updated');
+  return total.value + total.outside;
 };
 
 // Records an executed settlement in one database transaction, under the pair's lock so a
@@ -55,26 +84,11 @@ export const recordSettlement = async (
     if (!saved) throw new Error('[ledger]: the payment was not saved');
     if (outcome === 'failed') return { paymentId: saved.id, aggregatePaise: 0n };
 
-    const [total] = await tx
-      .insert(aggregate)
-      .values({
-        agentID: agentId,
-        receiverID: row.receiverID,
-        fy: row.fy,
-        valuePaise: row.inrValuePaise,
-        paymentsCount: 1
-      })
-      .onConflictDoUpdate({
-        target: [aggregate.agentID, aggregate.receiverID, aggregate.fy],
-        set: {
-          valuePaise: sql`${aggregate.valuePaise} + excluded."valuePaise"`,
-          paymentsCount: sql`${aggregate.paymentsCount} + 1`,
-          updatedAt: sql`now()`
-        }
-      })
-      .returning({ value: aggregate.valuePaise, outside: aggregate.outsideValuePaise });
-    if (!total) throw new Error('[ledger]: the aggregate was not updated');
-    const aggregatePaise = total.value + total.outside;
+    const aggregatePaise = await addToAggregate(
+      tx,
+      { agentId, receiverId: row.receiverID, fy: row.fy },
+      row.inrValuePaise
+    );
 
     if (outcome === 'settled') {
       await tx.insert(hcsOutbox).values({

@@ -1,6 +1,18 @@
-import { type CoreHttp, readSeedEnv, seedAgents, type SeedEnv, seedReceivers } from './seed';
+import {
+  type CoreHttp,
+  demoResetRequest,
+  previousQuarter,
+  readSeedEnv,
+  sampleHistory,
+  seedAgents,
+  type SeedEnv,
+  seedHistory,
+  seedReceivers,
+  seedResetDemo
+} from './seed';
 import { PrivateKey } from '@hiero-ledger/sdk';
 import { verifyCredential } from '@kosha/hedera/credentials';
+import { demoResetRequestSchema, samplePaymentsRequestSchema } from '@kosha/shared/demo-admin';
 import { agentRegisterSchema, receiverCreateSchema } from '@kosha/shared/registry';
 import { describe, expect, it } from 'vitest';
 
@@ -137,5 +149,56 @@ describe('seed --profiles', () => {
     await expect(seedReceivers(refusing, seedEnv())).rejects.toThrow(
       'receiver-in was refused: 400 invalid_payload challenge expired'
     );
+  });
+
+  describe('history and demo reset', () => {
+    const NOW = new Date('2026-11-06T10:30:00Z');
+
+    it('takes the calendar quarter before this one, in IST', () => {
+      expect(previousQuarter(NOW)).toEqual({
+        label: '2026-07',
+        start: new Date('2026-06-30T18:30:00Z'),
+        days: 92
+      });
+      expect(previousQuarter(new Date('2027-01-15T00:00:00Z')).label).toBe('2026-10');
+    });
+
+    it('builds the same keyed history every run, inside last quarter', () => {
+      const history = sampleHistory(seedEnv(), NOW);
+      expect(samplePaymentsRequestSchema.parse({ payments: history }).payments).toHaveLength(160);
+      expect(new Set(history.map((row) => row.key)).size).toBe(160);
+      expect(sampleHistory(seedEnv(), NOW)).toEqual(history);
+      for (const row of history) {
+        expect(row.at >= '2026-06-30T18:30:00.000Z' && row.at < '2026-09-30T18:30:00.000Z').toBe(
+          true
+        );
+      }
+    });
+
+    it('posts the history and the reset to Core, and stops on a refusal', async () => {
+      const calls: { path: string; body: unknown }[] = [];
+      const core: CoreHttp = async (_method, path, body) => {
+        calls.push({ path, body });
+        return path === '/v1/admin/sample-payments'
+          ? { status: 200, body: { inserted: 160, existing: 0 } }
+          : { status: 400, body: { error: 'invalid_payload', message: 'not registered' } };
+      };
+      expect(await seedHistory(core, seedEnv(), NOW)).toEqual({ inserted: 160, existing: 0 });
+      await expect(seedResetDemo(core, seedEnv())).rejects.toThrow(/demo reset was refused: 400/);
+      expect(calls.map((call) => call.path)).toEqual([
+        '/v1/admin/sample-payments',
+        '/v1/admin/demo-reset'
+      ]);
+    });
+
+    it('resets both demo pairs, clears every demo agent, and sends agent-unknown to Level 0', () => {
+      const request = demoResetRequestSchema.parse(demoResetRequest(seedEnv()));
+      expect(request.balances).toEqual([
+        { agent: 'hedera:testnet:0.0.6001', receiverAccountId: '0.0.5001', valuePaise: '998000' },
+        { agent: 'hedera:testnet:0.0.6003', receiverAccountId: '0.0.5001', valuePaise: '498000' }
+      ]);
+      expect(request.clearAgents).toHaveLength(3);
+      expect(request.level0).toEqual(['hedera:testnet:0.0.6003']);
+    });
   });
 });
