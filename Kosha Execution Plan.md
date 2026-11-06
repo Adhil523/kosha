@@ -1,0 +1,676 @@
+# Kosha: Execution Plan
+
+Nov 6, 2026 · @Adhil
+
+## Product overview
+
+**Kosha** (Sanskrit कोश, "treasury") is a tax-native x402 payment gateway on Hedera: AI agents pay Indian APIs in USDC, and Indian TDS is withheld on every payment at the moment it settles. Tagline: *Every agent payment, tax-ready.* Replaces the working title Kar402; check the name for trademark and npm-scope clashes before submission.
+
+**Pitch line:** In India, when a bot pays your API in USDC, *you* may owe tax on the bot's payment. Kosha handles it automatically.
+
+**What you get at the end:** infrastructure, not a consumer dApp. It's a payment gateway that developers plug into, like Razorpay for AI agents, with four components:
+
+| Component | What it is | Who uses it | Ships as |
+| --- | --- | --- | --- |
+| **Kosha Core** | The facilitator: quotes, verifies and settles x402 payments on Hedera, runs the tax engine, logs to HCS, sweeps escrow | Runs as a service | Node.js server (`apps/core`) |
+| **Kosha Gate** | Server SDK: middleware that makes any API endpoint return 402 and get paid through Kosha | Indian API owners | npm `@kosha/gate` |
+| **Kosha Pay** | Agent client library: pays Kosha-protected endpoints, carries the tax profile, enforces spending rules | Agent developers | npm `@kosha/pay` (+ Hedera Agent Kit plugin) |
+| **Kosha Console** | Web dashboard: earnings, TDS ledger, escrow, filing export, agent spend and policies | API owners, agent owners, their CA | Next.js app (`apps/console`) |
+
+**Legal basis (unsettled; confirm with a CA):** USDC is a virtual digital asset (VDA). Section 393(1) of the Income-tax Act 2025 (formerly 194S) requires 1% TDS (20% with no PAN) on VDA transfers above ₹10,000 a year, or ₹50,000 for specified persons. Kosha treats the API receiving USDC as the buyer of the VDA and therefore the deductor.
+
+## Design decisions that fix the drawbacks
+
+Kosha's guarantee is narrow and honest: **an API owner using Kosha never under-deducts.** Every decision below serves that, and every tax rule is configurable, because the law is unsettled.
+
+| Drawback | Decision | How it's built |
+| --- | --- | --- |
+| The blockchain can't tell who is Indian | Residency comes from verified profiles, never from wallets or IP addresses | Receiver: onboarded API owner with PAN, TAN, GSTIN. Payer: credential (KYC issuer, Tax Residency Certificate, or signed declaration) referenced from its HCS-14 agent identity |
+| Unverified payers | Treat as a resident with no PAN: **20% from the first rupee** | Default rule in the tax engine; any credential lowers it to the correct rate |
+| Payments made outside Kosha break the yearly threshold | Count everything visible; let receivers switch thresholds off | Mirror Node watcher on every declared receiver wallet; payers declare all their wallets; **first-rupee mode** (over-deduction is a refundable credit, under-deduction costs interest) |
+| Who funds the 1%? | **Payer-funded by default:** the API receives its full price and the payer adds 1% on top, credited to the payer's PAN | Matches CBDT's in-kind guidance, where the seller of the VDA ensures the tax is paid. Price-inclusive mode (API receives 99%) is the alternative. The agents agree which before paying |
+| The law may be read differently | Rules live in versioned, signed **rule packs**, not in code | `rulepack-in-2026.1.json` holds thresholds, rates, who deducts, crossing behaviour. Each decision records the rule-pack version |
+| Threshold crossing is ambiguous (whole payment or excess) | Withhold on the **whole crossing payment** | Rule-pack flag `crossing: "full"`; switchable to `"excess"` |
+| PAN and business relationships are private | No PAN or counterparty names on-chain | Salted PAN commitments; HCS logs carry payment ID, amounts, rule version and an HMAC pair ID only; yearly totals stay in Core's database |
+| Fractions of a paisa | Compute in paise, round **up**, settle in USDC micro-units (6 decimals) | Never under-deduct by rounding; escrow accumulates and is swept monthly |
+| HTS custom fees can't be added to existing USDC | Use a native multi-party transfer | One `TransferTransaction` moves payer → API (price) and payer → escrow (TDS) atomically |
+| Facilitator is the fee payer, so a malicious client could slip in a debit from it | Verify the transfer list strictly before signing | Exactly the quoted transfers, only debits from the payer, no HBAR movement, correct token, quote ID in the memo |
+| Replay of a payment | One quote, one settlement | Quote IDs with a 120-second expiry; Hedera transaction IDs and quote IDs stored as used |
+| On-chain logs aren't filings | Generate filing data, keep logs as evidence | Quarterly CSV export in the statement's field layout; HCS sequence numbers referenced per row |
+| Payments to foreign APIs | Out of scope for TDS; flagged | Non-resident path records the payment with a "FEMA review" flag. GST under reverse charge is a stretch goal (Phase 3) |
+
+## Architecture and payment flow
+
+One paid request takes two HTTP round trips and one Hedera transaction; the tax is decided at quote time and enforced at settlement.
+
+&#91;embedded content: Kosha architecture · 4 components on Hedera\]
+
+The agent only talks to the API; the API's Gate talks to Core; only Core touches Hedera as fee payer.
+
+1. The agent (Kosha Pay) calls the API with its HCS-14 ID in `X-KOSHA-AGENT`.
+2. Kosha Gate asks Core for a quote. Core loads both profiles, converts the price to ₹, reads the pair's yearly total, and runs the tax engine.
+3. Gate returns **402** with the transfer split: price to the API, TDS to escrow, with Core as fee payer.
+4. Pay checks the quote against the owner's spending rules, signs exactly those transfers, and retries with `X-PAYMENT`.
+5. Gate calls Core's verify, then settle. Core checks every transfer, adds its fee-payer signature, and executes one atomic `TransferTransaction`.
+6. On `SUCCESS`, Core writes the ledger, adds the payment to the pair's total, and logs a privacy-safe message to the HCS payments topic.
+7. Gate returns the data with `X-PAYMENT-RESPONSE` (transaction ID, HashScan link, tax withheld).
+8. In the background, the watcher counts USDC that reached the API outside Kosha, and the monthly sweep moves escrow under a 2-of-2 scheduled transaction.
+
+## Tech stack and repo layout
+
+Everything is TypeScript in one pnpm + Turborepo monorepo, and **no Solidity**, which keeps Hedera's "No Solidity Allowed" prize open.
+
+| Layer | Choice | Why |
+| --- | --- | --- |
+| Language and runtime | TypeScript 5, Node.js 20 LTS | One language across all four components |
+| Monorepo | pnpm workspaces + Turborepo | Shared types and parallel builds |
+| Hedera | `@hashgraph/sdk` (JS) | `TransferTransaction`, HCS topics, `ScheduleCreateTransaction`, token association |
+| Hedera reads | Mirror Node REST (`testnet.mirrornode.hedera.com`) | Payment confirmation and the outside-payment watcher |
+| Agent identity | HCS-14 via `@hashgraphonline/standards-sdk` | Hedera bonus; the agent's tax credential is referenced from its profile |
+| Agent | Hedera Agent Kit (`hedera-agent-kit`) + LangChain | Hedera bonus; Kosha Pay is exposed as an Agent Kit tool |
+| Settlement token | USDC on Hedera testnet (HTS) | Hedera bonus; confirm the testnet token ID in Circle's docs |
+| Core server | Fastify 4 + Zod | Fast, typed request validation |
+| Database | PostgreSQL 16 + Drizzle ORM (Supabase or a local Docker container) | Profiles, quotes, aggregates, decisions, nonces |
+| Jobs | BullMQ + Redis, or `node-cron` for the MVP | Mirror Node watcher, monthly sweep |
+| FX rate | Pluggable adapter: fixed demo rate → reference-rate API → Chainlink feed | Rule pack names the source; confirm with a CA which rate tax law expects (SBI TT buying rate is common practice) |
+| Gate SDK | Express and Hono middleware, built with `tsup` | Works with the most common Node servers |
+| Console | Next.js 15 (App Router), Tailwind, shadcn/ui, Recharts, TanStack Query | Fast to build, looks polished in the demo |
+| Console auth | Hedera WalletConnect (HashPack) for agent owners; email magic link for API owners | API owners and CAs may not use wallets |
+| Tests | Vitest (unit), Playwright (Console), testnet end-to-end script | The tax engine needs exhaustive unit tests |
+| Deploy | Railway or Fly.io (Core, demo APIs), Vercel (Console) | Public URLs for judges |
+
+```
+kosha/
+├─ apps/
+│  ├─ core/            # Kosha Core: facilitator + tax engine host + jobs
+│  ├─ console/         # Kosha Console: Next.js dashboard
+│  ├─ demo-api-in/     # Indian data API using @kosha/gate
+│  ├─ demo-api-global/ # Foreign API using @kosha/gate (non-resident path)
+│  └─ demo-agent/      # Research agent on Hedera Agent Kit + @kosha/pay
+├─ packages/
+│  ├─ tax-engine/      # Pure functions + rule packs, no I/O
+│  ├─ gate/            # @kosha/gate server SDK
+│  ├─ pay/             # @kosha/pay client library
+│  ├─ hedera/          # Transfer build/verify, HCS, schedules, mirror client
+│  └─ shared/          # Zod schemas, types, constants
+├─ rulepacks/
+│  └─ in-2026.1.json   # Thresholds, rates, crossing rule, FX source
+├─ scripts/            # Account setup, topics, faucet, demo run
+├─ arkiv/              # Only if Arkiv is one of the three sponsor picks
+└─ README.md           # Setup, architecture, payment flow, HashScan links
+```
+
+## Component 1: Kosha Core
+
+Kosha Core is the facilitator: it prices each request with tax, checks the signed transfer, settles it on Hedera with Core as fee payer, logs it to HCS, and keeps the tax ledger. Kosha runs its own facilitator, which the Hedera track allows.
+
+### Modules
+
+1. **Quote service:** builds the x402 payment requirements, including the split of transfers and the tax breakdown.
+2. **Tax engine** (`packages/tax-engine`): pure functions plus a rule pack. No network or database access, so it's fully unit-testable.
+3. **Verifier:** decodes the payer's signed `TransferTransaction` and checks it matches the quote exactly.
+4. **Settler:** adds Core's fee-payer signature, executes, waits for the receipt, writes the ledger and the HCS log.
+5. **Profile registry:** receivers (API owners), payer agents, credentials, declared wallets.
+6. **Watcher job:** reads the Mirror Node for USDC reaching receivers' wallets outside Kosha.
+7. **Sweep job:** a monthly scheduled transfer of the escrow, co-signed in the Console.
+8. **Exports:** the quarterly TDS file for receivers, and the per-payment gains report for payers.
+
+### API
+
+| Method and path | Purpose | Called by |
+| --- | --- | --- |
+| `POST /v1/quote` | Price plus tax for one request; returns x402 `accepts[]` with `extra.kosha` | Kosha Gate |
+| `POST /v1/verify` | Check the `X-PAYMENT` payload against its quote | Kosha Gate |
+| `POST /v1/settle` | Sign as fee payer, execute, log; returns transaction ID, HashScan URL, HCS sequence number | Kosha Gate |
+| `GET /v1/supported` | Networks, assets, schemes, active rule pack | Anyone |
+| `POST /v1/receivers` | Onboard an API owner (PAN, TAN, GSTIN, wallets, mode) | Console |
+| `POST /v1/agents` | Register a payer agent: HCS-14 ID, credential, declared wallets | Kosha Pay / Console |
+| `GET /v1/ledger` | Payments and withholdings, filterable | Console |
+| `GET /v1/exports/tds?receiverId=&quarter=2026-Q3` | Quarterly TDS file (CSV) | Console |
+| `GET /v1/payers/:id/report` | INR value and gain or loss for each lot spent | Console |
+| `POST /v1/webhooks` | Subscribe to `payment.settled`, `tds.withheld`, `threshold.near`, `outside.payment` | API owners |
+
+### Payment requirements Core returns
+
+```json
+{
+  "x402Version": 1,
+  "accepts": [{
+    "scheme": "exact",
+    "network": "hedera-testnet",
+    "resource": "https://api.demo-in.dev/v1/gst-lookup",
+    "asset": "<USDC token id>",
+    "payTo": "0.0.5001",
+    "maxAmountRequired": "101019",
+    "maxTimeoutSeconds": 120,
+    "extra": { "kosha": {
+      "quoteId": "q_7f3a", "feePayer": "0.0.4000", "memo": "kosha:q_7f3a",
+      "transfers": [
+        { "account": "0.0.5001", "amount": "100000" },
+        { "account": "0.0.4100", "amount": "1019" }
+      ],
+      "tax": { "rulepack": "in-2026.1", "rateBps": 100, "inrValuePaise": "884",
+               "tdsMicroUsdc": "1019", "funding": "payer", "reason": "threshold_crossed" }
+    }}
+  }]
+}
+```
+
+Amounts are USDC micro-units: 100000 is 0.10 USDC to the API, 1019 is the TDS to escrow: 1% of ₹8.84 is 8.84 paise, rounded up to 9 paise, converted at ₹88.40 and rounded up again (`0.0.4100`). The JSON shape follows x402's `exact` scheme with Kosha data in `extra`. Match the field names to the x402 version you build on.
+
+### Rule pack
+
+```json
+{
+  "id": "in-2026.1",
+  "law": "Income-tax Act 2025, s.393(1) (formerly s.194S, 1961 Act)",
+  "effectiveFrom": "2026-04-01",
+  "financialYearStart": "04-01",
+  "rates": { "standardBps": 100, "noPanBps": 2000 },
+  "thresholds": { "specifiedPersonPaise": 5000000, "otherPaise": 1000000 },
+  "crossing": "full",
+  "unknownPayer": "first_rupee_no_pan",
+  "funding": "payer",
+  "nonResident": "no_tds_flag_fema",
+  "fxSource": "demo-fixed",
+  "reviewedBy": null
+}
+```
+
+`reviewedBy` stays `null` until a CA signs off, and the Console shows "unreviewed rule pack" until then.
+
+### Tax engine core function
+
+```ts
+const ceilDiv = (a: bigint, b: bigint) => (a + b - 1n) / b;
+
+export function decide(i: {
+  payer: { residency: 'resident' | 'non_resident' | 'unknown'; panOnFile: boolean; specifiedPerson: boolean };
+  priceMicroUsdc: bigint;      // what the API charges
+  inrPerUsdMicro: bigint;      // e.g. 88_400_000n = Rs 88.40 per USD
+  aggregatePaise: bigint;      // this payer -> this receiver, this financial year
+  mode: 'threshold' | 'first_rupee';
+  pack: RulePack;
+}): Decision {
+  const valuePaise = ceilDiv(i.priceMicroUsdc * i.inrPerUsdMicro * 100n, 10n ** 12n);
+  const base = { rulepack: i.pack.id, valuePaise, flags: [] as string[] };
+
+  if (i.payer.residency === 'non_resident')
+    return { ...base, applies: false, rateBps: 0, tdsMicroUsdc: 0n, reason: 'non_resident', flags: ['fema_review'] };
+
+  const unknown = i.payer.residency === 'unknown';
+  const rateBps = unknown || !i.payer.panOnFile ? i.pack.rates.noPanBps : i.pack.rates.standardBps;
+  const firstRupee = unknown || i.mode === 'first_rupee';
+  const threshold = i.payer.specifiedPerson ? i.pack.thresholds.specifiedPersonPaise : i.pack.thresholds.otherPaise;
+  const after = i.aggregatePaise + valuePaise;
+
+  if (!firstRupee && after <= BigInt(threshold))
+    return { ...base, applies: false, rateBps: 0, tdsMicroUsdc: 0n, reason: 'under_threshold' };
+
+  const taxable = !firstRupee && i.pack.crossing === 'excess' && i.aggregatePaise < BigInt(threshold)
+    ? after - BigInt(threshold) : valuePaise;
+  const tdsPaise = ceilDiv(taxable * BigInt(rateBps), 10_000n);
+  const tdsMicroUsdc = ceilDiv(tdsPaise * 10n ** 12n, i.inrPerUsdMicro * 100n); // paise -> USDC micro, rounded up
+  return { ...base, applies: true, rateBps, tdsMicroUsdc, tdsPaise,
+           reason: firstRupee ? 'first_rupee' : 'threshold_crossed' };
+}
+```
+
+### Verifier: the checks that protect the fee payer
+
+```ts
+import { Transaction, TransferTransaction, PublicKey } from '@hashgraph/sdk';
+
+export async function verify(bytes: Uint8Array, q: Quote, payerKey: PublicKey) {
+  const tx = Transaction.fromBytes(bytes);
+  if (!(tx instanceof TransferTransaction)) fail('not_transfer');
+  if (tx.transactionId?.accountId?.toString() !== q.feePayer) fail('wrong_fee_payer');
+  if (tx.transactionMemo !== `kosha:${q.id}`) fail('memo_mismatch');
+  if (tx.hbarTransfers.size > 0) fail('hbar_movement');          // nothing may debit Core in HBAR
+  if (Date.now() > q.expiresAt) fail('quote_expired');
+  if (await store.isUsed(q.id) || await store.isUsedTx(tx.transactionId!.toString())) fail('replay');
+
+  const expected = new Map<string, bigint>([[q.payer, -q.totalMicro], ...q.transfers.map(t => [t.account, t.amount] as const)]);
+  let tokenCount = 0;
+  for (const [tokenId, moves] of tx.tokenTransfers) {
+    tokenCount++;
+    if (tokenId.toString() !== q.asset) fail('wrong_token');
+    if (moves.size !== expected.size) fail('transfer_count');
+    for (const [acct, amt] of moves)
+      if (expected.get(acct.toString()) !== BigInt(amt.toString())) fail('amount_mismatch');
+  }
+  if (tokenCount !== 1) fail('token_count');
+  if (!payerKey.verifyTransaction(tx)) fail('bad_signature');  // payer key from Mirror Node
+  return tx as TransferTransaction;
+}
+```
+
+Check the SDK's exact types for `tokenTransfers` against the version you install.
+
+### Settler
+
+```ts
+export async function settle(tx: TransferTransaction, q: Quote) {
+  await store.markUsed(q.id, tx.transactionId!.toString());     // before execute: no double spend on retry
+  const resp = await (await tx.sign(coreKey)).execute(client);
+  const receipt = await resp.getReceipt(client);                 // throws unless SUCCESS
+  const txId = resp.transactionId.toString();
+  await ledger.record(q, txId);                                  // payment, decision, aggregate += value
+  const seq = await hcs.log({ v: 1, t: 'pay', pid: q.paymentId, tx: txId, rp: q.tax.rulepack,
+                              price: q.price.toString(), tds: q.tds.toString(), bps: q.tax.rateBps,
+                              pair: hmac(q.payerId + ':' + q.receiverId), fy: '2026-27' });
+  return { txId, hashscan: `https://hashscan.io/testnet/transaction/${txId}`, hcsSequence: seq };
+}
+```
+
+HCS messages are public, so they carry an HMAC pair ID, never PAN or names. Logging the HCS message after a successful settlement is retried until it succeeds.
+
+### Data model (PostgreSQL)
+
+| Table | Key columns |
+| --- | --- |
+| `receivers` | id, legal\_name, pan\_commitment, tan, gstin, wallets\[\], mode (threshold or first\_rupee), funding, api\_key\_hash |
+| `agents` | id, hcs14\_id, owner\_ref, residency, pan\_on\_file, specified\_person, credential\_ref, credential\_issuer, wallets\[\], verified\_at |
+| `quotes` | id, receiver\_id, agent\_id, resource, price\_micro, tds\_micro, rate\_bps, rulepack, fx\_micro, expires\_at, used\_tx\_id |
+| `payments` | id, quote\_id, tx\_id, consensus\_ts, price\_micro, tds\_micro, inr\_value\_paise, hcs\_seq, status |
+| `aggregates` | (agent\_id, receiver\_id, fy) primary key, value\_paise, payments\_count, outside\_value\_paise |
+| `outside_payments` | id, receiver\_id, from\_wallet, tx\_id, value\_paise, shortfall\_paise, resolved\_by |
+| `lots` | id, agent\_id, acquired\_ts, micro, cost\_paise, spent\_payment\_id, gain\_paise |
+| `sweeps` | id, month, escrow\_micro, schedule\_id, status, cosigned\_by |
+| `policies` | agent\_id, per\_payment\_micro, daily\_micro, fy\_budget\_micro, allowlist\[\], threshold\_action (warn, block, allow) |
+
+### Jobs
+
+- **Watcher** (every 30 s): for each receiver wallet, `GET /api/v1/transactions?account.id=<wallet>&transactiontype=CRYPTOTRANSFER&timestamp=gt:<cursor>`. A USDC credit whose memo isn't `kosha:*`, from a declared payer wallet, raises that pair's aggregate. If TDS should have applied, it records a shortfall, emits `outside.payment`, and the Console asks the payer to top up or the receiver to pay it.
+- **Sweep** (monthly, before the 7th): a `TransferTransaction` from escrow to the receiver's tax-deposit account, wrapped in a `ScheduleCreateTransaction`. The escrow has a 2-of-2 key (Core plus the receiver's compliance signer), who co-signs in the Console with `ScheduleSignTransaction`. Check that long-term scheduled transactions (HIP-423, `setWaitForExpiry`) are enabled on testnet; if not, schedule with a short expiry and run it from cron. Conversion to INR and the actual deposit are mocked in the MVP.
+
+## Component 2: Kosha Gate (server SDK)
+
+Kosha Gate lets an Indian API owner charge agents with three lines of code. It answers unpaid requests with a 402 quote from Core, verifies and settles paid ones, then lets the request through.
+
+### Usage
+
+```ts
+import express from 'express';
+import { koshaGate } from '@kosha/gate';
+
+const app = express();
+app.use(koshaGate({
+  core: 'https://core.kosha.dev',
+  apiKey: process.env.KOSHA_API_KEY!,        // identifies the receiver in Core
+  routes: {
+    'GET /v1/gst-lookup': { priceUsdc: '0.10', description: 'GSTIN lookup' },
+    'GET /v1/company/:cin': { priceUsdc: '0.25' },
+  },
+}));
+app.get('/v1/gst-lookup', (req, res) => res.json({ ok: true, paidBy: req.kosha.agentId }));
+```
+
+### Request lifecycle
+
+1. A request matches a priced route. With no `X-PAYMENT` header, Gate reads the agent's identity from `X-KOSHA-AGENT` (its HCS-14 ID), calls `POST /v1/quote`, and responds **402** with the `accepts[]` body.
+2. With an `X-PAYMENT` header, Gate calls `POST /v1/verify`, then `POST /v1/settle`.
+3. On success it sets `req.kosha = { agentId, txId, tdsMicroUsdc, hcsSequence }`, adds an `X-PAYMENT-RESPONSE` header (base64 JSON with the transaction ID and HashScan link), and calls `next()`.
+4. On failure it responds 402 again with an `error` code from the verifier (`amount_mismatch`, `quote_expired`, `replay`, and so on).
+
+### Package details
+
+| Item | Detail |
+| --- | --- |
+| Exports | `koshaGate(options)` for Express, `koshaHono(options)` for Hono, `createGateHandler()` for any framework |
+| Options | `core`, `apiKey`, `routes`, `onSettled(event)`, `settleMode` (`before` the handler runs, the default; or `after` a 2xx response) |
+| Behaviour | Settles before the handler runs, so an agent never gets data without paying |
+| Headers | Reads `X-PAYMENT`, `X-KOSHA-AGENT`; writes `X-PAYMENT-RESPONSE`, `X-KOSHA-TAX` (rate and amount withheld) |
+| Unknown agent | Still served: Core quotes with the 20% first-rupee rule, and the 402 body says how to register to lower it |
+| Build | `tsup` to ESM + CJS, types included; around 300 lines plus tests |
+| Tests | Supertest against a mocked Core: 402 shape, happy path, every verifier error, replay |
+
+## Component 3: Kosha Pay (agent client library)
+
+Kosha Pay is a drop-in `fetch` that pays 402 responses on its own. It checks the quote against the owner's spending rules, signs exactly the quoted transfers, and retries the request.
+
+### Usage
+
+```ts
+import { createKoshaPay } from '@kosha/pay';
+
+const pay = createKoshaPay({
+  network: 'testnet',
+  accountId: process.env.AGENT_ACCOUNT_ID!,
+  privateKey: process.env.AGENT_PRIVATE_KEY!,
+  agentId: process.env.AGENT_HCS14_ID!,           // carries the tax credential reference
+  policy: { perPaymentUsdc: '0.50', dailyUsdc: '5', fyBudgetUsdc: '200',
+            allowlist: ['api.demo-in.dev', 'api.demo-global.dev'], onThreshold: 'warn' },
+  funding: 'payer',                               // or 'price_inclusive'
+});
+
+const res = await pay.fetch('https://api.demo-in.dev/v1/gst-lookup?gstin=27AAPFU0939F1ZV');
+console.log(await res.json(), pay.lastReceipt);   // { txId, hashscan, tdsMicroUsdc }
+```
+
+### Signing the quoted transfer
+
+```ts
+import { TransferTransaction, TransactionId, AccountId, TokenId, PrivateKey } from '@hashgraph/sdk';
+
+async function signQuote(k: KoshaExtra, asset: string, me: string, key: PrivateKey) {
+  const total = k.transfers.reduce((s, t) => s + BigInt(t.amount), 0n);
+  let tx = new TransferTransaction()
+    .setTransactionId(TransactionId.generate(AccountId.fromString(k.feePayer)))  // Core pays the fee
+    .setNodeAccountIds([AccountId.fromString('0.0.3')])
+    .setTransactionMemo(k.memo)
+    .addTokenTransfer(TokenId.fromString(asset), AccountId.fromString(me), -Number(total));
+  for (const t of k.transfers)
+    tx = tx.addTokenTransfer(TokenId.fromString(asset), AccountId.fromString(t.account), Number(t.amount));
+  const signed = await tx.freeze().sign(key);                                   // freeze, then sign
+  return Buffer.from(signed.toBytes()).toString('base64');
+}
+```
+
+Amounts are passed as numbers of micro-units; switch to `Long` if a single payment ever exceeds 2^53 micro-units.
+
+### Rules applied before every payment
+
+1. The host is on the allowlist.
+2. Price plus TDS is within the per-payment, daily and yearly budgets. Tax counts towards budgets.
+3. If the quote's `reason` is `threshold_crossed`, apply `onThreshold`: `warn` (log and pay), `block` (refuse), or `allow`.
+4. The quote's rule pack is one the owner accepts (`acceptRulepacks: ['in-2026.*']`).
+5. The signed transfer list equals the quote's `transfers` exactly. Pay never signs anything else.
+
+Core enforces the same policy server-side, so a modified client can't bypass it.
+
+### Agreeing who funds the tax before paying
+
+The Hedera bonus for agents negotiating before payment is met with a short exchange before the first paid call:
+
+1. Pay reads the API's terms at `GET /.well-known/kosha` (rule pack, funding modes accepted, prices).
+2. Pay proposes `funding: 'payer'` (the API gets the full price) or `'price_inclusive'` (the API absorbs it).
+3. The API answers `accept` or `counter`. The agreed term is stored in Core for that pair and stamped on every quote.
+
+For a fuller version, run it as an A2A task between the agent and an API-side agent. That's a stretch goal.
+
+### Hedera Agent Kit tool
+
+```ts
+import { tool } from '@langchain/core/tools';
+import { z } from 'zod';
+
+export const koshaFetchTool = (pay: KoshaPay) => tool(
+  async ({ url }) => JSON.stringify({ body: await (await pay.fetch(url)).json(), receipt: pay.lastReceipt }),
+  { name: 'kosha_paid_fetch', description: 'Fetch a paid API; pays in USDC on Hedera with Indian TDS handled',
+    schema: z.object({ url: z.string().url() }) },
+);
+```
+
+The demo agent registers this tool next to the Agent Kit's Hedera tools, so the LLM decides when to buy data and Kosha Pay handles payment and tax.
+
+### Registration (once per agent)
+
+1. Create the agent's HCS-14 identity with the standards SDK.
+2. Add a `kosha` field to the profile: credential issuer, credential hash, and declared wallet list. Never the PAN.
+3. Call `POST /v1/agents` with the HCS-14 ID. Core verifies the credential signature and stores residency, PAN-on-file and specified-person flags.
+4. For the demo, Core's own test issuer signs three credentials: resident with PAN, resident specified person, and non-resident with a Tax Residency Certificate.
+
+## Component 4: Kosha Console (web dashboard)
+
+Kosha Console is the only part people look at, and it carries the demo: a live threshold counter, the split on HashScan, and a filing export. It has two workspaces, one for API owners and one for agent owners, plus a read-only view for a CA.
+
+### Screens
+
+| Workspace | Screen | What it shows | Data source |
+| --- | --- | --- | --- |
+| API owner | Overview | Earnings today and this month, TDS withheld, escrow balance, payments per minute (live) | `GET /v1/ledger`, server-sent events |
+| API owner | Payments | Every payment: time, agent, price, TDS, rate, reason, HashScan and HCS links | Ledger + Mirror Node |
+| API owner | Counterparties | Each payer's yearly total against its threshold as a progress bar, residency badge, credential status | `aggregates`, `agents` |
+| API owner | Tax | Quarter summary, deductee-wise totals, **Download TDS file (CSV)**, rule-pack version and review status | `GET /v1/exports/tds` |
+| API owner | Escrow and sweeps | Escrow balance, monthly sweep schedule, **Co-sign sweep** button | `sweeps`, `ScheduleSignTransaction` via WalletConnect |
+| API owner | Outside payments | USDC that arrived outside Kosha, shortfall, resolve or request top-up | `outside_payments` |
+| API owner | Settings | Thresholds or first-rupee mode, funding mode accepted, priced routes, API keys, webhooks | `receivers` |
+| Agent owner | Agents | Each agent's HCS-14 ID, credential, declared wallets, status | `agents` |
+| Agent owner | Spend | Spend by API and day, tax paid on top, budget left | Ledger |
+| Agent owner | Policies | Caps, allowlist, threshold action, accepted rule packs | `policies` |
+| Agent owner | Tax credits and gains | TDS credited to the owner's PAN per deductor, INR value and gain or loss per lot | `GET /v1/payers/:id/report` |
+| CA (read-only) | Filing view | Tax screen plus evidence links (HashScan, HCS sequence numbers) | Same as Tax |
+
+### Demo-critical widgets (build these first)
+
+1. **Threshold counter:** a progress bar that fills towards ₹10,000 as payments arrive and turns amber at 90%. At the crossing, the next row shows "1% withheld".
+2. **Live payments feed** with HashScan links: judges click one and see the two transfers.
+3. **TDS file download**, with the columns of the TDS statement.
+4. **Rule-pack badge** reading "in-2026.1 · unreviewed": it shows honestly that the law is configurable and needs a CA.
+
+### Build notes
+
+- App Router routes: `/(owner)/overview`, `/payments`, `/counterparties`, `/tax`, `/escrow`, `/outside`, `/settings`; `/(agent)/agents`, `/spend`, `/policies`, `/credits`.
+- Live data through server-sent events from Core (`GET /v1/stream?receiverId=`), falling back to polling every 3 seconds.
+- Show amounts in both USDC and ₹, with the FX rate and its timestamp on hover.
+- Seed script fills a quarter of realistic history, so screens aren't empty during the demo. Label it "sample data" in the UI.
+
+## Step-by-step code execution
+
+Build in this order: each step ends with something runnable, so the demo works end to end as early as step 7.
+
+### Step 0: Prerequisites
+
+```bash
+node -v      # 20.x
+corepack enable && pnpm -v
+docker -v    # for Postgres and Redis
+```
+
+Create a Hedera testnet account at portal.hedera.com (it comes with test HBAR). Look up the testnet USDC token ID in Circle's docs and get test USDC from Circle's faucet.
+
+### Step 1: Scaffold the monorepo
+
+```bash
+mkdir kosha && cd kosha && pnpm init
+pnpm add -Dw turbo typescript tsup vitest @types/node
+mkdir -p apps/{core,console,demo-api-in,demo-api-global,demo-agent} packages/{tax-engine,gate,pay,hedera,shared} rulepacks scripts
+pnpm create next-app apps/console --ts --tailwind --app --no-src-dir
+pnpm --filter ./packages/hedera add @hashgraph/sdk
+pnpm --filter ./apps/core add fastify zod drizzle-orm pg node-cron
+pnpm --filter ./apps/demo-agent add hedera-agent-kit @langchain/core @langchain/openai
+docker run -d --name kosha-pg -e POSTGRES_PASSWORD=kosha -p 5432:5432 postgres:16
+```
+
+### Step 2: Environment
+
+```bash
+# .env (root)
+HEDERA_NETWORK=testnet
+CORE_ACCOUNT_ID=0.0.xxxx          # fee payer + facilitator
+CORE_PRIVATE_KEY=302e...
+ESCROW_ACCOUNT_ID=                # created in step 3
+USDC_TOKEN_ID=0.0.xxxx            # from Circle's docs
+HCS_PAYMENTS_TOPIC=               # created in step 3
+HCS_PROFILES_TOPIC=
+DATABASE_URL=postgres://postgres:kosha@localhost:5432/kosha
+PAIR_HMAC_SECRET=<32 random bytes>
+FX_SOURCE=demo-fixed
+FX_DEMO_INR_PER_USD=88.40
+MIRROR_URL=https://testnet.mirrornode.hedera.com
+```
+
+### Step 3: Bootstrap Hedera (`scripts/bootstrap.ts`)
+
+1. Create accounts: `receiver-in` (Indian API), `receiver-global`, `agent-resident`, `agent-specified`, `agent-nonresident`, `agent-unknown`, and `escrow` with a 2-of-2 `KeyList` (Core + compliance signer).
+2. Associate USDC with every account (`TokenAssociateTransaction`); without this, transfers fail.
+3. Fund the four agent accounts with test USDC.
+4. Create two HCS topics (`TopicCreateTransaction`): payments log and profile registry. Write the IDs to `.env`.
+5. Print a table of account IDs with HashScan links for the README.
+
+```bash
+pnpm tsx scripts/bootstrap.ts
+```
+
+### Step 4: Tax engine first, tests before anything else
+
+1. Write `packages/tax-engine/src/decide.ts` (Component 1) and load `rulepacks/in-2026.1.json` with Zod validation.
+2. Write at least 30 Vitest cases: under, at and over each threshold; crossing with `full` and `excess`; no PAN; unknown payer; non-resident; first-rupee mode; financial-year rollover on 1 April (IST); rounding never under-deducts; tiny prices (1 micro-unit).
+
+```bash
+pnpm --filter tax-engine test
+```
+
+### Step 5: Hedera package
+
+`packages/hedera` exports `buildClient()`, `verify()`, `settle()`, `hcs.log()`, `mirror.accountKey()`, `mirror.transfersSince()`, and `schedule.sweep()`. Test `verify()` with tampered transactions: an extra transfer, a wrong amount, an HBAR debit of Core, a wrong memo, a replayed ID.
+
+### Step 6: Core server
+
+1. Drizzle schema for the tables in Component 1, then `pnpm drizzle-kit push`.
+2. Routes: `/v1/quote`, `/v1/verify`, `/v1/settle`, `/v1/supported`, `/v1/receivers`, `/v1/agents`, `/v1/ledger`, `/v1/stream`.
+3. Test credential issuer: signs JSON credentials for the demo agents; verify the signature on `POST /v1/agents`.
+4. Seed: one Indian receiver (threshold mode, payer funding), one global receiver.
+
+```bash
+pnpm --filter core dev   # http://localhost:4000
+```
+
+### Step 7: Gate, demo APIs and Pay: first end-to-end payment
+
+1. Build `@kosha/gate` and mount it in `demo-api-in` (GSTIN lookup, 0.10 USDC) and `demo-api-global` (0.05 USDC).
+2. Build `@kosha/pay`; write `scripts/pay-once.ts` that calls `demo-api-in` once.
+3. Run it, open the HashScan link, and confirm two token transfers (API and escrow) and one HCS message.
+
+```bash
+pnpm --filter demo-api-in dev & pnpm tsx scripts/pay-once.ts
+```
+
+**Milestone:** this is the first moment that meets the Hedera track's minimum requirements. Save the transaction ID for the README.
+
+### Step 8: Threshold demo mode
+
+A threshold of ₹10,000 at 0.10 USDC per call takes about 1,100 calls. For the live demo:
+
+1. Seed the pair's aggregate at ₹9,980 (labelled sample history), so the crossing happens within a few calls on stage.
+2. Also add `scripts/burst.ts` that sends 20 calls quickly, so the counter visibly moves.
+
+### Step 9: Agent, identity and negotiation
+
+1. Register each demo agent's HCS-14 identity and its `kosha` profile field.
+2. Implement `/.well-known/kosha` on the demo APIs and the funding agreement in Pay.
+3. Build `demo-agent` on the Hedera Agent Kit with `kosha_paid_fetch`. Prompt: "Find GST details for these 5 companies and summarise."
+
+### Step 10: Console
+
+Build the four demo-critical widgets first (Component 4), then the Tax screen and its CSV export, then everything else.
+
+### Step 11: Watcher and sweep
+
+1. Watcher: send a plain USDC transfer from `agent-resident` to `receiver-in` outside Kosha; it should appear under Outside payments within 30 seconds.
+2. Sweep: create the scheduled sweep; co-sign it from the Console; show it executed on HashScan.
+
+### Step 12: Deploy and record
+
+```bash
+fly deploy -c apps/core/fly.toml      # or Railway
+vercel --cwd apps/console
+```
+
+Run the full demo against the deployed stack twice before recording.
+
+### Demo run order (`pnpm demo`)
+
+1. `agent-resident` pays `demo-api-in` while under the threshold: full price, no TDS.
+2. Three more calls cross ₹10,000: the counter turns amber, then "1% withheld"; open the split on HashScan.
+3. `agent-unknown` pays: 20% from the first rupee, and the 402 body explains how to register.
+4. `agent-nonresident` pays `demo-api-global`: no TDS, "FEMA review" flag.
+5. `agent-resident` hits its daily cap: payment blocked by policy.
+6. An outside transfer appears under Outside payments.
+7. Download the TDS file; co-sign the sweep.
+
+## Action plan
+
+The sprint runs in five phases to submission. Gate 2, the first split payment visible on HashScan, is the point where Kosha meets the Hedera track minimum; everything after it adds score.
+
+&#91;embedded content: Sprint plan · 5 phases, 4 gates\]
+
+Don't start a phase until the previous gate passes. If Gate 2 slips past midnight, go straight to the cut list.
+
+### Team roles (three people)
+
+| Role | Owns | Phases |
+| --- | --- | --- |
+| Hedera and Core | `packages/hedera`, bootstrap script, Core verify and settle, HCS log, watcher, sweep, deploy | 1 to 4 |
+| Tax and SDKs | Tax engine and its tests, rule pack, Kosha Gate, Kosha Pay, demo APIs, demo agent, HCS-14 profiles | 1 to 3 |
+| Console and story | Kosha Console, seed data, README, architecture diagram, pitch, video | 2 to 5 |
+
+With two people, merge "Tax and SDKs" into the other two roles. Solo, follow the cut list from item 3 onwards.
+
+### Cut list (drop in this order if behind)
+
+1. Agents negotiating funding: hard-code payer-funded.
+2. Scheduled sweep: show the escrow balance only.
+3. Outside-payment watcher: describe it in the pitch instead.
+4. HCS-14 identity: keep credentials in Core only.
+5. Gains report for agent owners.
+6. Hono adapter for Gate.
+
+**Never cut:** tax engine tests, the split settlement, the HCS log, spending controls, the threshold counter, the 20% default for unknown payers, and the video.
+
+### Submission checklist
+
+- [ ] Public GitHub repo, with this plan's architecture diagram in the README
+- [ ] README: setup, architecture, payment flow, and HashScan links for a normal payment, a payment with TDS withheld, and the sweep
+- [ ] Demo video around 3:30, in your own voice, which fits both ETHGlobal (2 to 4 min, no AI voiceover) and Hedera (5 min or less)
+- [ ] Video shows a settled payment on HashScan and the split
+- [ ] Deployed URLs for Core, the demo API and Console
+- [ ] Sponsor prizes selected on ETHGlobal (up to 3)
+- [ ] "Rule pack unreviewed" and "not tax advice" labels visible in Console and README
+- [ ] Seeded history labelled as sample data
+
+## Sponsors, testing, risks and sources
+
+### Sponsor mapping
+
+Hedera's x402 track is the primary target; every requirement and all seven bonuses are covered ([prize page](https://ethglobal.com/events/mumbai/prizes/hedera)).
+
+| Hedera requirement or bonus | Where Kosha meets it |
+| --- | --- |
+| x402 endpoint settling on Hedera | Kosha Gate + Core, own facilitator |
+| Agent pays end to end without human approval | `demo-agent` via Kosha Pay |
+| README with settled transaction ID; video of 5 min or less with HashScan | Step 7 milestone; recording in Step 12 |
+| Spending controls | Pay policy + server-side enforcement in Core |
+| Agent identity (HCS-14) | Agent profiles carry the tax credential reference |
+| HCS tamper-evident spending log | Payments topic |
+| Agents negotiating before payment | Funding agreement via `/.well-known/kosha` |
+| HTS token settlement (USDC) and revenue splits | USDC settlement; price and TDS split in one transfer |
+| Scheduled Transactions | Monthly escrow sweep |
+| Hedera Agent Kit | `demo-agent` and the `kosha_paid_fetch` tool |
+
+**Also possible:** Hedera's "No Solidity Allowed" ($2,000), since Kosha uses no contracts and at least two native services (HTS, HCS, scheduled transactions). Ask Hedera's team whether one project can win two of their prizes. For the other two sponsor picks, World ID (Agent Pass as proof of a unique human behind each agent) is the closest fit; Arkiv only if records are mirrored there with the required `/arkiv/*.md` files.
+
+### Testing
+
+| Layer | What | Tool |
+| --- | --- | --- |
+| Tax engine | 30+ cases: thresholds, crossing, rates, residency, financial-year rollover, rounding | Vitest |
+| Verifier | Tampered transactions: extra transfer, HBAR debit of Core, wrong token, memo, replay, bad signature | Vitest + SDK fixtures |
+| Gate | 402 body, happy path, every error code | Supertest |
+| End to end | `pnpm demo` on testnet, asserting HashScan and HCS results | Script |
+| Console | Threshold counter, CSV download | Playwright |
+
+### Risks and open questions
+
+- [ ] **Tax reading (highest risk):** does paying for an API in USDC fall under s.393(1), and is the API the deductor? Get a CA's view; until then the rule pack shows "unreviewed".
+- [ ] Whole crossing payment or only the excess: confirm with a CA (default `full`).
+- [ ] Which INR rate tax law expects for VDA consideration (SBI TT buying rate is common practice).
+- [ ] Exact form numbers and due dates under the Income-tax Act 2025.
+- [ ] Can a facilitator take on the deduction duty under the exchange-route model?
+- [ ] Testnet USDC token ID and faucet availability on Hedera.
+- [ ] Whether long-term scheduled transactions (`setWaitForExpiry`) work on testnet.
+- [ ] Which x402 version and header names to follow; align with an existing Hedera facilitator's spec.
+- [ ] HCS-14 SDK maturity; fall back to an HCS-11 profile if needed.
+- [ ] Name clash check for "Kosha" (trademark, npm scope, domain).
+
+### Sources
+
+- [Hedera prizes, ETHGlobal Mumbai](https://ethglobal.com/events/mumbai/prizes/hedera)
+- [TDS on Virtual Digital Assets, Section 393(1) (194S), TDSMAN (Aug 2026)](https://blog.tdsman.com/2026/08/tds-on-virtual-digital-assets-section-3931-194s/)
+- [CBDT guidelines on TDS for VDAs (Circular 13 of 2022), Khaitan & Co](https://khaitanco.com/thought-leaderships/CBDT-provides-much-awaited-guidelines-in-relation-to-TDS-on-payments-for-Virtual-Digital-Assets)
+- [Are stablecoins taxable in India?, KoinX (2026)](https://www.koinx.com/in/tax-guides/are-stablecoins-and-cbdc-taxable-in-india)
+- [TDS on crypto in India, ClearTax](https://cleartax.in/s/tds-on-crypto-in-india)
+- [On-chain compliance guardrail for agent stablecoin payments, arXiv 2605.00071](https://arxiv.org/abs/2605.00071)
+
+*Not tax or legal advice.*
