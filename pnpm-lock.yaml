@@ -99,6 +99,12 @@ importers:
 
   apps/core:
     dependencies:
+      '@hiero-ledger/sdk':
+        specifier: 2.90.1
+        version: 2.90.1
+      '@kosha/hedera':
+        specifier: workspace:*
+        version: link:../../packages/hedera
       '@kosha/shared':
         specifier: workspace:*
         version: link:../../packages/shared
