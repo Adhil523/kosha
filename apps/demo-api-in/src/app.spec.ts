@@ -50,6 +50,8 @@ const setup = () => {
     core: 'https://core.test',
     apiKey: 'key_123',
     fetch: fetchMock,
+    // The fake Core's transactions aren't on the Mirror Node; Gate's own tests cover the proof
+    onChainProof: false,
     registrationUrl: 'http://localhost:3000/agents'
   });
   return { app, fetchMock };

@@ -11,10 +11,13 @@ export default defineConfig({
     compilerOptions: {
       // tsup 8 sets baseUrl for the declaration build, which TypeScript 6 deprecates
       ignoreDeprecations: '6.0',
-      paths: { '@kosha/shared/*': ['../shared/src/*.ts'] }
+      paths: {
+        '@kosha/shared/*': ['../shared/src/*.ts'],
+        '@kosha/hedera/*': ['../hedera/src/*.ts']
+      }
     }
   },
-  // @kosha/shared is bundled in; zod and express stay the user's dependencies
+  // @kosha/shared and the fetch-only @kosha/hedera/mirror are bundled in; zod and express stay the user's dependencies
   noExternal: [/^@kosha\//],
   external: ['express', 'zod'],
   target: 'node24',

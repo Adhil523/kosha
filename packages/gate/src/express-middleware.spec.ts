@@ -71,6 +71,7 @@ const setup = (
       core: 'https://core.test',
       apiKey: 'key_123',
       fetch: fetchMock,
+      onChainProof: false,
       routes: { [`GET ${GST_PATH}`]: { priceUsdc: '0.10' } },
       onSettled,
       ...options

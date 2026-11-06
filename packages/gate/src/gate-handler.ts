@@ -1,5 +1,6 @@
 import { type CoreClientOptions, type CoreFailure, createCoreClient } from './core-client';
 import { buildTerms, TERMS_PATH, type TermsOptions } from './kosha-terms';
+import { createReserveProver, type ReserveProofOptions } from './reserve-proof';
 import { compileRoutes, type MatchedRoute, type Routes } from './route-match';
 import { type ErrorCode, errorCodeSchema } from '@kosha/shared/error-codes';
 import { type FacilitatorRequest } from '@kosha/shared/facilitator-api';
@@ -44,6 +45,9 @@ export type KoshaContext = {
   hashscanUrl: string | null;
   tdsMicroUsdc: bigint;
   hcsSequence: number | null;
+  // The Mirror Node check of the reserve leg: proven on-chain, nothing to prove, Mirror Node too
+  // slow to answer (Core's word stands), or turned off
+  reserveProof: 'proven' | 'skipped' | 'unconfirmed' | 'off';
 };
 
 export type GateResult =
@@ -70,6 +74,9 @@ export type GateOptions = CoreClientOptions & {
   network?: X402Network;
   // When set, Gate answers GET /.well-known/kosha with these terms and the route prices
   terms?: TermsOptions;
+  // Check the reserve leg on the Mirror Node after settling (default on). `false` skips it, as
+  // the burst script does, to avoid the Mirror Node's few seconds of lag.
+  onChainProof?: boolean | ReserveProofOptions;
 };
 
 const EXPOSE_HEADERS = { 'access-control-expose-headers': CORS_EXPOSED_HEADERS.join(', ') };
@@ -138,6 +145,10 @@ export const createGateHandler = (options: GateOptions) => {
   const core = createCoreClient(options);
   const matchRoute = compileRoutes(options.routes);
   const fallbackNetwork = options.network ?? X402_NETWORKS.testnet;
+  const { onChainProof = true } = options;
+  const proveReserve = onChainProof
+    ? createReserveProver(onChainProof === true ? {} : onChainProof)
+    : null;
   const termsResult: GateResult | null = options.terms
     ? {
         action: 'respond',
@@ -231,6 +242,21 @@ export const createGateHandler = (options: GateOptions) => {
       return failure(settleErrorCode(settlement), accepted.network, settlement);
     }
 
+    const proof =
+      proveReserve && settlement.transaction
+        ? await proveReserve(settlement.transaction, accepted)
+        : { status: proveReserve ? ('unconfirmed' as const) : ('off' as const) };
+    if (proof.status === 'failed') {
+      // Core said settled but the chain disagrees: the API must not serve on Core's word alone
+      const refused = { ...settlement, success: false, errorReason: 'amount_mismatch' } as const;
+      return failure(
+        'amount_mismatch',
+        accepted.network,
+        refused,
+        `reserve proof: ${proof.reason}`
+      );
+    }
+
     const kosha = settlement.extensions?.kosha;
     const tdsMicroUsdc = BigInt(
       kosha?.tdsMicroUsdc ??
@@ -250,7 +276,8 @@ export const createGateHandler = (options: GateOptions) => {
         txId: settlement.transaction,
         hashscanUrl: kosha?.hashscanUrl ?? null,
         tdsMicroUsdc,
-        hcsSequence: kosha?.hcsSequence ?? null
+        hcsSequence: kosha?.hcsSequence ?? null,
+        reserveProof: proof.status
       }
     };
   };
