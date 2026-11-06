@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import type { CSSProperties } from 'react';
 
 type Tone = 'accent' | 'warning' | 'plain';
 type PaymentRow = { agent: string; tds: string; reason: string; tone: Tone };
@@ -85,7 +86,7 @@ export const ConsoleWindow = ({ className }: ConsoleWindowProps) => (
         <div className="flex items-center justify-between">
           <span className="text-base font-medium">Payments</span>
           <span className="flex items-center gap-2 text-ui-meta text-muted">
-            <i className="size-1.5 rounded-full bg-accent" />
+            <i className="live-dot size-1.5 rounded-full bg-accent" />
             live
           </span>
         </div>
@@ -100,8 +101,11 @@ export const ConsoleWindow = ({ className }: ConsoleWindowProps) => (
               </div>
               <div className="h-1.5 overflow-hidden rounded-sm bg-ink/10">
                 <div
-                  className={cn('h-full', counter.tone === 'accent' ? 'bg-accent' : 'bg-warning')}
-                  style={{ width: `${counter.share}%` }}
+                  className={cn(
+                    'level h-full w-full',
+                    counter.tone === 'accent' ? 'bg-accent' : 'bg-warning'
+                  )}
+                  style={{ '--share': counter.share / 100 } as CSSProperties}
                 />
               </div>
             </div>

@@ -11,6 +11,20 @@ type LinkButtonProps = {
 
 const isExternal = (href: string) => href.startsWith('http');
 
+/** The one arrow style on the page: on the main action only, it moves 3px under the pointer */
+const Arrow = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 16 16" aria-hidden="true" className={cn('m-arrow size-4', className)}>
+    <path
+      d="M3 8h10M9 4l4 4-4 4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 export const LinkButton = ({
   href,
   variant = 'primary',
@@ -29,5 +43,6 @@ export const LinkButton = ({
     {...(isExternal(href) ? { target: '_blank', rel: 'noreferrer' } : {})}
   >
     {children}
+    {variant === 'primary' ? <Arrow className={size === 'xl' ? 'size-7' : undefined} /> : null}
   </a>
 );

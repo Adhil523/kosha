@@ -34,7 +34,7 @@ export const HeroSection = () => (
 
       <Loop
         label="the receipt"
-        className="lit relative h-[380px] overflow-hidden rounded-lg sm:h-[560px] lg:col-span-6 lg:col-start-7 lg:h-[716px]"
+        className="lit frame-enter relative h-[380px] overflow-hidden rounded-lg sm:h-[560px] lg:col-span-6 lg:col-start-7 lg:h-[716px]"
       >
         <ConsoleWindow className="absolute top-4 left-4 w-[calc(100%-16px)] sm:top-16 sm:left-16 sm:w-[calc(100%-64px+28px)]" />
         <ReceiptCard className="absolute bottom-8 left-8 hidden sm:block" />

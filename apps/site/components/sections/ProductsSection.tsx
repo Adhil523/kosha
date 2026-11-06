@@ -122,7 +122,7 @@ const ProductCard = ({ name, title, body, href, tools, visual }: Product) => (
       {tools.map((tool) => (
         <li
           key={tool.name}
-          className="flex items-center gap-2 rounded-sm border border-line px-2 py-1 text-label text-muted"
+          className="chip flex items-center gap-2 rounded-sm border border-line px-2 py-1 text-label text-muted"
         >
           <img
             src={`/icons/${tool.icon}.svg`}

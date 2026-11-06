@@ -50,7 +50,7 @@ export const SiteNav = () => {
         id="site-menu"
         hidden={!open}
         className={cn(
-          'fixed inset-x-0 top-(--nav) bottom-0 bg-ground md:hidden',
+          'menu-sheet fixed inset-x-0 top-(--nav) bottom-0 bg-ground md:hidden',
           open && 'flex flex-col'
         )}
       >
