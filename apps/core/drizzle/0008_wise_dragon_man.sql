@@ -1,0 +1,1 @@
+ALTER TABLE "HcsOutbox" ADD COLUMN "hcsRunningHash" text;
