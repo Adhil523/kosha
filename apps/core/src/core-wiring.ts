@@ -13,6 +13,8 @@ import { facilitatorRoutes } from './facilitator-routes';
 import { demoFixedFx } from './fx';
 import type { OutboxDeps } from './hcs-outbox';
 import { ledgerRoutes } from './ledger-routes';
+import { outsideRoutes } from './outside-routes';
+import { type WatcherDeps } from './outside-watcher';
 import { policyRoutes } from './policy-routes';
 import { quoteRoutes } from './quote-routes';
 import { receiverRoutes } from './receiver-routes';
@@ -33,7 +35,12 @@ import { createReserveAccount } from '@kosha/hedera/reserve';
 // How long Core asks the Mirror Node about a settlement whose receipt timed out
 const RECONCILE = { attempts: 5, delayMs: 2_000 };
 
-export type CoreWiring = { routes: RegisterRoutes[]; outbox: OutboxDeps; forwarder: ForwarderDeps };
+export type CoreWiring = {
+  routes: RegisterRoutes[];
+  outbox: OutboxDeps;
+  forwarder: ForwarderDeps;
+  watcher: WatcherDeps;
+};
 export type WiringResult =
   { ok: true; data: CoreWiring } | { ok: false; data: { problem: string } };
 
@@ -138,6 +145,12 @@ export const wireCore = (
       pairSecret: config.pairHmacSecret,
       paymentsTopicId: config.paymentsTopicId
     }),
+    outsideRoutes({
+      db,
+      adminToken: config.adminToken,
+      pairSecret: config.pairHmacSecret,
+      paymentsTopicId: config.paymentsTopicId
+    }),
     facilitatorRoutes({
       ...settlement,
       payerKey,
@@ -160,6 +173,16 @@ export const wireCore = (
       routes,
       outbox: { db, submit: (topicId, message) => submitMessage(execute, topicId, message) },
       // The compat settlement account has Core's key, so the operator's signature covers it
+      watcher: {
+        db,
+        mirror,
+        settlementTokenId: config.settlementTokenId,
+        pack: rulePack.pack,
+        fx,
+        bus,
+        pairSecret: config.pairHmacSecret,
+        paymentsTopicId: config.paymentsTopicId
+      },
       forwarder: {
         db,
         execute: (transaction) => execute(transaction),

@@ -5,6 +5,7 @@ import { loadConfig } from './config';
 import { wireCore } from './core-wiring';
 import { createDb, migrateDb } from './db/client';
 import { queueRulepackOnce, startOutboxLoop, startRetryLoop } from './hcs-outbox';
+import { scheduleOutsideWatch } from './jobs/outside-watch.job';
 import { buildClient } from '@kosha/hedera/client';
 import { loadEnv } from '@kosha/shared/env';
 
@@ -74,11 +75,13 @@ const main = async (): Promise<void> => {
     () => forwardDue(forwarder),
     FORWARD_LOOP
   );
+  const stopWatcher = scheduleOutsideWatch(wiring.data.watcher);
   const app = buildApp({ routes: wiring.data.routes });
 
   const shutdown = async () => {
     stopOutbox();
     stopForwarder();
+    stopWatcher();
     await app.close();
     await database.close();
     operator.data.client.close();
