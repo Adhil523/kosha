@@ -19,6 +19,7 @@
     "seed": "pnpm --filter @kosha/scripts exec tsx seed.ts",
     "register-agents": "pnpm --filter @kosha/scripts exec tsx register-agents.ts",
     "smoke-settle": "pnpm --filter @kosha/scripts exec tsx smoke-settle.ts",
+    "smoke-compat": "pnpm --filter @kosha/scripts exec tsx smoke-compat.ts",
     "pay-once": "pnpm --filter @kosha/scripts exec tsx pay-once.ts",
     "burst": "pnpm --filter @kosha/scripts exec tsx burst.ts",
     "demo": "pnpm --filter @kosha/scripts exec tsx demo.ts"
