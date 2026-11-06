@@ -14,6 +14,7 @@ import { receiverRoutes } from './receiver-routes';
 import { mirrorReconciler } from './reconcile';
 import { createPayerResolver } from './resolve-payer';
 import { announceSettlement } from './settlement-events';
+import { streamRoutes } from './stream-routes';
 import { supportedRoutes } from './supported-routes';
 import type { Client, PrivateKey, TransferTransaction } from '@hiero-ledger/sdk';
 import { parsePrivateKey } from '@kosha/hedera/client';
@@ -108,6 +109,7 @@ export const wireCore = (
       network: config.network,
       pack: rulePack.pack
     }),
+    streamRoutes({ db, adminToken: config.adminToken, bus }),
     facilitatorRoutes({
       ...settlement,
       payerKey,
