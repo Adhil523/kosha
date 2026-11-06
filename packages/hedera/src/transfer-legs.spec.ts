@@ -27,6 +27,13 @@ describe('verifyTransfer', () => {
     expect(verified.ok && verified.data.payer).toBe('0.0.6001');
   });
 
+  it("refuses a split transfer that doesn't declare the token's 6 decimals", async () => {
+    for (const decimals of [null, 8]) {
+      const verified = await verifyVariant({ decimals });
+      expect(verified.ok ? 'ok' : verified.data.code).toBe('wrong_token');
+    }
+  });
+
   it.each<[string, Variant]>([
     [
       'transfer_count',

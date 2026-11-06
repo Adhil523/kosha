@@ -50,6 +50,8 @@ export type Variant = {
   nft?: boolean;
   key?: PrivateKey;
   unsigned?: boolean;
+  // The decimals each leg declares: 6 by default, as Kosha Pay builds it; null declares none
+  decimals?: number | null;
 };
 
 export const signedVariant = async (variant: Variant = {}): Promise<string> => {
@@ -70,8 +72,10 @@ export const signedVariant = async (variant: Variant = {}): Promise<string> => {
   for (const [account, amount] of variant.legs ?? QUOTED_LEGS) {
     if (variant.approvedDebit && amount < 0n) {
       transaction.addApprovedTokenTransfer(token, account, amount);
-    } else {
+    } else if (variant.decimals === null) {
       transaction.addTokenTransfer(token, account, amount);
+    } else {
+      transaction.addTokenTransferWithDecimals(token, account, amount, variant.decimals ?? 6);
     }
   }
   if (variant.hbar) {

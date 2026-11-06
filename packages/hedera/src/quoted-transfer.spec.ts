@@ -44,6 +44,8 @@ describe('buildQuotedTransfer', () => {
       '0.0.5'
     ]);
     expect(parsed.transactionMemo).toBe('kosha:q_7f3a');
+    // Declared decimals make the network refuse a token that isn't 6-decimal
+    expect([...parsed.tokenIdDecimals.values()]).toEqual([6]);
     expect(parsed.maxTransactionFee?.toTinybars().toString()).toBe(
       new Hbar(2).toTinybars().toString()
     );

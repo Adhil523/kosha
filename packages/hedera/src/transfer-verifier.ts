@@ -2,7 +2,7 @@ import { proto } from '@hiero-ledger/proto';
 import { Hbar, type PublicKey, Transaction, TransferTransaction } from '@hiero-ledger/sdk';
 import type { ErrorCode } from '@kosha/shared/error-codes';
 import { type AccountId, accountIdSchema } from '@kosha/shared/ids';
-import { amountToBigint } from '@kosha/shared/money';
+import { amountToBigint, USDC_DECIMALS } from '@kosha/shared/money';
 import type { KoshaSplitRequirements } from '@kosha/shared/x402-payment';
 
 // The verifier protects Core, the fee payer: Core signs whatever body bytes it is handed, so every
@@ -129,19 +129,28 @@ export type LegsCheckInput = {
   };
   // The reserve registered to the agent the quote was issued to (mode C); null if it has none
   expectedReserveAccount: AccountId | null;
+  // Kosha's own transfers declare the token's decimals, so the network refuses a token whose
+  // decimals differ instead of moving a mis-scaled amount. A stock exact client declares none.
+  // Required unless said otherwise.
+  declaredDecimals?: 'required' | 'optional';
 };
 
 // The token legs must be exactly the quote's: one token (the asset), one debit (the payer, for the
 // total), and each quoted credit, with the TDS going to the quoted agent's own reserve.
 export const checkTransferLegs = (
   transaction: TransferTransaction,
-  { requirements, expectedReserveAccount }: LegsCheckInput
+  { requirements, expectedReserveAccount, declaredDecimals = 'required' }: LegsCheckInput
 ): { ok: true; data: { payer: AccountId } } | VerifierFailure => {
   const tokens = [...transaction.tokenTransfers];
   const [onlyToken] = tokens;
   if (tokens.length !== 1 || !onlyToken) return failure('token_count');
   const [tokenId, moves] = onlyToken;
   if (tokenId.toString() !== requirements.asset) return failure('wrong_token');
+  const [, declared = null] =
+    [...transaction.tokenIdDecimals].find(([id]) => id.toString() === tokenId.toString()) ?? [];
+  const decimalsOk =
+    declared === null ? declaredDecimals === 'optional' : declared === USDC_DECIMALS;
+  if (!decimalsOk) return failure('wrong_token');
 
   const entries = [...moves].map(
     ([account, amount]) => [account.toString(), BigInt(amount.toString())] as const

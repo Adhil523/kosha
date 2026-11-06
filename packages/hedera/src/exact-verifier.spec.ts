@@ -77,6 +77,11 @@ describe('verifyExactTransfer', () => {
     expect(await codeOf({ approvedDebit: true })).toBe('approved_transfer');
   });
 
+  it('accepts a stock client that declares no decimals, but not one that declares others', async () => {
+    expect(await codeOf({ decimals: null })).toBe('ok');
+    expect(await codeOf({ decimals: 8 })).toBe('wrong_token');
+  });
+
   it('refuses a payment from Core’s own account', async () => {
     const own: Variant = {
       legs: [

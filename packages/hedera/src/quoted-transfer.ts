@@ -7,7 +7,7 @@ import {
   TransferTransaction
 } from '@hiero-ledger/sdk';
 import type { AccountId as AccountIdString } from '@kosha/shared/ids';
-import { amountToBigint } from '@kosha/shared/money';
+import { amountToBigint, USDC_DECIMALS } from '@kosha/shared/money';
 import { checkSplitQuote, type SplitQuoteProblem } from '@kosha/shared/split-quote';
 import type { KoshaSplitRequirements } from '@kosha/shared/x402-payment';
 
@@ -65,13 +65,19 @@ export const buildQuotedTransfer = (
     .setNodeAccountIds(nodeAccountIds.map((node) => AccountId.fromString(node)))
     .setTransactionMemo(memo)
     .setMaxTransactionFee(new Hbar(maxTransactionFeeHbar))
-    .addTokenTransfer(token, AccountId.fromString(payerAccountId), -split.data.totalMicro);
+    .addTokenTransferWithDecimals(
+      token,
+      AccountId.fromString(payerAccountId),
+      -split.data.totalMicro,
+      USDC_DECIMALS
+    );
 
   for (const leg of transfers) {
-    transaction.addTokenTransfer(
+    transaction.addTokenTransferWithDecimals(
       token,
       AccountId.fromString(leg.account),
-      amountToBigint(leg.amount)
+      amountToBigint(leg.amount),
+      USDC_DECIMALS
     );
   }
 

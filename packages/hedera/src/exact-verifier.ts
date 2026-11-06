@@ -50,7 +50,8 @@ export const verifyExactTransfer = (base64: string, terms: ExactTerms): Verified
         }
       }
     },
-    expectedReserveAccount: null
+    expectedReserveAccount: null,
+    declaredDecimals: 'optional'
   });
   if (!legs.ok) return legs;
   if (legs.data.payer === terms.feePayer) return failure('fee_payer_transferring');
