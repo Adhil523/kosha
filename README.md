@@ -120,6 +120,96 @@ government requires: paying the tax in rupees.
 
 Kosha uses no smart contracts, only native HTS, HCS and scheduled transactions.
 
+## Why Hedera
+
+1. **Fixed, tiny fees.** Withholding 1% of an ₹8 API call only makes sense when the fee is a
+   fraction of a cent and known in advance; a variable gas fee would cost more than the tax.
+2. **A native multi-party transfer.** One `TransferTransaction` moves the price to the API and the
+   TDS to the agent's reserve atomically, with no smart contract.
+3. **HCS as the evidence log.** Every decision is ordered, timestamped and append-only, and the
+   submit key means only Kosha can write to the topic. Anyone can recompute a decision from it.
+4. **Scheduled transactions.** The 2-of-2 reserve releases through a co-signed scheduled
+   transaction, with no custody code.
+5. **Agent identity and policy out of the box.** Hedera Agent Kit v4, HCS-14 and HCS-11 give agents
+   an identity and policy-enforced spending.
+
+## Network impact
+
+Testnet volume proves nothing, so here is the mechanism. Each unit of use creates Hedera activity:
+
+| Event                                           | Hedera transactions                                                                                    |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| One paid call (`kosha-split`)                   | 1 `CryptoTransfer` + 1 HCS payments message + 1 HCS audit message = **3**                              |
+| One paid call (compatibility mode)              | 2 `CryptoTransfer` + 2 HCS messages = **4**                                                            |
+| One new agent                                   | 1 reserve `AccountCreate` (plus its own account if Kosha onboards it) + about 3 for its HCS-11 profile |
+| One payer and receiver pair, per month          | 1 `ScheduleCreate` + 1 `ScheduleSign` (release) + 1 HCS challan record                                 |
+| One tax decision for a payment on another chain | 1 HCS message                                                                                          |
+
+**An illustrative scenario, not a forecast:** 100 API owners × 50 agents each × 200 paid calls a
+day is 1,000,000 calls, about 3,000,000 Hedera transactions a day, or **35 TPS** sustained. That is
+about 10,000 monthly active accounts (5,000 agents, 5,000 reserves and 100 receivers), and every new
+agent creates at least one Hedera account: its reserve.
+
+The audience is mostly new to crypto: Indian API businesses and their CAs, plus every x402
+facilitator that asks Kosha for a tax decision.
+
+## Business model
+
+A draft Lean Canvas. Pricing is a proposal, not a decision.
+
+| Block              | Content                                                                                                                                                                |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Problem            | Agents pay Indian APIs in USDC; the API owner must deduct 1% TDS on a VDA received in kind; no agent-payment tool handles it, and mistakes cost interest and penalties |
+| Customers          | Indian API businesses selling to agents (early adopters: data, GST and KYC APIs); the agent developers who pay them; the CAs who file for both                         |
+| Value proposition  | Every agent payment, tax-ready: tax decided and reserved in the same Hedera transaction, with HCS evidence for every row of the return                                 |
+| Solution           | Gate (a few lines of middleware), Pay (a drop-in `fetch`), Core (facilitator and tax engine), Console (filing export)                                                  |
+| Channels           | x402 and Hedera developer communities, Indian API marketplaces, CA networks, a tax-decision API for other facilitators                                                 |
+| Revenue (proposal) | A small per-settlement fee in basis points, or a monthly fee per API owner with filing exports; a per-decision fee for other facilitators                              |
+| Costs              | Hedera fees (Core pays them), Mirror Node access, hosting, a KYC provider per verification, a CA review of each rule pack                                              |
+| Key metrics        | Paid calls, TDS reserved, receivers onboarded, filings exported, tax decisions served                                                                                  |
+| Unfair advantage   | Versioned, CA-reviewed rule packs and an on-chain evidence trail; jurisdiction knowledge others would have to rebuild                                                  |
+
+**Why it needs Web3:** the tax exists only because the payment is a crypto asset, and machine
+payments need an atomic, programmable split with public evidence. A card network can't settle a 1%
+split of ₹8.84 at this cost.
+
+## Roadmap and go-to-market
+
+- **Roadmap:** a CA-reviewed rule pack → a KYC provider for Level 1 and 2 → Console polish and
+  HashPack co-signing → tax decisions for payments on other chains → Kosha as the registered
+  deductor → more jurisdictions, each as a rule pack.
+- **Go-to-market:** start with Indian data APIs already selling to agents, partner with one CA firm,
+  and list Gate in x402 directories.
+- **Feedback loops:** a CA review for each rule pack, and the rate at which agents verify after the
+  Console warns them they are near the threshold.
+
+## Is the need real?
+
+- The problem is recognised, though only for the US so far:
+  [Crypto Briefing (Sep 2026)](https://cryptobriefing.com/ai-agents-crypto-payments-taxable-events/)
+  and [Coincub (2026)](https://coincub.com/blog/taxing-agentic-income-ai/) on agents creating
+  taxable events.
+- India-focused agent-payment guides mention GST but skip TDS:
+  [x402 for Indian developers](https://dev.to/umangbuilds/x402-protocol-for-indian-developers-monetize-apis-in-usdc-2026-1jec)
+  and
+  [AI agent payments in India](https://dev.to/umangbuilds/ai-agent-payments-in-india-the-complete-infrastructure-guide-2026-11am).
+- The law says it applies:
+  [TDS on VDAs, Section 393(1) (TDSMAN)](https://blog.tdsman.com/2026/08/tds-on-virtual-digital-assets-section-3931-194s/),
+  [CBDT Circular 14/2022](https://www.pdicai.org/Docs/circular-14-2022_296202213596419.pdf) and
+  [CBDT on P2P VDA transfers (Khaitan & Co)](https://www.khaitanco.com/thought-leaderships/CBDT-clarifies-TDS-mechanism-for-P2P-Peer-to-Peer-VDA-transactions).
+
+We found no system that withholds tax at the moment of an x402 payment.
+
+## Validation
+
+Feedback from people outside the team, recorded as it happens. Planned: a CA reviews rule pack
+`in-2026.2`; Indian API owners try the deployed Gate; Hedera's team sees the demo; an outside agent
+developer pays with a stock x402 client.
+
+| Date | Who (role) | Channel | What they saw | Feedback             | Change made |
+| ---- | ---------- | ------- | ------------- | -------------------- | ----------- |
+|      |            |         |               | _None recorded yet._ |             |
+
 ## Run it locally
 
 You need Node.js 24, pnpm 10, Docker (for Postgres) and a Hedera testnet account with some HBAR
