@@ -65,6 +65,12 @@ export const getTaxReport = async (quarter: Quarter): Promise<ApiResponse<TaxRep
   return {
     ok: true,
     status: 200,
-    data: { quarter, ...summarise(rows), rows, rulePack: { ...rulePack.data, hcs } }
+    data: {
+      quarter,
+      ...summarise(rows),
+      rows,
+      hcsTopic: isMockMode() ? null : paymentsHcsConfig(),
+      rulePack: { ...rulePack.data, hcs }
+    }
   };
 };

@@ -1,4 +1,5 @@
 import { istDateKey } from '@/lib/overview';
+import { topicIdSchema } from '@kosha/shared/ids';
 import { amountSchema, amountToBigint, bigintToAmount } from '@kosha/shared/money';
 import { quarterSchema, type TdsExportRow, tdsExportRowSchema } from '@kosha/shared/tax-reports';
 import { z } from 'zod';
@@ -93,6 +94,9 @@ export const taxReportSchema = z.object({
   totals: totalsSchema,
   deductees: z.array(totalsSchema.extend({ deducteeRef: z.string(), rates: z.array(z.int()) })),
   rows: z.array(tdsExportRowSchema),
+  // Where each row's hcsSequence lives; null when the payments topic isn't configured (or in mock
+  // mode, whose sample sequences name no real message)
+  hcsTopic: z.object({ mirrorUrl: z.url(), topicId: topicIdSchema }).nullable(),
   rulePack: z.object({
     id: z.string(),
     hash: z.string(),

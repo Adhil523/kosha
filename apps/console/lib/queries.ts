@@ -3,6 +3,7 @@ import { api } from '@/lib/api';
 import { overviewSchema } from '@/lib/overview';
 import { QUERY_KEYS } from '@/lib/query-client';
 import { spendSummarySchema } from '@/lib/spend';
+import { taxReportSchema } from '@/lib/tax-report';
 import { URLS } from '@/lib/urls';
 import { aggregateRowSchema, ledgerPageSchema } from '@kosha/shared/console-api';
 import { policySchema } from '@kosha/shared/registry';
@@ -46,4 +47,9 @@ export const getAgentSpendQueryParams = (agentId: string) => ({
 export const getAgentPolicyQueryParams = (agentId: string) => ({
   queryKey: QUERY_KEYS.agentPolicy(agentId),
   queryFn: () => getValidated(URLS.console.agentPolicy(agentId), policySchema.nullable())
+});
+
+export const getTaxReportQueryParams = (quarter: string) => ({
+  queryKey: QUERY_KEYS.taxReport(quarter),
+  queryFn: () => getValidated(URLS.console.tax(quarter), taxReportSchema)
 });

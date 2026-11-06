@@ -20,5 +20,11 @@ export const TEST_IDS = {
   agentTab: (agentId: string) => `agent-tab-${agentId}`,
   spendStat: (id: string) => `spend-stat-${id}`,
   policyField: (field: string) => `policy-field-${field}`,
-  policySave: 'policy-save'
+  policySave: 'policy-save',
+  quarterPicker: 'quarter-picker',
+  tdsDownload: 'tds-download',
+  taxStat: (id: string) => `tax-stat-${id}`,
+  deducteeRow: (ref: string) => `deductee-row-${ref}`,
+  evidenceRow: (txId: string) => `evidence-row-${txId}`,
+  rulePackHash: 'rule-pack-hash'
 } as const;
