@@ -10,12 +10,14 @@
   },
   "dependencies": {
     "@hiero-ledger/sdk": "2.90.1",
+    "@kosha/arkiv": "workspace:*",
     "@kosha/hedera": "workspace:*",
     "@kosha/pay": "workspace:*",
     "@kosha/shared": "workspace:*",
     "@x402/core": "2.30.0",
     "@x402/fetch": "2.30.0",
     "@x402/hedera": "2.30.0",
+    "viem": "^2.57.16",
     "zod": "4.6.7"
   },
   "devDependencies": {

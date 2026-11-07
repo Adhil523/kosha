@@ -121,6 +121,51 @@ government requires: paying the tax in rupees.
 
 Kosha uses no smart contracts, only native HTS, HCS and scheduled transactions.
 
+## Arkiv: a public directory of tax-aware APIs
+
+Every Kosha-protected API publishes its terms at `/.well-known/kosha`: net prices, the tax rule
+pack, the unverified-payer policy and the verification levels it serves. Kosha copies those terms
+to [Arkiv](https://arkiv.network) as one entity per priced route, so an agent can find an API it
+may pay, and see how its payment will be taxed, **without asking Kosha**. The showcase site's
+**Directory** section reads the listings live from Arkiv in the browser and filters them.
+
+- **Network:** Arkiv Rabdi testnet, with `@arkiv-network/sdk` 1.0.1
+- **Writer wallet:** `0xeA102e83bD920cc72dC70eA18CEcd8A05c8B0604`, which owns every listing
+- **Code:** [`packages/arkiv`](packages/arkiv/src), [`scripts/arkiv-publish.ts`](scripts/arkiv-publish.ts),
+  [`scripts/arkiv-query.ts`](scripts/arkiv-query.ts) and the site's
+  [`DirectorySection`](apps/site/components/sections/DirectorySection.tsx)
+- **Docs:** [schema](arkiv/schema.md), [how we use Arkiv](arkiv/how-you-use-arkiv.md),
+  [why Arkiv](arkiv/why-arkiv.md), [reach](arkiv/reach.md), [friction](arkiv/friction.md)
+
+One query you can run (it needs no wallet): APIs that serve an unverified (Level 0) payer for at
+most 0.20 USDC, cheapest first.
+
+```bash
+pnpm install
+pnpm arkiv:query --max-usdc 0.2 --level 0
+# arkiv.schema = str('kosha.api-listing.v1') AND priceMicroUsdc <= u64(200000)
+#   AND acceptsLevel0 = true AND $owner = addr(0xeA102e83bD920cc72dC70eA18CEcd8A05c8B0604)
+#   ORDER BY priceMicroUsdc:u64 ASC
+```
+
+**On Rabdi now:** three listings from the two demo APIs, for example the GSTIN lookup at
+[`0x635c…4f5e`](https://rabdi.explorer.arkiv.network/entity/0x635c5c890edd2448f15eba7cef7a9556ca66ea4d4603e2d11c9056a498784f5e),
+created in
+[this transaction](https://rabdi.explorer.arkiv.network/tx/0xa246cf4708d0693a41c77c7f18840b5561941f422bd4820bfafea5de966daefb).
+Every write by the
+[registry wallet](https://rabdi.explorer.arkiv.network/address/0xeA102e83bD920cc72dC70eA18CEcd8A05c8B0604)
+is listed there, including the re-publish that refreshed and renewed them.
+
+To list an API: run it with Kosha Gate, set `ARKIV_PRIVATE_KEY` in `.env` (a funded Rabdi wallet),
+then `pnpm arkiv:publish http://localhost:4101`. Re-running it refreshes the listings and renews
+their 7-day lifetime; `source=listed` (e.g. `http://localhost:4101=https://api.example.com`) reads
+the terms locally and lists the public URL.
+
+**Built at ETHGlobal Mumbai.** All of Kosha, including the Arkiv directory, was built at the event
+(first commit 6 November 2026). **How we used AI:** the code was written by Claude agents
+(Claude Code) working from the team's spec, task queue and reviews; people chose the design,
+reviewed and merged every pull request, and ran the testnet steps.
+
 ## Why Hedera
 
 1. **Fixed, tiny fees.** Withholding 1% of an ₹8 API call only makes sense when the fee is a
