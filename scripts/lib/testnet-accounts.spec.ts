@@ -1,4 +1,4 @@
-import { accountTable, accountTableMarkdown } from './testnet-accounts';
+import { accountTable, accountTableMarkdown, withKeptSections } from './testnet-accounts';
 import { describe, expect, it } from 'vitest';
 
 const ENV = {
@@ -30,6 +30,26 @@ describe('accountTable', () => {
     const markdown = accountTableMarkdown('testnet', rows);
     expect(markdown).not.toContain('302e-secret');
     expect(markdown).not.toMatch(/PRIVATE_KEY/);
-    expect(markdown).toContain('| HCS audit topic | `HCS_AUDIT_TOPIC` | [0.0.8003]');
+    expect(markdown).toMatch(/\| HCS audit topic +\| `HCS_AUDIT_TOPIC` +\| \[0\.0\.8003\]/);
+  });
+
+  it('pads every column to its widest cell, as Prettier lays out the table', () => {
+    const lines = accountTableMarkdown('testnet', rows)
+      .split('\n')
+      .filter((line) => line.startsWith('|'));
+    const [header, separator, ...body] = lines;
+    expect(new Set(lines.map((line) => line.length)).size).toBe(1);
+    expect(header).toMatch(/^\| Role +\| Env key +\| ID +\|$/);
+    expect(separator).toMatch(/^\| -+ \| -+ \| -+ \|$/);
+    expect(body).toHaveLength(rows.length);
+  });
+
+  it('keeps the sections after the table that bootstrap does not write', () => {
+    const generated = accountTableMarkdown('testnet', rows);
+    const existing = `${generated}\n## HCS-14 identities (B23)\n\n| Agent | UAID |\n`;
+    const merged = withKeptSections(accountTableMarkdown('testnet', rows), existing);
+    expect(merged).toContain('## HCS-14 identities (B23)\n\n| Agent | UAID |');
+    expect(merged.match(/# Testnet accounts/g)).toHaveLength(1);
+    expect(withKeptSections(generated, null)).toBe(generated);
   });
 });

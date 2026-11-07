@@ -67,6 +67,21 @@ export const accountTable = (network: HederaNetwork, env: EnvValues): AccountTab
     return { role: row.role, envKey: row.envKey, id: link ? value : null, link };
   });
 
+// Pads every column to its widest cell, as Prettier lays out a Markdown table, so a rerun of
+// bootstrap leaves no formatting diff
+const alignedTable = (header: string[], body: string[][]): string[] => {
+  const widths = header.map((cell, column) =>
+    Math.max(cell.length, ...body.map((row) => (row.at(column) ?? '').length))
+  );
+  const line = (cells: string[]) =>
+    `| ${cells.map((cell, column) => cell.padEnd(widths.at(column) ?? 0)).join(' | ')} |`;
+  return [
+    line(header),
+    `| ${widths.map((width) => '-'.repeat(width)).join(' | ')} |`,
+    ...body.map(line)
+  ];
+};
+
 export const accountTableMarkdown = (network: HederaNetwork, rows: AccountTableRow[]): string =>
   [
     '# Testnet accounts',
@@ -74,11 +89,20 @@ export const accountTableMarkdown = (network: HederaNetwork, rows: AccountTableR
     `Written by \`pnpm bootstrap\` (\`scripts/bootstrap.ts\`) on Hedera ${network}. IDs and HashScan`,
     'links only: every private key stays in the shared env file (`../kosha.env`).',
     '',
-    '| Role | Env key | ID |',
-    '| --- | --- | --- |',
-    ...rows.map(
-      (row) =>
-        `| ${row.role} | \`${row.envKey}\` | ${row.link ? `[${row.id}](${row.link})` : 'not set'} |`
+    ...alignedTable(
+      ['Role', 'Env key', 'ID'],
+      rows.map((row) => [
+        row.role,
+        `\`${row.envKey}\``,
+        row.link ? `[${row.id}](${row.link})` : 'not set'
+      ])
     ),
     ''
   ].join('\n');
+
+// Bootstrap owns the title, the intro and the account table. Any later section, such as the
+// HCS-14 identities from `pnpm register-agents`, is kept as it stands instead of being dropped.
+export const withKeptSections = (generated: string, existing: string | null): string => {
+  const start = existing ? existing.search(/^## /m) : -1;
+  return existing && start >= 0 ? `${generated}\n${existing.slice(start)}` : generated;
+};
