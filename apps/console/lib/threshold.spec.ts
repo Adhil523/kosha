@@ -1,9 +1,20 @@
-import { counterState, paiseToMicro, parseFxPaisePerUsd } from '@/lib/threshold';
+import { counterState, isFirstRupee, paiseToMicro, parseFxPaisePerUsd } from '@/lib/threshold';
 import { aggregateRowSchema } from '@kosha/shared/console-api';
 import { AGGREGATES_FIXTURE } from '@kosha/shared/fixtures';
 import { describe, expect, it } from 'vitest';
 
-const [resident, unverified] = AGGREGATES_FIXTURE;
+// The fixtures model first-rupee mode; a receiver that opts into the threshold looks like this
+const [firstRupee] = AGGREGATES_FIXTURE;
+const thresholdRow = (fields: Record<string, unknown>) =>
+  aggregateRowSchema.parse({ ...firstRupee, thresholdPaise: '1000000', ...fields });
+const resident = thresholdRow({ valuePaise: '1000652', pct: 100.07 });
+const unverified = thresholdRow({
+  agentLevel: 0,
+  payerResidency: 'unknown',
+  valuePaise: '450000',
+  tolerancePaise: '500000',
+  pct: 90
+});
 const withValues = (fields: Record<string, unknown>) =>
   aggregateRowSchema.parse({ ...resident, ...fields });
 
@@ -23,6 +34,7 @@ describe('counterState', () => {
       tolerancePct: 50,
       near: true,
       crossed: false,
+      firstRupee: false,
       status: 'Nearing the limit'
     });
   });
@@ -41,6 +53,20 @@ describe('counterState', () => {
       withValues({ valuePaise: '300000', outsideValuePaise: '200000', pct: 50 })
     );
     expect(state).toMatchObject({ fillPct: 50, near: false, status: 'Under the limit' });
+  });
+
+  it('shows a first-rupee payer as reserved from the first call, with no bar to fill', () => {
+    const [verified, unverifiedPayer] = AGGREGATES_FIXTURE;
+    if (!verified || !unverifiedPayer) throw new Error('fixtures');
+    expect(isFirstRupee(verified)).toBe(true);
+    expect(counterState(verified)).toMatchObject({
+      firstRupee: true,
+      crossed: true,
+      near: false,
+      status: '1% reserved'
+    });
+    expect(counterState(unverifiedPayer).status).toBe('20% reserved');
+    expect(isFirstRupee(resident)).toBe(false);
   });
 
   it('never reports TDS here for a non-resident payer', () => {

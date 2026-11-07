@@ -46,7 +46,6 @@ export type DemoStep = {
 
 const PERCENT_PER_BPS = 100;
 const PAN_RATE_BPS = 2000;
-const FULL_PCT = 100;
 const NOT_FOUND = 404;
 // The watcher runs every 30 s and the Mirror Node lags a few seconds behind consensus
 const OUTSIDE_WAIT_MS = 90_000;
@@ -116,67 +115,63 @@ const pairIds = async (
   return { ok: true, data: { agentId: agentId.data, receiverId: receiverId.data } };
 };
 
-// 1. agent-resident (Level 1) under the threshold: the price only
-const stepUnderThreshold: DemoStep = {
+// receiver-in deducts from the first rupee (Kosha's default since #73), so every payment from an
+// Indian payer is taxed: 1% with a verified PAN, 20% without one
+
+// 1. agent-resident (Level 1) pays once: 1% reserved on the very first call, as a second leg
+const stepFirstRupee: DemoStep = {
   label: '1',
-  title: 'agent-resident pays demo-api-in under the threshold',
+  title: 'agent-resident pays demo-api-in: 1% TDS from the first rupee',
   run: async (context) => {
     const paid = await payUrl(context.payFor('resident'), context.urls.gstLookup);
     if (!paid.ok) return failed(paid.data);
-    const wrong = expectTax(paid.data.tax, 0, ['under_threshold']);
+    const wrong = expectTax(paid.data.tax, PERCENT_PER_BPS, ['first_rupee']);
     if (wrong) return failed(wrong);
-    if (paid.data.receipt.tdsMicroUsdc !== 0n) return failed('the receipt shows TDS reserved');
-    return passed(`price only, ${paid.data.receipt.txId}`);
-  }
-};
-
-// 2. Three more calls cross ₹10,000: the counter fills, then "1% reserved" with a second leg
-const stepCrossThreshold: DemoStep = {
-  label: '2',
-  title: 'three more calls cross ₹10,000 and reserve 1% TDS',
-  run: async (context) => {
-    const pay = context.payFor('resident');
-    const seen: string[] = [];
-    let last: Paid | null = null;
-    for (let call = 0; call < 3; call += 1) {
-      const paid = await payUrl(pay, context.urls.gstLookup);
-      if (!paid.ok) return failed(`call ${call + 1}: ${paid.data}`);
-      seen.push(describeTax(paid.data.tax));
-      last = paid.data;
-    }
-    if (!last) return failed('no call was made');
-    const wrong = expectTax(last.tax, PERCENT_PER_BPS, ['threshold_crossed']);
-    if (wrong) return failed(`after three calls: ${wrong}`);
-    if (last.receipt.tdsMicroUsdc <= 0n) return failed('the last receipt reserved no TDS');
-    const ids = await pairIds(context, 'resident');
-    if (!ids.ok) return failed(ids.data);
-    const aggregate = await context.core.aggregate(ids.data.receiverId, ids.data.agentId);
-    if (!aggregate.ok) return failed(aggregate.data);
-    if (aggregate.data.pct < FULL_PCT) {
-      return failed(`the counter reads ${aggregate.data.pct}%, under the threshold`);
-    }
+    if (paid.data.receipt.tdsMicroUsdc <= 0n) return failed('the receipt reserved no TDS');
     return passed(
-      `${seen.join(' → ')}; counter at ${aggregate.data.pct}%; split ${last.receipt.hashscanUrl ?? last.receipt.txId}`
+      `1% reserved on the first call; split ${paid.data.receipt.hashscanUrl ?? paid.data.receipt.txId}`
     );
   }
 };
 
-// 3. agent-unknown (Level 0): within the tolerance, then past it at 20%, then verified
+// 2. Three more calls: each one reserves 1%, and the counter reads "first rupee" with no threshold
+const stepEveryCall: DemoStep = {
+  label: '2',
+  title: 'three more calls each reserve 1% TDS, with no threshold to cross',
+  run: async (context) => {
+    const pay = context.payFor('resident');
+    const seen: string[] = [];
+    for (let call = 0; call < 3; call += 1) {
+      const paid = await payUrl(pay, context.urls.gstLookup);
+      if (!paid.ok) return failed(`call ${call + 1}: ${paid.data}`);
+      const wrong = expectTax(paid.data.tax, PERCENT_PER_BPS, ['first_rupee']);
+      if (wrong) return failed(`call ${call + 1}: ${wrong}`);
+      if (paid.data.receipt.tdsMicroUsdc <= 0n) return failed(`call ${call + 1} reserved no TDS`);
+      seen.push(describeTax(paid.data.tax));
+    }
+    const ids = await pairIds(context, 'resident');
+    if (!ids.ok) return failed(ids.data);
+    const aggregate = await context.core.aggregate(ids.data.receiverId, ids.data.agentId);
+    if (!aggregate.ok) return failed(aggregate.data);
+    if (aggregate.data.thresholdPaise !== '0') {
+      return failed(
+        `the counter still shows a threshold of ${aggregate.data.thresholdPaise} paise`
+      );
+    }
+    return passed(`${seen.join(' → ')}; counter in first-rupee mode`);
+  }
+};
+
+// 3. agent-unknown (Level 0): 20% from the first rupee, then verified with a PAN, then 1%
 const stepUnverifiedPayer: DemoStep = {
   label: '3',
-  title: 'agent-unknown pays within the tolerance, crosses it, then presents a PAN credential',
+  title: 'agent-unknown pays 20% from the first rupee, then presents a PAN credential',
   run: async (context) => {
     const pay = context.payFor('unknown');
     const first = await payUrl(pay, context.urls.gstLookup);
-    if (!first.ok) return failed(`within the tolerance: ${first.data}`);
-    const wrongFirst = expectTax(first.data.tax, 0, ['within_tolerance']);
+    if (!first.ok) return failed(`unverified: ${first.data}`);
+    const wrongFirst = expectTax(first.data.tax, PAN_RATE_BPS, ['first_rupee']);
     if (wrongFirst) return failed(wrongFirst);
-
-    // The ₹22 company lookup takes the pair past the ₹5,000 tolerance in one call
-    const second = await payUrl(pay, context.urls.company);
-    if (!second.ok) return failed(`past the tolerance: ${second.data}`);
-    const wrongSecond = expectTax(second.data.tax, PAN_RATE_BPS, ['tolerance_exceeded']);
-    if (wrongSecond) return failed(wrongSecond);
 
     const identity = context.identityOf('unknown');
     const credential = issueCredential(context.issuerKey, identity, {
@@ -194,12 +189,9 @@ const stepUnverifiedPayer: DemoStep = {
 
     const next = await quote(pay, context.urls.gstLookup);
     if (!next.ok) return failed(`the quote after the credential: ${next.data}`);
-    if (next.data.tax.rateBps >= PAN_RATE_BPS) {
-      return failed(`the quote after the credential still reads ${describeTax(next.data.tax)}`);
-    }
-    return passed(
-      `${describeTax(first.data.tax)} → ${describeTax(second.data.tax)} → verified: ${describeTax(next.data.tax)}`
-    );
+    const wrongNext = expectTax(next.data.tax, PERCENT_PER_BPS, ['first_rupee']);
+    if (wrongNext) return failed(`the quote after the credential: ${wrongNext}`);
+    return passed(`${describeTax(first.data.tax)} → verified: ${describeTax(next.data.tax)}`);
   }
 };
 
@@ -419,8 +411,8 @@ const stepChallan: DemoStep = {
 };
 
 export const DEMO_STEPS: DemoStep[] = [
-  stepUnderThreshold,
-  stepCrossThreshold,
+  stepFirstRupee,
+  stepEveryCall,
   stepUnverifiedPayer,
   stepNonResident,
   stepDailyCap,

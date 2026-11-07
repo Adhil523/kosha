@@ -18,12 +18,24 @@ describe('demo admin schemas', () => {
     expect(samplePaymentsRequestSchema.safeParse({ payments: [] }).success).toBe(false);
   });
 
-  it('accepts the threshold demo reset', () => {
+  it('accepts the demo reset, with no receiver modes unless asked', () => {
     const reset = {
       balances: [{ agent: SAMPLE.agent, receiverAccountId: '0.0.5001', valuePaise: '998000' }],
       clearAgents: [SAMPLE.agent],
       level0: ['hedera:testnet:0.0.6003']
     };
-    expect(demoResetRequestSchema.parse(reset)).toEqual(reset);
+    expect(demoResetRequestSchema.parse(reset)).toEqual({ ...reset, receiverModes: [] });
+  });
+
+  it('accepts a receiver mode for the reset, and refuses an unknown mode', () => {
+    const reset = { balances: [], clearAgents: [], level0: [] };
+    const modes = [{ receiverAccountId: '0.0.5001', mode: 'first_rupee' }];
+    expect(demoResetRequestSchema.parse({ ...reset, receiverModes: modes }).receiverModes).toEqual(
+      modes
+    );
+    const unknown = [{ receiverAccountId: '0.0.5001', mode: 'zero' }];
+    expect(demoResetRequestSchema.safeParse({ ...reset, receiverModes: unknown }).success).toBe(
+      false
+    );
   });
 });

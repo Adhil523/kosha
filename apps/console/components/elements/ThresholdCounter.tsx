@@ -7,7 +7,13 @@ import { ProgressIndicator, ProgressTrack } from '@/components/ui/progress';
 import * as Tooltip from '@/components/ui/tooltip';
 import { getAggregatesQueryParams } from '@/lib/queries';
 import { TEST_IDS } from '@/lib/test-ids';
-import { counterState, paiseToMicro, parseFxPaisePerUsd } from '@/lib/threshold';
+import {
+  type CounterState,
+  counterState,
+  isFirstRupee,
+  paiseToMicro,
+  parseFxPaisePerUsd
+} from '@/lib/threshold';
 import { POLL_FALLBACK_MS } from '@/lib/use-live-stream';
 import { usePayerLabel } from '@/lib/use-payer-labels';
 import { Progress as ProgressPrimitive } from '@base-ui/react/progress';
@@ -16,18 +22,22 @@ import { amountToBigint, formatInr, formatUsdc } from '@kosha/shared/money';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from 'cn';
 
-type MoneyProps = { paise: bigint; fxInrPerUsd: string };
+type MoneyProps = { paise: bigint; fxInrPerUsd: string; compact?: boolean };
 
-// Rupees first (the law counts in ₹), USDC beside it, and the rate on hover
-const Money = ({ paise, fxInrPerUsd }: MoneyProps) => {
+// Rupees first (the law counts in ₹), USDC beside it (or, compact, on hover), and the rate on hover
+const Money = ({ paise, fxInrPerUsd, compact = false }: MoneyProps) => {
   const fx = parseFxPaisePerUsd(fxInrPerUsd);
-  if (!fx) return <span>{formatInr(paise)}</span>;
+  if (!fx) return <span className="text-foreground">{formatInr(paise)}</span>;
+  const usdc = `${formatUsdc(paiseToMicro(paise, fx))} USDC`;
   return (
     <Tooltip.Tooltip>
-      <Tooltip.TooltipTrigger render={<span className="cursor-help underline decoration-dotted" />}>
-        {formatInr(paise)} ≈ {formatUsdc(paiseToMicro(paise, fx))} USDC
+      <Tooltip.TooltipTrigger render={<span className="cursor-help" />}>
+        <span className="font-medium text-foreground">{formatInr(paise)}</span>
+        {!compact && <span> ≈ {usdc}</span>}
       </Tooltip.TooltipTrigger>
-      <Tooltip.TooltipContent>At ₹{fxInrPerUsd} per USD</Tooltip.TooltipContent>
+      <Tooltip.TooltipContent>
+        {compact && `≈ ${usdc} · `}At ₹{fxInrPerUsd} per USD
+      </Tooltip.TooltipContent>
     </Tooltip.Tooltip>
   );
 };
@@ -44,44 +54,83 @@ export const PayerCounter = ({
   const state = counterState(row);
   const value = amountToBigint(row.valuePaise) + amountToBigint(row.outsideValuePaise);
   return (
-    <div className="flex flex-col gap-2" data-testid={TEST_IDS.thresholdCounter(row.agentId)}>
-      <div className="flex items-center justify-between gap-4 text-sm">
-        <span className="font-medium break-all">{label}</span>
-        <Badge
-          variant={state.crossed ? 'default' : 'outline'}
-          className={cn(state.near && !state.crossed && 'border-warning text-warning')}
-          data-testid={TEST_IDS.thresholdStatus(row.agentId)}
-          data-threshold={state.crossed ? 'crossed' : state.near ? 'near' : 'under'}
-        >
-          {state.status}
-        </Badge>
-      </div>
-      <ProgressPrimitive.Root value={state.fillPct} aria-label={`${label} towards the threshold`}>
-        <ProgressTrack className="relative h-2.5 overflow-visible">
-          <ProgressIndicator className={cn(state.near ? 'bg-warning' : 'bg-primary')} />
-          {state.tolerancePct !== null && (
-            <span
-              className="absolute -top-1 h-4.5 w-0.5 bg-foreground"
-              style={{ left: `${state.tolerancePct}%` }}
-              title="Tolerance for unverified payers"
-            />
+    <div
+      className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0"
+      data-testid={TEST_IDS.thresholdCounter(row.agentId)}
+    >
+      <div className="flex items-center justify-between gap-4">
+        <span className="min-w-0 text-sm font-medium wrap-break-word">{label}</span>
+        <div className="flex shrink-0 items-center gap-3">
+          {!state.firstRupee && (
+            <span className="text-sm font-semibold tabular-nums">{Math.round(state.fillPct)}%</span>
           )}
-        </ProgressTrack>
-      </ProgressPrimitive.Root>
-      <p className="text-xs text-muted-foreground">
-        <Money paise={value} fxInrPerUsd={fxInrPerUsd} /> of{' '}
-        <Money paise={amountToBigint(row.thresholdPaise)} fxInrPerUsd={fxInrPerUsd} /> this FY
-        {row.tolerancePaise !== null && (
-          <>
-            {' '}
-            · tolerance{' '}
-            <Money paise={amountToBigint(row.tolerancePaise)} fxInrPerUsd={fxInrPerUsd} />
-          </>
+          <Badge
+            variant={state.crossed ? 'default' : 'outline'}
+            className={cn(state.near && !state.crossed && 'border-warning text-warning')}
+            data-testid={TEST_IDS.thresholdStatus(row.agentId)}
+            data-threshold={
+              state.firstRupee
+                ? 'first-rupee'
+                : state.crossed
+                  ? 'crossed'
+                  : state.near
+                    ? 'near'
+                    : 'under'
+            }
+          >
+            {state.status}
+          </Badge>
+        </div>
+      </div>
+      {!state.firstRupee && <ThresholdBar state={state} label={label} />}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <span>
+          <Money paise={value} fxInrPerUsd={fxInrPerUsd} /> this FY
+        </span>
+        {state.firstRupee ? (
+          <span>TDS on every payment, from the first rupee</span>
+        ) : (
+          <span>
+            {row.tolerancePaise !== null && (
+              <>
+                tolerance{' '}
+                <Money
+                  paise={amountToBigint(row.tolerancePaise)}
+                  fxInrPerUsd={fxInrPerUsd}
+                  compact
+                />
+                {' · '}
+              </>
+            )}
+            threshold{' '}
+            <Money paise={amountToBigint(row.thresholdPaise)} fxInrPerUsd={fxInrPerUsd} compact />
+          </span>
         )}
-      </p>
+      </div>
     </div>
   );
 };
+
+// The bar towards the threshold, amber from 90% until the crossing, with the tolerance marked
+const ThresholdBar = ({ state, label }: { state: CounterState; label: string }) => (
+  <ProgressPrimitive.Root value={state.fillPct} aria-label={`${label} towards the threshold`}>
+    <ProgressTrack className="relative h-2 overflow-visible">
+      <ProgressIndicator
+        className={cn(
+          'transition-all duration-700',
+          state.near && !state.crossed ? 'bg-warning' : 'bg-primary'
+        )}
+      />
+      {state.tolerancePct !== null && (
+        <span
+          className="absolute -top-1 h-4 w-0.5 rounded-full bg-foreground"
+          style={{ left: `${state.tolerancePct}%` }}
+          title="Tolerance for unverified payers"
+        />
+      )}
+    </ProgressTrack>
+  </ProgressPrimitive.Root>
+);
 
 // Each payer's yearly total against this receiver's threshold (₹10,000, or ₹50,000 when the API
 // owner is a specified person), turning amber at 90% of the nearer limit
@@ -97,19 +146,30 @@ export const ThresholdCounter = ({
     refetchInterval: streaming ? false : POLL_FALLBACK_MS
   });
   const labelFor = usePayerLabel();
+  const allFirstRupee = !!aggregates.data?.length && aggregates.data.every(isFirstRupee);
 
   return (
     <Card.Card>
       <Card.CardHeader>
-        <Card.CardTitle>Threshold counter</Card.CardTitle>
+        <Card.CardTitle>{allFirstRupee ? 'TDS by payer' : 'Threshold counter'}</Card.CardTitle>
         <Card.CardDescription>
-          Each payer this financial year, against your TDS threshold
+          {allFirstRupee
+            ? 'Each payer this financial year. You deduct from the first rupee, so there is no threshold to cross'
+            : 'Each payer this financial year, against your TDS threshold'}
         </Card.CardDescription>
+        {allFirstRupee && (
+          <Card.CardAction>
+            <Badge variant="secondary">First-rupee mode</Badge>
+          </Card.CardAction>
+        )}
       </Card.CardHeader>
-      <Card.CardContent className="flex flex-col gap-5">
+      <Card.CardContent className="flex flex-col divide-y">
         {aggregates.isPending && <QueryPending label="payer totals" />}
         {aggregates.error && (
           <QueryError error={aggregates.error} onRetry={() => void aggregates.refetch()} />
+        )}
+        {aggregates.data?.length === 0 && (
+          <p className="text-sm text-muted-foreground">No payers yet this financial year.</p>
         )}
         {aggregates.data?.map((row) => (
           <PayerCounter

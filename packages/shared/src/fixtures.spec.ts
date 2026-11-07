@@ -35,10 +35,11 @@ describe('fixtures', () => {
   });
 
   it('covers every ledger case the Console renders', () => {
+    // receiver-in deducts from the first rupee: 1% verified, 20% unverified, nothing non-resident
     const reasons = new Set(LEDGER_PAGE_FIXTURE.rows.map((row) => row.reason));
-    expect(reasons).toEqual(
-      new Set(['threshold_crossed', 'under_threshold', 'tolerance_exceeded', 'non_resident'])
-    );
+    expect(reasons).toEqual(new Set(['first_rupee', 'non_resident']));
+    const rates = new Set(LEDGER_PAGE_FIXTURE.rows.map((row) => row.rateBps));
+    expect(rates).toEqual(new Set([0, 100, 2000]));
     expect(LEDGER_PAGE_FIXTURE.rows.some((row) => row.mode === 'compat')).toBe(true);
     expect(LEDGER_PAGE_FIXTURE.rows.some((row) => row.sample)).toBe(true);
   });

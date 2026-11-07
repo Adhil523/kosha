@@ -1,5 +1,6 @@
 import {
   type CoreHttp,
+  demoReceivers,
   demoResetRequest,
   previousQuarter,
   readSeedEnv,
@@ -191,14 +192,21 @@ describe('seed --profiles', () => {
       ]);
     });
 
-    it('resets both demo pairs, clears every demo agent, and sends agent-unknown to Level 0', () => {
+    it('empties both demo pairs, clears every demo agent, and sends agent-unknown to Level 0', () => {
       const request = demoResetRequestSchema.parse(demoResetRequest(seedEnv()));
       expect(request.balances).toEqual([
-        { agent: 'hedera:testnet:0.0.6001', receiverAccountId: '0.0.5001', valuePaise: '998000' },
-        { agent: 'hedera:testnet:0.0.6003', receiverAccountId: '0.0.5001', valuePaise: '498000' }
+        { agent: 'hedera:testnet:0.0.6001', receiverAccountId: '0.0.5001', valuePaise: '0' },
+        { agent: 'hedera:testnet:0.0.6003', receiverAccountId: '0.0.5001', valuePaise: '0' }
       ]);
       expect(request.clearAgents).toHaveLength(3);
       expect(request.level0).toEqual(['hedera:testnet:0.0.6003']);
+    });
+
+    it('puts every demo receiver in first-rupee mode, the default since #73', () => {
+      const request = demoResetRequestSchema.parse(demoResetRequest(seedEnv()));
+      expect(request.receiverModes).toHaveLength(demoReceivers(seedEnv()).length);
+      expect(request.receiverModes.every(({ mode }) => mode === 'first_rupee')).toBe(true);
+      expect(demoReceivers(seedEnv()).every(({ mode }) => mode === 'first_rupee')).toBe(true);
     });
   });
 });

@@ -1,9 +1,10 @@
 import { findAgentByIdentity } from './agent-identity';
 import { SETTLEMENT_NODE_ACCOUNT_IDS } from './config';
 import type { KoshaDb } from './db/client';
-import { agent, aggregate, hcsOutbox, payment, quote } from './db/schema';
+import { agent, aggregate, hcsOutbox, payment, quote, receiver, receiverWallet } from './db/schema';
 import { findParties, type Parties, type SampleDeps } from './sample-payments';
 import type { DemoResetRequest, DemoResetResponse } from '@kosha/shared/demo-admin';
+import type { ReceiverMode } from '@kosha/tax-engine/decide';
 import { financialYear } from '@kosha/tax-engine/ist-calendar';
 import { paiseToMicroUsdc } from '@kosha/tax-engine/minor-units';
 import { and, eq, inArray, notExists, sql } from 'drizzle-orm';
@@ -81,7 +82,7 @@ const insertOpening = async (
   });
 };
 
-// Puts the threshold demo back to its starting point (A14 `seed --reset-demo`); see the request
+// Puts the demo back to its starting point (A14 `seed --reset-demo`); see the request
 // schema for what each list means. Every pair the reset touches has its year total recomputed
 // from the payments that remain, so the aggregate and the ledger agree.
 export const resetDemo = async (
@@ -105,6 +106,17 @@ export const resetDemo = async (
   }
   const missing = identities.find((identity) => !idOf.has(identity));
   if (missing) return { ok: false, data: { message: `${missing} is not registered` } };
+  const modes: { receiverId: string; mode: ReceiverMode }[] = [];
+  for (const { receiverAccountId, mode } of request.receiverModes) {
+    const [wallet] = await deps.db
+      .select({ receiverId: receiverWallet.receiverID })
+      .from(receiverWallet)
+      .where(eq(receiverWallet.accountID, receiverAccountId));
+    if (!wallet) {
+      return { ok: false, data: { message: `receiver ${receiverAccountId} is not registered` } };
+    }
+    modes.push({ receiverId: wallet.receiverId, mode });
+  }
 
   const fy = financialYear(now, deps.pack.financialYearStart);
   const dayBack = new Date(now.getTime() - DAY_MS);
@@ -154,7 +166,7 @@ export const resetDemo = async (
         pairRows.map((row) => row.id),
         pairRows.map((row) => row.quoteID)
       );
-      await insertOpening(tx, parties, valuePaise, rate, openingAt, fy);
+      if (valuePaise > 0n) await insertOpening(tx, parties, valuePaise, rate, openingAt, fy);
       await tx
         .insert(aggregate)
         .values({ agentID: parties.agent.id, receiverID: parties.receiver.id, fy })
@@ -177,6 +189,10 @@ export const resetDemo = async (
           paymentsCount: sql`(select count(*) from ${payment} where ${sameFyPair})::int`
         })
         .where(and(inArray(aggregate.agentID, touched), eq(aggregate.fy, fy)));
+    }
+
+    for (const { receiverId, mode } of modes) {
+      await tx.update(receiver).set({ mode }).where(eq(receiver.id, receiverId));
     }
 
     if (level0Ids.length > 0) {

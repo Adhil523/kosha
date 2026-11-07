@@ -21,9 +21,10 @@ import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
-// `pnpm demo` (B17): resets the threshold demo, then runs the spec's eight demo steps in order
-// against a running Core and both demo APIs, asserting what each one shows on stage. A step whose
-// feature is not merged, or was cut, prints SKIPPED (cut) and never fails the run. Needs Core,
+// `pnpm demo` (B17): resets the demo (first-rupee mode, both pairs at ₹0), then runs the spec's
+// eight demo steps in order against a running Core and both demo APIs, asserting what each one
+// shows on stage. A step whose feature is not merged, or was cut, prints SKIPPED (cut) and never
+// fails the run. Needs Core,
 // demo-api-in, demo-api-global and `pnpm seed --profiles`; every payment is real, on testnet.
 
 const DEFAULT_DEMO_API_IN_PORT = 4101;
@@ -223,7 +224,7 @@ const main = async (): Promise<void> => {
   ).filter((problem): problem is string => problem !== null);
   if (down.length > 0) throw new Error(down.join('\n'));
 
-  console.info('[demo]: resetting the threshold demo (seed --reset-demo)');
+  console.info('[demo]: resetting the demo: first-rupee mode, pairs at ₹0 (seed --reset-demo)');
   await seedResetDemo(adminHttp(env.CORE_URL, env.CONSOLE_ADMIN_TOKEN), env);
 
   const context = buildContext(env);

@@ -23,8 +23,8 @@ import { z } from 'zod';
 // --profiles    the demo's receivers and agents (A11). A receiver whose wallet is onboarded
 //               answers 409, and agent registration is an upsert.
 // --history     last quarter's sample payments (A14), keyed so a rerun adds nothing
-// --reset-demo  the threshold demo's starting point (A14): agent-resident ↔ receiver-in at ₹9,980,
-//               agent-unknown ↔ receiver-in at ₹4,980, agent-unknown at Level 0, and the last
+// --reset-demo  the demo's starting point (A14): every demo receiver in first-rupee mode, both
+//               on-stage pairs with receiver-in at ₹0, agent-unknown at Level 0, and the last
 //               run's own payments cleared
 
 const MIN_SECRET_LENGTH = 32;
@@ -67,6 +67,10 @@ type ReceiverProfile = Omit<ReceiverCreate, 'challengeNonce' | 'wallets'> & {
   wallet: { accountId: string; privateKey: string };
 };
 
+// Kosha's default (#73): withhold from the first rupee until a CA confirms the threshold survived
+// into section 393(4). It can only over-deduct, which the payer gets back as a credit.
+export const DEMO_MODE = 'first_rupee';
+
 // Demo identifiers only: valid in format, not real taxpayers
 export const demoReceivers = (env: SeedEnv): ReceiverProfile[] => [
   {
@@ -77,7 +81,7 @@ export const demoReceivers = (env: SeedEnv): ReceiverProfile[] => [
     pan: 'AAPFU0939F',
     tan: 'MUMD12345E',
     gstin: '27AAPFU0939F1ZV',
-    mode: 'threshold',
+    mode: DEMO_MODE,
     unverifiedPolicy: 'threshold_tolerant',
     apiKey: env.DEMO_API_IN_KEY,
     wallet: { accountId: env.RECEIVER_IN_ACCOUNT_ID, privateKey: env.RECEIVER_IN_PRIVATE_KEY }
@@ -89,7 +93,7 @@ export const demoReceivers = (env: SeedEnv): ReceiverProfile[] => [
     residency: 'resident',
     specifiedPerson: true,
     pan: 'ABCPR1234K',
-    mode: 'threshold',
+    mode: DEMO_MODE,
     wallet: {
       accountId: env.RECEIVER_IN_SOLO_ACCOUNT_ID,
       privateKey: env.RECEIVER_IN_SOLO_PRIVATE_KEY
@@ -100,7 +104,7 @@ export const demoReceivers = (env: SeedEnv): ReceiverProfile[] => [
     legalName: 'Global Data Inc',
     residency: 'non_resident',
     specifiedPerson: false,
-    mode: 'threshold',
+    mode: DEMO_MODE,
     apiKey: env.DEMO_API_GLOBAL_KEY,
     wallet: {
       accountId: env.RECEIVER_GLOBAL_ACCOUNT_ID,
@@ -312,19 +316,24 @@ export const demoResetRequest = (env: SeedEnv): DemoResetRequest => {
     agentIdentitySchema.parse(`hedera:${env.HEDERA_NETWORK}:${accountId}`);
   const receiverIn = accountIdSchema.parse(env.RECEIVER_IN_ACCOUNT_ID);
   const unknown = identity(env.AGENT_UNKNOWN_ACCOUNT_ID);
+  const zero = amountSchema.parse('0');
   return {
+    // Both on-stage pairs start the year empty: under first rupee, the first call is taxed
     balances: [
-      // ₹9,980: the next ₹20+ call crosses ₹10,000
       {
         agent: identity(env.AGENT_RESIDENT_ACCOUNT_ID),
         receiverAccountId: receiverIn,
-        valuePaise: amountSchema.parse('998000')
+        valuePaise: zero
       },
-      // ₹4,980: the next call passes the ₹5,000 tolerance for an unverified payer
-      { agent: unknown, receiverAccountId: receiverIn, valuePaise: amountSchema.parse('498000') }
+      { agent: unknown, receiverAccountId: receiverIn, valuePaise: zero }
     ],
     clearAgents: demoAgents(env).map(({ accountId }) => identity(accountId)),
-    level0: [unknown]
+    level0: [unknown],
+    // A database seeded before #73 still has its receivers on the threshold mode
+    receiverModes: demoReceivers(env).map(({ wallet }) => ({
+      receiverAccountId: accountIdSchema.parse(wallet.accountId),
+      mode: DEMO_MODE
+    }))
   };
 };
 

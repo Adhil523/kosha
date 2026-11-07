@@ -13,8 +13,14 @@ export type CounterState = {
   tolerancePct: number | null;
   near: boolean;
   crossed: boolean;
+  // A first-rupee receiver (Kosha's default) has no threshold: every payment is taxed
+  firstRupee: boolean;
   status: string;
 };
+
+// Core reports a first-rupee receiver's pairs with a zero threshold and no tolerance
+export const isFirstRupee = (row: AggregateRow): boolean =>
+  amountToBigint(row.thresholdPaise) === 0n;
 
 const shareOf = (part: bigint, whole: bigint): number =>
   whole === 0n ? FULL_PCT : Math.min(FULL_PCT, Number((part * 10_000n) / whole) / 100);
@@ -29,14 +35,16 @@ const crossedStatus = (row: AggregateRow): string => {
 export const counterState = (row: AggregateRow): CounterState => {
   const value = amountToBigint(row.valuePaise) + amountToBigint(row.outsideValuePaise);
   const threshold = amountToBigint(row.thresholdPaise);
-  const near = row.pct >= NEAR_PCT;
-  const crossed = row.pct >= FULL_PCT;
+  const firstRupee = isFirstRupee(row);
+  const near = !firstRupee && row.pct >= NEAR_PCT;
+  const crossed = firstRupee || row.pct >= FULL_PCT;
   return {
     fillPct: shareOf(value, threshold),
     tolerancePct:
       row.tolerancePaise === null ? null : shareOf(amountToBigint(row.tolerancePaise), threshold),
     near,
     crossed,
+    firstRupee,
     status: crossed ? crossedStatus(row) : near ? 'Nearing the limit' : 'Under the limit'
   };
 };

@@ -7,6 +7,7 @@ import {
   hcsOutbox,
   payment,
   quote,
+  receiver,
   receiverWallet
 } from './db/schema';
 import { testDb } from './db/test-db';
@@ -174,6 +175,26 @@ describe('POST /v1/admin/demo-reset', () => {
       value: 998_000n,
       count: 1
     });
+  });
+
+  it('puts a receiver in the requested mode, and clears a pair set to zero with no opening', async () => {
+    const response = await reset({
+      ...RESET,
+      balances: [{ agent: RESIDENT, receiverAccountId: '0.0.5001', valuePaise: '0' }],
+      receiverModes: [{ receiverAccountId: '0.0.5001', mode: 'first_rupee' }]
+    });
+    expect(response.statusCode).toBe(200);
+    const [row] = await handle.db.select().from(receiver).where(eq(receiver.id, seed.receivers.in));
+    expect(row?.mode).toBe('first_rupee');
+    expect(await totalOf(seed.agents.resident, seed.receivers.in)).toEqual({ value: 0n, count: 0 });
+  });
+
+  it('refuses a receiver wallet that is not registered', async () => {
+    const response = await reset({
+      ...RESET,
+      receiverModes: [{ receiverAccountId: '0.0.9999', mode: 'first_rupee' }]
+    });
+    expect(response.statusCode).toBe(400);
   });
 
   it('refuses an agent that is not registered, changing nothing', async () => {
