@@ -3,7 +3,18 @@ import { aggregateRowSchema } from '@kosha/shared/console-api';
 import { AGGREGATES_FIXTURE } from '@kosha/shared/fixtures';
 import { describe, expect, it } from 'vitest';
 
-const [resident, unverified] = AGGREGATES_FIXTURE;
+// The fixtures model first-rupee mode; a receiver that opts into the threshold looks like this
+const [firstRupee] = AGGREGATES_FIXTURE;
+const thresholdRow = (fields: Record<string, unknown>) =>
+  aggregateRowSchema.parse({ ...firstRupee, thresholdPaise: '1000000', ...fields });
+const resident = thresholdRow({ valuePaise: '1000652', pct: 100.07 });
+const unverified = thresholdRow({
+  agentLevel: 0,
+  payerResidency: 'unknown',
+  valuePaise: '450000',
+  tolerancePaise: '500000',
+  pct: 90
+});
 const withValues = (fields: Record<string, unknown>) =>
   aggregateRowSchema.parse({ ...resident, ...fields });
 

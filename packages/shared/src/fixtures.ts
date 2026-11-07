@@ -41,10 +41,11 @@ const ledgerRow = (seconds: number, fields: Record<string, unknown>) => ({
   agentLabel: 'Research agent (resident)',
   mode: 'kosha_split',
   priceMicro: '100000',
-  tdsMicro: '0',
+  // receiver-in deducts from the first rupee (the default since #73): 1% for a verified PAN
+  tdsMicro: '1019',
   inrValuePaise: '884',
-  rateBps: 0,
-  reason: 'under_threshold',
+  rateBps: 100,
+  reason: 'first_rupee',
   flags: [],
   reserveAccountId: '0.0.6101',
   hashscanUrl: hashscan(seconds),
@@ -55,19 +56,20 @@ const ledgerRow = (seconds: number, fields: Record<string, unknown>) => ({
 
 export const LEDGER_PAGE_FIXTURE = ledgerPageSchema.parse({
   rows: [
-    ledgerRow(1762424460, { tdsMicro: '1019', rateBps: 100, reason: 'threshold_crossed' }),
+    ledgerRow(1762424460, {}),
     ledgerRow(1762424430, {}),
     ledgerRow(1762424400, {
       agentId: AGENT_UNKNOWN,
       agentLabel: 'Unverified agent (Level 0)',
       tdsMicro: '20023',
       rateBps: 2000,
-      reason: 'tolerance_exceeded',
       reserveAccountId: '0.0.6103'
     }),
     ledgerRow(1762424370, {
       agentId: AGENT_NONRESIDENT,
       agentLabel: 'Agent (non-resident)',
+      tdsMicro: '0',
+      rateBps: 0,
       reason: 'non_resident',
       flags: ['fema_review'],
       reserveAccountId: null
@@ -85,11 +87,12 @@ export const AGGREGATES_FIXTURE = z.array(aggregateRowSchema).parse([
     agentLevel: 1,
     payerResidency: 'resident',
     fy: '2026-27',
-    valuePaise: '1000652',
+    // First rupee: no threshold and no tolerance, so every pair reads 100%
+    valuePaise: '4420',
     outsideValuePaise: '0',
-    thresholdPaise: '1000000',
+    thresholdPaise: '0',
     tolerancePaise: null,
-    pct: 100.07
+    pct: 100
   },
   {
     receiverId: RECEIVER_IN,
@@ -97,11 +100,11 @@ export const AGGREGATES_FIXTURE = z.array(aggregateRowSchema).parse([
     agentLevel: 0,
     payerResidency: 'unknown',
     fy: '2026-27',
-    valuePaise: '450000',
+    valuePaise: '884',
     outsideValuePaise: '0',
-    thresholdPaise: '1000000',
-    tolerancePaise: '500000',
-    pct: 90
+    thresholdPaise: '0',
+    tolerancePaise: null,
+    pct: 100
   }
 ]);
 
