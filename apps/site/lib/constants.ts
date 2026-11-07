@@ -22,6 +22,7 @@ export const SECTION_IDS = {
   flow: 'flow',
   products: 'products',
   evidence: 'evidence',
+  directory: 'directory',
   hedera: 'hedera',
   close: 'close'
 } as const;
@@ -32,6 +33,7 @@ export const NAV_ITEMS = [
   { label: 'Flow', id: SECTION_IDS.flow },
   { label: 'Products', id: SECTION_IDS.products },
   { label: 'Evidence', id: SECTION_IDS.evidence },
+  { label: 'Directory', id: SECTION_IDS.directory },
   { label: 'Hedera', id: SECTION_IDS.hedera }
 ] as const;
 
