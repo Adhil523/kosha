@@ -1,6 +1,6 @@
 import { buildApp } from './app';
 import { demoFixedFx } from './fx';
-import { CRE_FX_SOURCES,createCreFx } from './fx-cre';
+import { CRE_FX_SOURCES, createCreFx } from './fx-cre';
 import type { CreTrust } from './fx-report';
 import { SIMULATED_FX_REPORT, SIMULATED_SIGNERS } from './fx-report.fixture';
 import { fxRoutes } from './fx-routes';
