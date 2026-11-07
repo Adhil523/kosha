@@ -13,6 +13,8 @@ import { createEventBus } from './event-bus';
 import { exportRoutes } from './export-routes';
 import { facilitatorRoutes } from './facilitator-routes';
 import { demoFixedFx } from './fx';
+import { createCreFx } from './fx-cre';
+import { fxRoutes } from './fx-routes';
 import type { OutboxDeps } from './hcs-outbox';
 import { mirrorSubmissionLookup } from './hcs-submission-lookup';
 import { ledgerRoutes } from './ledger-routes';
@@ -59,8 +61,13 @@ export const wireCore = (
 ): WiringResult => {
   const issuer = parsePrivateKey(config.issuerPrivateKey);
   if (!issuer.ok) return { ok: false, data: { problem: 'ISSUER_PRIVATE_KEY is not a usable key' } };
-  const fx = demoFixedFx(config.fxInrPerUsd);
-  if (!fx) return { ok: false, data: { problem: 'FX_DEMO_INR_PER_USD is not a usable rate' } };
+  const fixedFx = demoFixedFx(config.fxInrPerUsd);
+  if (!fixedFx) return { ok: false, data: { problem: 'FX_DEMO_INR_PER_USD is not a usable rate' } };
+  // With CRE_FX_TRUST set, quotes use the kosha-fx Chainlink rate while fresh, else the fixed one
+  const cre = config.creFx
+    ? { fx: createCreFx({ fallback: fixedFx, config: config.creFx }), trust: config.creFx.trust }
+    : null;
+  const fx = cre ? cre.fx.source : fixedFx;
 
   const execute = clientExecutor(operator.client);
   const mirror = createMirrorClient(config.mirrorUrl);
@@ -115,6 +122,7 @@ export const wireCore = (
 
   const routes: RegisterRoutes[] = [
     supportedRoutes({ network: config.network, feePayer: config.coreAccountId, rulePack }),
+    fxRoutes({ fx, cre }),
     receiverRoutes({
       db,
       adminToken: config.adminToken,
