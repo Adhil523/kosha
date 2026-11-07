@@ -23,6 +23,7 @@ export const readAggregates = async (
       outsideValuePaise: aggregate.outsideValuePaise,
       agentLevel: agent.level,
       payerResidency: agent.residency,
+      mode: receiver.mode,
       specifiedPerson: receiver.specifiedPerson,
       unverifiedPolicy: receiver.unverifiedPolicy
     })

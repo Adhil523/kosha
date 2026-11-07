@@ -1,3 +1,4 @@
+import type { ReceiverMode } from '@kosha/tax-engine/decide';
 import type { RulePack, UnverifiedPolicy } from '@kosha/tax-engine/rule-pack';
 
 export type PairLimits = {
@@ -11,11 +12,13 @@ const PERCENT_SCALE = 10_000n;
 
 // The limits decide() applies to one pair, for the Console's threshold counter. Same rules as
 // decide(): the threshold comes from the receiver, and only an unverified payer has a tolerance.
+// A first-rupee receiver has neither: every payment is taxed from the first rupee.
 export const pairLimits = (
   pack: RulePack,
-  receiver: { specifiedPerson: boolean; unverifiedPolicy: UnverifiedPolicy },
+  receiver: { mode: ReceiverMode; specifiedPerson: boolean; unverifiedPolicy: UnverifiedPolicy },
   payerResidency: 'resident' | 'non_resident' | 'unknown'
 ): PairLimits => {
+  if (receiver.mode === 'first_rupee') return { thresholdPaise: 0n, tolerancePaise: null };
   const thresholdPaise = receiver.specifiedPerson
     ? pack.thresholds.specifiedBuyerPaise
     : pack.thresholds.otherBuyerPaise;

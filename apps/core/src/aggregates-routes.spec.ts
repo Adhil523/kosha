@@ -13,7 +13,7 @@ import {
   seedParties
 } from './ledger.fixture';
 import { ledgerRoutes } from './ledger-routes';
-import { pairLimits } from './pair-limits';
+import { pairLimits, pctOfLimit } from './pair-limits';
 import type { AggregateRow } from '@kosha/shared/console-api';
 import type { RulePack } from '@kosha/tax-engine/rule-pack';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -116,10 +116,27 @@ describe('GET /v1/aggregates', () => {
   });
 
   it('gives an unverified payer no tolerance under a strict receiver', () => {
-    const strict = { specifiedPerson: false, unverifiedPolicy: 'strict' as const };
+    const strict = {
+      mode: 'threshold' as const,
+      specifiedPerson: false,
+      unverifiedPolicy: 'strict' as const
+    };
     expect(pairLimits(pack, strict, 'unknown')).toEqual({
       thresholdPaise: 1_000_000n,
       tolerancePaise: null
     });
+  });
+
+  it('gives a first-rupee receiver no threshold and no tolerance, so every pair reads 100%', () => {
+    const firstRupee = {
+      mode: 'first_rupee' as const,
+      specifiedPerson: false,
+      unverifiedPolicy: 'threshold_tolerant' as const
+    };
+    for (const residency of ['resident', 'unknown'] as const) {
+      const limits = pairLimits(pack, firstRupee, residency);
+      expect(limits).toEqual({ thresholdPaise: 0n, tolerancePaise: null });
+      expect(pctOfLimit(100n, limits)).toBe(100);
+    }
   });
 });
