@@ -14,8 +14,11 @@ Every external link lives in [`content/links.ts`](content/links.ts). A `null` li
 
 ## Deploy (Vercel)
 
-Vercel reads [`vercel.json`](vercel.json): the Next.js preset with `out/` as the output directory.
-No environment variables are needed. From the repo root:
+Vercel reads [`vercel.json`](vercel.json): the Next.js preset, which sees `output: 'export'` and
+serves the pages as static files. Leave the output directory unset. Vercel reads Next's build
+metadata from `.next/`, so pointing it at `out/` fails with `NEXT_NO_ROUTES_MANIFEST`, and a
+`null` framework fails the same way because Vercel still detects Next.js. No environment variables
+are needed. From the repo root:
 
 ```bash
 vercel link --cwd apps/site
