@@ -1,4 +1,4 @@
-import { counterState, paiseToMicro, parseFxPaisePerUsd } from '@/lib/threshold';
+import { counterState, isFirstRupee, paiseToMicro, parseFxPaisePerUsd } from '@/lib/threshold';
 import { aggregateRowSchema } from '@kosha/shared/console-api';
 import { AGGREGATES_FIXTURE } from '@kosha/shared/fixtures';
 import { describe, expect, it } from 'vitest';
@@ -34,6 +34,7 @@ describe('counterState', () => {
       tolerancePct: 50,
       near: true,
       crossed: false,
+      firstRupee: false,
       status: 'Nearing the limit'
     });
   });
@@ -52,6 +53,20 @@ describe('counterState', () => {
       withValues({ valuePaise: '300000', outsideValuePaise: '200000', pct: 50 })
     );
     expect(state).toMatchObject({ fillPct: 50, near: false, status: 'Under the limit' });
+  });
+
+  it('shows a first-rupee payer as reserved from the first call, with no bar to fill', () => {
+    const [verified, unverifiedPayer] = AGGREGATES_FIXTURE;
+    if (!verified || !unverifiedPayer) throw new Error('fixtures');
+    expect(isFirstRupee(verified)).toBe(true);
+    expect(counterState(verified)).toMatchObject({
+      firstRupee: true,
+      crossed: true,
+      near: false,
+      status: '1% reserved'
+    });
+    expect(counterState(unverifiedPayer).status).toBe('20% reserved');
+    expect(isFirstRupee(resident)).toBe(false);
   });
 
   it('never reports TDS here for a non-resident payer', () => {
