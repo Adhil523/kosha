@@ -43,9 +43,17 @@ describe('loadConfig', () => {
         pairHmacSecret: SECRET,
         panCommitSecret: SECRET,
         adminToken: SECRET,
-        issuerPrivateKey: ENV.ISSUER_PRIVATE_KEY
+        issuerPrivateKey: ENV.ISSUER_PRIVATE_KEY,
+        // No CRE_FX_TRUST: quotes keep the fixed rate
+        creFx: null
       }
     });
+  });
+
+  it('names an invalid CRE_FX_* key', () => {
+    expect(
+      loadConfig({ ...ENV, CRE_FX_TRUST: 'signers', CRE_FX_SIGNERS: 'not-an-address' })
+    ).toEqual({ ok: false, data: { problems: [{ key: 'CRE_FX_SIGNERS', problem: 'invalid' }] } });
   });
 
   it('lists every missing key at once, treating blank values as missing', () => {

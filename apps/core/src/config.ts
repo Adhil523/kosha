@@ -1,3 +1,4 @@
+import { type CreFxConfig, loadCreFxConfig } from './fx-cre';
 import {
   accountIdSchema,
   hederaNetworkSchema,
@@ -56,6 +57,8 @@ export type CoreConfig = {
   panCommitSecret: string;
   adminToken: string;
   issuerPrivateKey: string;
+  // Optional: the kosha-fx Chainlink CRE workflow's rate (CRE_FX_*); null keeps the fixed rate
+  creFx: CreFxConfig | null;
 };
 
 export type ConfigProblem = { key: string; problem: 'missing' | 'invalid' };
@@ -83,6 +86,10 @@ export const loadConfig = (env: NodeJS.ProcessEnv): LoadedConfig => {
     return { ok: false, data: { problems } };
   }
 
+  const creFx = loadCreFxConfig(env);
+  if (!creFx.ok)
+    return { ok: false, data: { problems: [{ key: creFx.data.key, problem: 'invalid' }] } };
+
   const values = parsed.data;
   return {
     ok: true,
@@ -103,7 +110,8 @@ export const loadConfig = (env: NodeJS.ProcessEnv): LoadedConfig => {
       pairHmacSecret: values.PAIR_HMAC_SECRET,
       panCommitSecret: values.PAN_COMMIT_SECRET,
       adminToken: values.CONSOLE_ADMIN_TOKEN,
-      issuerPrivateKey: values.ISSUER_PRIVATE_KEY
+      issuerPrivateKey: values.ISSUER_PRIVATE_KEY,
+      creFx: creFx.data
     }
   };
 };
