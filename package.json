@@ -23,7 +23,9 @@
     "cosign-release": "pnpm --filter @kosha/scripts exec tsx cosign-release.ts",
     "pay-once": "pnpm --filter @kosha/scripts exec tsx pay-once.ts",
     "burst": "pnpm --filter @kosha/scripts exec tsx burst.ts",
-    "demo": "pnpm --filter @kosha/scripts exec tsx demo.ts"
+    "demo": "pnpm --filter @kosha/scripts exec tsx demo.ts",
+    "arkiv:publish": "pnpm --filter @kosha/scripts exec tsx arkiv-publish.ts",
+    "arkiv:query": "pnpm --filter @kosha/scripts exec tsx arkiv-query.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -404,6 +404,9 @@ importers:
       '@hiero-ledger/sdk':
         specifier: 2.90.1
         version: 2.90.1
+      '@kosha/arkiv':
+        specifier: workspace:*
+        version: link:../packages/arkiv
       '@kosha/hedera':
         specifier: workspace:*
         version: link:../packages/hedera
@@ -422,6 +425,9 @@ importers:
       '@x402/hedera':
         specifier: 2.30.0
         version: 2.30.0(protobufjs@8.6.6)
+      viem:
+        specifier: ^2.57.16
+        version: 2.57.16(typescript@6.0.3)(zod@4.6.7)
       zod:
         specifier: 4.6.7
         version: 4.6.7
