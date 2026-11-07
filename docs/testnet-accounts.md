@@ -19,9 +19,10 @@ links only: every private key stays in the shared env file (`../kosha.env`).
 | agent-unknown reserve (2-of-2: agent + Core)     | `AGENT_UNKNOWN_RESERVE_ID`     | [0.0.11342849](https://hashscan.io/testnet/account/0.0.11342849) |
 | compat-settlement (Core key)                     | `COMPAT_SETTLEMENT_ACCOUNT_ID` | [0.0.11342850](https://hashscan.io/testnet/account/0.0.11342850) |
 | pool-reserve (2-of-2: Core + compliance)         | `POOL_RESERVE_ACCOUNT_ID`      | [0.0.11342851](https://hashscan.io/testnet/account/0.0.11342851) |
+| audit (submit key of the audit topic)            | `AUDIT_ACCOUNT_ID`             | [0.0.11347271](https://hashscan.io/testnet/account/0.0.11347271) |
 | HCS payments topic                               | `HCS_PAYMENTS_TOPIC`           | [0.0.11342856](https://hashscan.io/testnet/topic/0.0.11342856)   |
 | HCS profiles topic                               | `HCS_PROFILES_TOPIC`           | [0.0.11342857](https://hashscan.io/testnet/topic/0.0.11342857)   |
-| HCS audit topic                                  | `HCS_AUDIT_TOPIC`              | [0.0.11342858](https://hashscan.io/testnet/topic/0.0.11342858)   |
+| HCS audit topic                                  | `HCS_AUDIT_TOPIC`              | [0.0.11347272](https://hashscan.io/testnet/topic/0.0.11347272)   |
 
 ## HCS-14 identities (B23)
 
