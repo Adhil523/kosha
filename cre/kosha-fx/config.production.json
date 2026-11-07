@@ -1,0 +1,8 @@
+{
+  "schedule": "0 */30 * * * *",
+  "chainSelectorName": "polygon-mainnet",
+  "inrUsdFeed": "0xDA0F8Df6F5dB15b346f4B8D1156722027E194E60",
+  "referenceUrl": "https://api.frankfurter.dev/v1/latest?base=USD&symbols=INR",
+  "maxDeviationBps": 200,
+  "coreReportUrl": "https://kosha-core.fly.dev/v1/fx/report"
+}
