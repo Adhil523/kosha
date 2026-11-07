@@ -107,6 +107,8 @@ An unconfirmed decision is held against the pair for 15 minutes, as an open quot
 | `GET` / `PUT /v1/agents/:id/policy` | admin | `registry` `policySchema` | `registry` `policySchema` | A12 |
 | `POST /v1/terms` | receiver | `registry` `termsProposalSchema` | `registry` `termsAnswerSchema` | A21 (optional) |
 
+**A receiver's mode defaults to `first_rupee` (#73).** `mode` is optional on `POST /v1/receivers`. Left out, Core deducts from the first rupee: 1% with a PAN, 20% for an unverified payer, reason `first_rupee`. Until a CA confirms that the ₹10,000 / ₹50,000 threshold carried into s.393(4) of the 2025 Act, deducting from the first rupee can only over-deduct, which is a refundable credit. Pass `mode: "threshold"` to use the threshold and the unverified-payer tolerance.
+
 ### Agent identity and self-registration (#56)
 
 **One record per account.** An agent keeps a single record as its identity moves from its CAIP-10 account (`hedera:testnet:0.0.6003`, Level 0) to an HCS-14 UAID whose `nativeId` is that same account. Its ID, reserve, payments and aggregates all stay with it.

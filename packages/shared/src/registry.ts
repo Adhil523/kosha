@@ -39,7 +39,10 @@ export const receiverCreateSchema = z
     pan: z.string().regex(PAN_PATTERN).optional(),
     tan: z.string().regex(TAN_PATTERN).optional(),
     gstin: z.string().regex(GSTIN_PATTERN).optional(),
-    mode: receiverModeSchema,
+    // First rupee unless the owner asks for the threshold: whether the ₹10,000 / ₹50,000 threshold
+    // carried into s.393(4) of the 2025 Act is unconfirmed, and deducting from the first rupee can
+    // only over-deduct (a refundable credit), never under-deduct
+    mode: receiverModeSchema.default('first_rupee'),
     // Defaults to the rule pack's unverifiedPayer.defaultPolicy
     unverifiedPolicy: unverifiedPolicySchema.optional(),
     challengeNonce: z.string().regex(HEX_PATTERN),

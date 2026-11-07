@@ -36,6 +36,12 @@ describe('receiverCreateSchema', () => {
     expect(receiverCreateSchema.safeParse(foreign).success).toBe(true);
   });
 
+  it('defaults the mode to first rupee, and keeps an explicit threshold', () => {
+    const { mode: _mode, ...withoutMode } = business;
+    expect(receiverCreateSchema.parse(withoutMode).mode).toBe('first_rupee');
+    expect(receiverCreateSchema.parse(business).mode).toBe('threshold');
+  });
+
   it('rejects a malformed PAN and a receiver with no wallets', () => {
     expect(receiverCreateSchema.safeParse({ ...business, pan: 'AAPFU0939' }).success).toBe(false);
     expect(receiverCreateSchema.safeParse({ ...business, wallets: [] }).success).toBe(false);
