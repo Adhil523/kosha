@@ -53,7 +53,7 @@ export const PayerCounter = ({
       data-testid={TEST_IDS.thresholdCounter(row.agentId)}
     >
       <div className="flex items-center justify-between gap-4">
-        <span className="text-sm font-medium break-all">{label}</span>
+        <span className="min-w-0 text-sm font-medium wrap-break-word">{label}</span>
         <div className="flex shrink-0 items-center gap-3">
           <span className="text-sm font-semibold tabular-nums">{Math.round(state.fillPct)}%</span>
           <Badge
