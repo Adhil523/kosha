@@ -5,11 +5,16 @@ import { ensureSettlementToken } from './lib/bootstrap-token';
 import { ensureSecrets, ensureTopics } from './lib/bootstrap-topics';
 import { readEnvFile } from './lib/env-file';
 import { clientRunner } from './lib/hedera-run';
-import { accountTable, accountTableMarkdown, TESTNET_ACCOUNTS_DOC } from './lib/testnet-accounts';
+import {
+  accountTable,
+  accountTableMarkdown,
+  TESTNET_ACCOUNTS_DOC,
+  withKeptSections
+} from './lib/testnet-accounts';
 import { Hbar } from '@hiero-ledger/sdk';
 import { coreClientFromEnv } from '@kosha/hedera/client';
 import { findRepoRoot } from '@kosha/shared/env';
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const DEFAULT_MIRROR_URL = 'https://testnet.mirrornode.hedera.com';
@@ -57,7 +62,9 @@ const main = async () => {
 
   const rows = accountTable('testnet', env);
   for (const row of rows) bootstrapLog(`${row.role.padEnd(48)} ${row.id ?? 'not set'}`);
-  writeFileSync(join(root, TESTNET_ACCOUNTS_DOC), accountTableMarkdown('testnet', rows));
+  const docPath = join(root, TESTNET_ACCOUNTS_DOC);
+  const existing = existsSync(docPath) ? readFileSync(docPath, 'utf8') : null;
+  writeFileSync(docPath, withKeptSections(accountTableMarkdown('testnet', rows), existing));
   bootstrapLog(`wrote ${TESTNET_ACCOUNTS_DOC}`);
 };
 
