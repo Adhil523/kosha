@@ -1,0 +1,20 @@
+{
+  "name": "@kosha/arkiv",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@arkiv-network/sdk": "1.0.1",
+    "@kosha/shared": "workspace:*",
+    "viem": "^2.57.16",
+    "zod": "4.6.7"
+  }
+}
