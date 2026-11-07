@@ -121,6 +121,15 @@ government requires: paying the tax in rupees.
 
 Kosha uses no smart contracts, only native HTS, HCS and scheduled transactions.
 
+## Chainlink: the INR rate
+
+The rupee value of each payment decides the tax, so Core's INR/USD rate comes from Chainlink. The
+[`kosha-fx`](cre/README.md) CRE workflow reads Chainlink's INR/USD feed on Polygon mainnet, checks
+it against the ECB reference rate, and sends Core a DON-signed report. Core verifies the signatures,
+quotes with that rate, and shows it at `GET /v1/fx` with its source. If no fresh report has arrived,
+Core falls back to the configured rate. Run it with `cre workflow simulate` (see
+[cre/README.md](cre/README.md)).
+
 ## Why Hedera
 
 1. **Fixed, tiny fees.** Withholding 1% of an ₹8 API call only makes sense when the fee is a

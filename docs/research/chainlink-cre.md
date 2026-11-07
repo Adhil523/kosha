@@ -7,7 +7,7 @@ against an off-chain reference rate. The workflow sends Core a DON-signed report
 Core verifies it before using the rate. A local simulation is enough for the prize. The CCIP track
 is out: it requires CCIP "inside your smart contracts", and Kosha has none.
 
-**Recommendation:** build the `kosha-fx` workflow below and add a `chainlink-cre` FX source to Core,
+**Built:** see [cre/README.md](../../cre/README.md). **Recommendation (as researched):** build the `kosha-fx` workflow below and add a `chainlink-cre` FX source to Core,
 replacing the fixed demo rate (`FX_DEMO_INR_PER_USD=88.40`; the feed read ₹94.49 on 2026-11-06).
 
 ## Sources (checked 2026-11-07)
@@ -83,7 +83,7 @@ cron ─▶ kosha-fx workflow (CRE)
           ├─ refuse if they differ by more than the configured band
           └─ runtime.report() ─▶ sendReport() ─▶ POST Core /v1/fx/report
 Core ─▶ verify signatures ─▶ store rate, sources, report hash ─▶ FxSource "chainlink-cre"
-     ─▶ quotes use it; each decision records the rate on HCS
+     ─▶ quotes use it; GET /v1/fx shows the rate and its source
 ```
 
 ## Risks
