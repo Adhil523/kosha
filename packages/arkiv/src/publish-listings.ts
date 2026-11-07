@@ -57,7 +57,7 @@ export const findExistingListings = async (
 };
 
 // Writes one API's listings in at most two transactions: creates, refreshes and deletes together,
-// then the renewals (Arkiv refuses a patch and an extension of one entity in the same batch)
+// then the renewals (the SDK doesn't say whether one batch may both patch and extend an entity)
 export const publishListings = async (
   wallet: WalletArkivClient,
   plan: PublishPlan
