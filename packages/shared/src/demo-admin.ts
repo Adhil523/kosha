@@ -1,5 +1,6 @@
 import { accountIdSchema, agentIdentitySchema } from './ids';
 import { amountSchema } from './money';
+import { receiverModeSchema } from './registry';
 import { z } from 'zod';
 
 // Admin-only endpoints `pnpm seed --history` and `--reset-demo` call (A14). Parties are named the
@@ -25,9 +26,9 @@ export const samplePaymentsResponseSchema = z.object({
   existing: z.int().nonnegative()
 });
 
-// POST /v1/admin/demo-reset: puts the threshold demo back where `pnpm demo` starts
+// POST /v1/admin/demo-reset: puts the demo back where `pnpm demo` starts
 export const demoResetRequestSchema = z.object({
-  // Each pair's year total becomes exactly this, as one sample opening balance
+  // Each pair's year total becomes exactly this, as one sample opening balance (none when zero)
   balances: z.array(
     z.object({
       agent: agentIdentitySchema,
@@ -38,7 +39,11 @@ export const demoResetRequestSchema = z.object({
   // These agents' own (non-sample) payments and open quotes are cleared
   clearAgents: z.array(agentIdentitySchema),
   // These agents go back to Level 0, unverified
-  level0: z.array(agentIdentitySchema)
+  level0: z.array(agentIdentitySchema),
+  // These receivers are put in this mode, so an existing database follows the demo's choice
+  receiverModes: z
+    .array(z.object({ receiverAccountId: accountIdSchema, mode: receiverModeSchema }))
+    .default([])
 });
 export const demoResetResponseSchema = z.object({
   clearedPayments: z.int().nonnegative(),

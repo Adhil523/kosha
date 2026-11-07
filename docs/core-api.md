@@ -248,9 +248,10 @@ Admin only. `pnpm seed --history` and `pnpm seed --reset-demo` call these. Parti
 
 **Demo reset** runs in one database transaction:
 1. Clears each `clearAgents` agent's own (non-sample) payments, their unpublished HCS rows, and its unpaid quotes.
-2. Sets each `balances` pair to one sample "opening balance" payment worth `valuePaise`, dated a day back (or now, when a day back falls in the last financial year). Every other payment of that pair this year is removed.
+2. Sets each `balances` pair to one sample "opening balance" payment worth `valuePaise`, dated a day back (or now, when a day back falls in the last financial year). Every other payment of that pair this year is removed. A `valuePaise` of `0` leaves the pair empty, with no opening payment.
 3. Recounts every touched pair's aggregate from the payments that remain.
 4. Sends each `level0` agent back to Level 0: residency `unknown`, no PAN, no credential.
+5. Puts each `receiverModes` receiver, named by its wallet, in that mode (`threshold` or `first_rupee`). Optional; `pnpm seed --reset-demo` sends every demo receiver to `first_rupee`. An unregistered wallet returns `400` before anything changes.
 
 HCS messages already published stay on chain, so after a reset the topic's running totals no longer match the database for the reset pairs.
 
